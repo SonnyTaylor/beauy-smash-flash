@@ -11,6 +11,7 @@ use crate::session::{client_loop, game_addr, host_loop, input_message, SessionMo
 #[tauri::command]
 pub async fn start_host(
     player_name: Option<String>,
+    character_id: Option<String>,
     window: tauri::Window,
     state: tauri::State<'_, SharedState>,
 ) -> Result<SessionInfo, String> {
@@ -31,7 +32,7 @@ pub async fn start_host(
         st.world.add_player(
             0,
             clean_player_name(player_name).unwrap_or_else(|| "Host".to_string()),
-            "sonny".to_string(),
+            clean_character_id(character_id),
         );
         st.session_info()
     };
@@ -48,6 +49,7 @@ pub async fn start_host(
 pub async fn join_game(
     ip: String,
     player_name: Option<String>,
+    character_id: Option<String>,
     window: tauri::Window,
     state: tauri::State<'_, SharedState>,
 ) -> Result<SessionInfo, String> {
@@ -60,6 +62,7 @@ pub async fn join_game(
 
     let join = ClientMessage::Join {
         name: clean_player_name(player_name).unwrap_or_else(|| "Player".to_string()),
+        character_id: clean_character_id(character_id),
     };
     let bytes = encode_client(&join)?;
     socket
@@ -154,4 +157,16 @@ fn clean_player_name(name: Option<String>) -> Option<String> {
     } else {
         Some(name.chars().take(24).collect())
     }
+}
+
+fn clean_character_id(character_id: Option<String>) -> String {
+    match character_id.as_deref() {
+        Some("bailey") => "bailey",
+        Some("jacob") => "jacob",
+        Some("isaak") => "isaak",
+        Some("taj") => "taj",
+        Some("finn") | Some("cheeky_dinghy") => "finn",
+        _ => "sonny",
+    }
+    .to_string()
 }

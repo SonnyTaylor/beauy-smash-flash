@@ -68,7 +68,7 @@ pub struct StateSnapshot {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum ClientMessage {
-    Join { name: String },
+    Join { name: String, character_id: String },
     Input(InputSnapshot),
     Leave,
 }

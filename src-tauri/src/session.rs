@@ -104,7 +104,7 @@ async fn handle_host_message(
     };
 
     match message {
-        ClientMessage::Join { name } => {
+        ClientMessage::Join { name, character_id } => {
             let response = {
                 let mut st = state.lock().await;
                 if let Some(peer) = st.peers.iter_mut().find(|peer| peer.addr == addr) {
@@ -126,7 +126,7 @@ async fn handle_host_message(
                         addr,
                         last_seen: Instant::now(),
                     });
-                    st.world.add_player(id, name, "sonny".to_string());
+                    st.world.add_player(id, name, character_id);
                     ServerMessage::Assigned {
                         id,
                         world: st.world.config.clone(),

@@ -2,15 +2,27 @@
   box-sizing: border-box;
 }
 
+:root {
+  --bg: #050505;
+  --panel: rgba(12, 12, 16, 0.82);
+  --panel-strong: rgba(20, 20, 28, 0.92);
+  --line: rgba(255, 255, 255, 0.12);
+  --muted: #a8a8b3;
+  --text: #f5f5f5;
+  --cyan: #00ffff;
+  --pink: #ff0080;
+  --gold: #ffc800;
+}
+
 html,
 body {
   width: 100%;
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: #050505;
-  color: #f5f5f5;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Trebuchet MS", "Arial Narrow", Arial, sans-serif;
 }
 
 button,
@@ -18,55 +30,83 @@ input {
   font: inherit;
 }
 
-#game-container,
-canvas {
+#root,
+.app-shell {
+  width: 100%;
+  height: 100%;
+}
+
+.game-container,
+.game-container canvas {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-#menu {
+.screen-backdrop {
   position: fixed;
   inset: 0;
   z-index: 10;
   display: grid;
-  place-items: center;
-  padding: 32px;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1fr);
+  gap: 24px;
+  align-items: stretch;
+  padding: clamp(18px, 4vw, 48px);
   background:
-    radial-gradient(circle at 50% 25%, rgba(0, 255, 255, 0.14), transparent 34%),
-    radial-gradient(circle at 80% 80%, rgba(255, 0, 128, 0.14), transparent 28%),
+    linear-gradient(135deg, rgba(0, 255, 255, 0.12), transparent 30%),
+    radial-gradient(circle at 84% 20%, rgba(255, 0, 128, 0.18), transparent 32%),
+    radial-gradient(circle at 15% 85%, rgba(255, 200, 0, 0.12), transparent 26%),
     rgba(5, 5, 5, 0.94);
 }
 
-#menu[hidden],
-#hud[hidden] {
-  display: none;
-}
-
-.menu-card {
-  width: min(420px, 100%);
+.brand-panel,
+.screen-card {
   display: grid;
-  gap: 14px;
-  padding: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 24px;
-  background: rgba(12, 12, 16, 0.82);
+  align-content: end;
+  padding: clamp(24px, 4vw, 42px);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: var(--panel);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(18px);
 }
 
+.screen-card {
+  align-content: center;
+}
+
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 8vw, 4rem);
+  font-size: clamp(3.25rem, 9vw, 8.5rem);
   line-height: 0.9;
-  letter-spacing: -0.07em;
+  letter-spacing: -0.09em;
+  text-transform: uppercase;
+}
+
+h2 {
+  margin: 0 0 18px;
+  font-size: clamp(2rem, 4vw, 4rem);
+  line-height: 0.9;
+  letter-spacing: -0.06em;
+  text-transform: uppercase;
+}
+
+.eyebrow,
+.screen-kicker {
+  margin: 0 0 10px;
+  color: var(--cyan);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .tagline {
-  margin: 0 0 12px;
-  color: #a8a8b3;
+  max-width: 46ch;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
 }
 
 input {
@@ -76,21 +116,20 @@ input {
   border-radius: 12px;
   outline: none;
   background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  color: var(--text);
 }
 
 input:focus {
-  border-color: rgba(0, 255, 255, 0.7);
+  border-color: var(--cyan);
 }
 
 button {
-  width: 100%;
   padding: 13px 18px;
   border: 0;
   border-radius: 12px;
   cursor: pointer;
-  color: #050505;
-  background: #00ffff;
+  color: var(--bg);
+  background: var(--cyan);
   font-weight: 800;
   transition: transform 0.15s ease, filter 0.15s ease;
 }
@@ -105,21 +144,175 @@ button:disabled {
   opacity: 0.55;
 }
 
-#btn-join {
-  color: #fff;
-  background: #ff0080;
+.secondary-button {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid var(--line);
 }
 
-#hud {
+.flow-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.field-label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.server-list,
+.lobby-list {
+  display: grid;
+  gap: 10px;
+}
+
+.server-row,
+.lobby-player {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--text);
+  text-align: left;
+}
+
+.server-row small,
+.lobby-player small,
+.character-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.character-card {
+  min-height: 132px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--accent) 25%, transparent), transparent 65%),
+    rgba(255, 255, 255, 0.055);
+  color: var(--text);
+}
+
+.character-card.selected {
+  outline: 2px solid var(--accent);
+  transform: translateY(-2px);
+}
+
+.head-placeholder {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 900;
+}
+
+.ability-preview {
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.ability-preview p,
+.error-text {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.error-text {
+  color: #ff6b6b;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+}
+
+.lobby-player {
+  grid-template-columns: auto 1fr auto;
+}
+
+.lobby-player em {
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.game-overlay {
   position: fixed;
   top: 14px;
   left: 14px;
+  right: 14px;
   z-index: 5;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.hud-pill,
+.tiny-button {
   padding: 8px 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.46);
   color: #d7d7df;
   font-size: 0.82rem;
-  pointer-events: none;
+}
+
+.hud-pill {
+  display: grid;
+  gap: 2px;
+}
+
+.tiny-button {
+  width: auto;
+  margin-left: auto;
+  color: var(--text);
+  pointer-events: auto;
+}
+
+@media (max-width: 860px) {
+  .screen-backdrop {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .brand-panel {
+    align-content: start;
+  }
+
+  .character-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

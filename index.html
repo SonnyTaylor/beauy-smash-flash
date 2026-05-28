@@ -6,18 +6,7 @@
   <title>Beauy Smash Flash</title>
 </head>
 <body>
-  <div id="menu">
-    <main class="menu-card">
-      <h1>Beauy Smash Flash</h1>
-      <p class="tagline">LAN arena prototype. Host or join on the same WiFi.</p>
-      <input id="player-name" type="text" value="Sonny" placeholder="Your name" autocomplete="nickname" />
-      <button id="btn-host">Host Game</button>
-      <input id="join-ip" type="text" value="127.0.0.1" placeholder="Host IP" inputmode="decimal" />
-      <button id="btn-join">Join Game</button>
-    </main>
-  </div>
-  <div id="hud" hidden>WASD to move</div>
-  <div id="game-container"></div>
-  <script type="module" src="/src/main.ts"></script>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
