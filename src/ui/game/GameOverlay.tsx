@@ -316,7 +316,7 @@ export function GameOverlay({
       >
         {isHacked && !matchEnded && (
           <div className="hud-hack-banner" role="status">
-            Reverse shell active — {me?.hacked_remaining.toFixed(1)}s
+            Reverse shell — flipped inputs · +30% damage taken · {me?.hacked_remaining.toFixed(1)}s
           </div>
         )}
 
@@ -328,7 +328,7 @@ export function GameOverlay({
 
         {isMarked && !matchEnded && !isHacked && (
           <div className="hud-mark-banner" role="status">
-            Marked — {me?.marked_remaining?.toFixed(1)}s
+            Marked — +40% damage taken · {me?.marked_remaining?.toFixed(1)}s
           </div>
         )}
 
@@ -340,7 +340,7 @@ export function GameOverlay({
 
         {inDirectorsCut && !matchEnded && (
           <div className="hud-directors-banner" role="status">
-            Director&apos;s Cut — {me?.directors_cut_shots ?? 0} popcorn shots left
+            Director&apos;s Cut — {me?.directors_cut_shots ?? 0} popcorn left · kills refund 3
           </div>
         )}
 
@@ -466,7 +466,7 @@ export function GameOverlay({
             <span className="dot">·</span>
             <kbd>F</kbd> pick up
             <span className="dot">·</span>
-            <kbd>E</kbd> ability
+            <kbd>E</kbd> {character.abilityName.toLowerCase()}
             <span className="dot">·</span>
             <kbd>Tab</kbd> scores
             <span className="dot">·</span>

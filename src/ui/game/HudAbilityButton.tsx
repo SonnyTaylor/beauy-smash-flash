@@ -70,31 +70,9 @@ export function HudAbilityButton({
 
   return (
     <div
-      className={`hud-ability ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''}`}
+      className={`hud-ability-wrap ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''}`}
       style={{ '--accent': rgbCss(character.color) } as React.CSSProperties}
     >
-      <div className="hud-ability-ring" style={ringStyle} aria-hidden />
-      <div className="hud-ability-core">
-        <img
-          src={`/assets/${character.sprite}`}
-          alt=""
-          onError={(event) => {
-            event.currentTarget.style.display = 'none';
-          }}
-        />
-        <span aria-hidden>{character.initials}</span>
-        {!ready && !casting && !inDirectorsCut && !inBoat && !hasShield && (
-          <div className="hud-ability-percent">{Math.round(clampedCharge)}%</div>
-        )}
-        {inDirectorsCut && (
-          <div className="hud-ability-percent">{directorsCutShots}</div>
-        )}
-        {hasShield && (
-          <div className="hud-ability-percent">{Math.ceil(reelShieldRemaining ?? 0)}s</div>
-        )}
-      </div>
-      <div className="hud-ability-key" aria-hidden>E</div>
-      <div className="hud-ability-name">{statusLabel}</div>
       {character.id === 'isaak' && !casting && !inBoat && (
         <div
           className={`hud-ability-stacks ${(stillnessStacks ?? 0) >= 3 ? 'is-full' : ''}`}
@@ -110,6 +88,31 @@ export function HudAbilityButton({
           <span className="hud-ability-stack-label">{isaakStackLabel}</span>
         </div>
       )}
+      <div className="hud-ability">
+        <div className="hud-ability-ring" style={ringStyle} aria-hidden />
+        <div className="hud-ability-core">
+          <img
+            src={`/assets/${character.sprite}`}
+            alt=""
+            onError={(event) => {
+              event.currentTarget.style.display = 'none';
+            }}
+          />
+          <span aria-hidden>{character.initials}</span>
+          {!ready && !casting && !inDirectorsCut && !inBoat && !hasShield && (
+            <div className="hud-ability-percent">{Math.round(clampedCharge)}%</div>
+          )}
+          {inDirectorsCut && (
+            <div className="hud-ability-percent">{directorsCutShots}</div>
+          )}
+          {hasShield && (
+            <div className="hud-ability-percent">{Math.ceil(reelShieldRemaining ?? 0)}s</div>
+          )}
+        </div>
+        <div className="hud-ability-key" aria-hidden>E</div>
+        <div className="hud-ability-name">{statusLabel}</div>
+      </div>
+      <p className="hud-ability-desc">{character.abilityDescription}</p>
     </div>
   );
 }

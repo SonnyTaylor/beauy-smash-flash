@@ -45,6 +45,7 @@ export function PlayerSlot({
           {player.is_host ? <span className="host-tag">Host</span> : null}
         </strong>
         <span className="slot-ability">{character.abilityName}</span>
+        <span className="slot-ability-desc">{character.abilityDescription}</span>
         <span className="slot-weapon">{weapon.name}</span>
       </div>
 

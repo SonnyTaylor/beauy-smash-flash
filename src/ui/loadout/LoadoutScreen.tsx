@@ -1,4 +1,5 @@
-import { getCharacter } from '../character';
+import { type CSSProperties } from 'react';
+import { getCharacter, rgbCss } from '../character';
 import { EditableName } from '../components/EditableName';
 import type { SessionKind } from '../navigation';
 import { CharacterGrid } from './CharacterGrid';
@@ -69,10 +70,15 @@ export function LoadoutScreen({
           <section className="loadout-section loadout-section-character">
             <header className="panel-heading">
               <h3>Character</h3>
-              <span>
-                {character.name} · {character.abilityName}
-              </span>
+              <span>{character.name}</span>
             </header>
+            <div
+              className="loadout-ability-highlight"
+              style={{ '--accent': rgbCss(character.color) } as CSSProperties}
+            >
+              <span className="ability-name">{character.abilityName}</span>
+              <p className="ability-desc">{character.abilityDescription}</p>
+            </div>
             <div className="loadout-character-scroll lobby-settings-scroll">
               <CharacterGrid
                 selectedCharacterId={selectedCharacterId}
