@@ -33,6 +33,14 @@ const MOVE_DUST_INTERVAL_MS = 100;
 const BULLET_LERP_RATE = 32;
 const PLAYER_LERP_RATE = 24;
 const BULLET_TRAIL_LENGTH = 4;
+const BULLET_COLORS: Record<string, number> = {
+  glock: 0xffff32,
+  yoghurt_effect: 0xff6eb4,
+};
+const BULLET_RADIUS_BY_WEAPON: Record<string, number> = {
+  glock: BULLET_RADIUS,
+  yoghurt_effect: 6,
+};
 const RELOAD_GUN_TILT = Math.PI * 0.42;
 const FOG_VISION_RADIUS = 420;
 
@@ -91,6 +99,7 @@ export class ArenaRenderer {
       targetX: number;
       targetY: number;
       ownerId: number;
+      weaponId: string;
       trail: Array<{ x: number; y: number }>;
     }
   >();
@@ -346,6 +355,8 @@ export class ArenaRenderer {
         this.vfx.emitExplosion(effect.x, effect.y, effect.radius);
       } else if (effect.kind === 'aim_reticle') {
         this.vfx.emitAimReticle(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'splat') {
+        this.vfx.emitSplat(effect.x, effect.y, effect.radius);
       }
     }
 
@@ -527,6 +538,7 @@ export class ArenaRenderer {
           targetX: bullet.x,
           targetY: bullet.y,
           ownerId: bullet.owner_id,
+          weaponId: bullet.weapon_id ?? 'glock',
           trail: [],
         };
         this.bulletStates.set(bullet.id, state);
@@ -538,6 +550,7 @@ export class ArenaRenderer {
         state.targetX = bullet.x;
         state.targetY = bullet.y;
         state.ownerId = bullet.owner_id;
+        state.weaponId = bullet.weapon_id ?? 'glock';
       }
     }
 
@@ -563,16 +576,19 @@ export class ArenaRenderer {
       state.x += (state.targetX - state.x) * blend;
       state.y += (state.targetY - state.y) * blend;
 
+      const bulletColor = BULLET_COLORS[state.weaponId] ?? 0xffff32;
+      const bulletRadius = BULLET_RADIUS_BY_WEAPON[state.weaponId] ?? BULLET_RADIUS;
+
       for (let i = 0; i < state.trail.length; i += 1) {
         const point = state.trail[i];
         const t = state.trail.length > 0 ? i / state.trail.length : 0;
         const alpha = 0.18 + t * 0.28;
-        this.bullets.circle(point.x, point.y, BULLET_RADIUS * (0.55 + t * 0.25));
-        this.bullets.fill({ color: 0xffff32, alpha });
+        this.bullets.circle(point.x, point.y, bulletRadius * (0.55 + t * 0.25));
+        this.bullets.fill({ color: bulletColor, alpha });
       }
 
-      this.bullets.circle(state.x, state.y, BULLET_RADIUS);
-      this.bullets.fill({ color: 0xffff32, alpha: 0.95 });
+      this.bullets.circle(state.x, state.y, bulletRadius);
+      this.bullets.fill({ color: bulletColor, alpha: 0.95 });
     }
   }
 

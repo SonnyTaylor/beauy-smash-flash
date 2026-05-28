@@ -12,6 +12,7 @@ const SPAWN_LIFE = 0.55;
 const DUST_LIFE = 0.3;
 const EXPLOSION_LIFE = 0.45;
 const RETICLE_LIFE = 1.2;
+const SPLAT_LIFE = 0.35;
 
 export class VfxManager {
   private layer = new Container();
@@ -86,6 +87,21 @@ export class VfxManager {
     gfx.position.set(x, y);
     this.layer.addChild(gfx);
     this.bursts.push({ gfx, life: RETICLE_LIFE, maxLife: RETICLE_LIFE, fadeOnly: true });
+  }
+
+  emitSplat(x: number, y: number, radius: number) {
+    const gfx = new Graphics();
+    gfx.circle(0, 0, radius * 0.45)
+      .fill({ color: 0xff9fd6, alpha: 0.9 })
+      .circle(-radius * 0.2, radius * 0.15, radius * 0.22)
+      .fill({ color: 0xff6eb4, alpha: 0.75 })
+      .circle(radius * 0.25, -radius * 0.1, radius * 0.18)
+      .fill({ color: 0xff6eb4, alpha: 0.65 })
+      .circle(0, 0, radius * 0.85)
+      .stroke({ color: 0xff4fa8, width: 3, alpha: 0.55 });
+    gfx.position.set(x, y);
+    this.layer.addChild(gfx);
+    this.bursts.push({ gfx, life: SPLAT_LIFE, maxLife: SPLAT_LIFE, fadeOnly: false });
   }
 
   emitMoveDust(feetX: number, feetY: number, moveAngle: number, accentColor: number) {

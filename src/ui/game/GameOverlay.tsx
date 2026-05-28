@@ -139,6 +139,7 @@ export function GameOverlay({
   const abilityCharge = me?.ability_charge ?? 0;
   const abilityWindup = me?.ability_windup ?? 0;
   const isHacked = (me?.hacked_remaining ?? 0) > 0;
+  const isSlowed = (me?.slowed_remaining ?? 0) > 0;
   const remaining = timeRemaining(state);
   const showTimer = (state?.time_limit_secs ?? 0) > 0 && state?.win_condition !== 'kills';
   const isDead = me && !me.alive && me.respawn_in > 0 && !matchEnded;
@@ -252,12 +253,18 @@ export function GameOverlay({
   return (
     <>
       <div
-        className={`game-overlay ${paused || matchEnded ? 'is-paused' : ''} ${isHacked ? 'is-hacked' : ''}`}
+        className={`game-overlay ${paused || matchEnded ? 'is-paused' : ''} ${isHacked ? 'is-hacked' : ''} ${isSlowed ? 'is-slowed' : ''}`}
         style={arenaLayout as React.CSSProperties}
       >
         {isHacked && !matchEnded && (
           <div className="hud-hack-banner" role="status">
             Controls hacked — {me?.hacked_remaining.toFixed(1)}s
+          </div>
+        )}
+
+        {isSlowed && !matchEnded && !isHacked && (
+          <div className="hud-slow-banner" role="status">
+            Gooed up — {me?.slowed_remaining?.toFixed(1)}s
           </div>
         )}
 

@@ -131,7 +131,7 @@ export interface BulletSnapshot {
   weapon_id?: string;
 }
 
-export type EffectKind = 'explosion' | 'aim_reticle';
+export type EffectKind = 'explosion' | 'aim_reticle' | 'splat';
 
 export interface WorldEffectSnapshot {
   id: number;
@@ -173,6 +173,7 @@ export interface PlayerSnapshot {
   ability_charge: number;
   ability_windup: number;
   hacked_remaining: number;
+  slowed_remaining?: number;
   active_weapon?: string;
   active_slot?: number;
   reload_duration?: number;

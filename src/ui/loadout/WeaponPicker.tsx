@@ -29,7 +29,7 @@ export function WeaponPicker({
           </span>
           <span className="weapon-card-text">
             <strong>{weapon.name}</strong>
-            <span className="weapon-card-hint">Starting primary</span>
+            <span className="weapon-card-hint">{weapon.tagline}</span>
           </span>
           <span className="selected-tag">Selected</span>
         </button>

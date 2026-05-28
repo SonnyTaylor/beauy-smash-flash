@@ -11,6 +11,7 @@
     "maps:preview": "bun scripts/maps-cli.ts preview",
     "maps:list": "bun scripts/maps-cli.ts list",
     "assets:glock": "python scripts/process-glock.py",
+    "assets:yoghurt": "python scripts/process-yoghurt.py",
     "tauri": "bunx tauri",
     "test-mp": "pwsh -ExecutionPolicy Bypass -File scripts/test-multiplayer.ps1"
   },

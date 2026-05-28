@@ -31,6 +31,12 @@ pub fn tick_status_effects(players: &mut HashMap<u8, Player>, dt: f32) {
         if player.controls_inverted_until > 0.0 {
             player.controls_inverted_until = (player.controls_inverted_until - dt).max(0.0);
         }
+        if player.slowed_until > 0.0 {
+            player.slowed_until = (player.slowed_until - dt).max(0.0);
+            if player.slowed_until <= 0.0 {
+                player.slow_multiplier = 1.0;
+            }
+        }
     }
 }
 

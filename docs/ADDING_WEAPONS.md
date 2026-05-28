@@ -149,6 +149,7 @@ static REGISTRY: &[WeaponDef] = &[GLOCK, SHOTGUN];
 | `reload_time` | Seconds to reload; sent to HUD as `reload_duration` |
 | `bullet_radius` | Hitbox radius for collisions |
 | `muzzle_offset` | Distance from player center along aim vector where bullets spawn |
+| `on_hit` | Optional debuff on hit (`None`, or `Slow { speed_multiplier, duration }`) |
 
 Unknown weapon ids fall back to glock (`get_or_default`).
 
@@ -220,6 +221,7 @@ No changes needed to `ArenaRenderer`, `InputController`, or `GameOverlay` for a 
 Not implemented yet — design hooks exist if you extend the system later:
 
 - Per-weapon SFX (today gunshot is shared)
+- Per-weapon on-hit effects — see `WeaponOnHit` in `src-tauri/src/weapons/mod.rs` (Yoghurt Effect applies slow)
 - Pellet / spread shots (would need `process_combat` changes in `game.rs`)
 - Melee or charged weapons (new input + ability-style windup)
 - Map-placed weapon spawns (spawn pickups in `GameWorld::reset_for_match`)

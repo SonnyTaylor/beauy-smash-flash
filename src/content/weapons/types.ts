@@ -14,4 +14,5 @@ export interface WeaponDefinition {
   id: string;
   name: string;
   meta: WeaponMeta;
+  tagline: string;
 }

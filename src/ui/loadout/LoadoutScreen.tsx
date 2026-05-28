@@ -84,9 +84,7 @@ export function LoadoutScreen({
           <section className="loadout-section loadout-section-weapon">
             <header className="panel-heading">
               <h3>Weapon</h3>
-              <span>
-                {inSession ? 'Swaps primary on save' : 'Match start primary'}
-              </span>
+              <span>{inSession ? 'Swaps on save' : 'Your starting weapon'}</span>
             </header>
             <WeaponPicker selectedWeaponId={selectedWeaponId} onSelect={onWeaponChange} />
           </section>

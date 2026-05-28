@@ -13,6 +13,7 @@ use crate::protocol::{
 use crate::session::{
     client_loop, game_addr, host_loop, input_message, shutdown_session, SessionMode, SharedState,
 };
+use crate::weapons;
 
 #[tauri::command]
 pub async fn stop_session(state: tauri::State<'_, SharedState>) -> Result<(), String> {
@@ -55,7 +56,7 @@ pub async fn start_host(
             0,
             clean_player_name(player_name).unwrap_or_else(|| "Host".to_string()),
             clean_character_id(character_id),
-            clean_primary_weapon_id(primary_weapon_id),
+            clean_weapon_id(primary_weapon_id),
         );
         st.session_info()
     };
@@ -99,7 +100,7 @@ pub async fn join_game(
     let join = ClientMessage::Join {
         name: clean_player_name(player_name).unwrap_or_else(|| "Player".to_string()),
         character_id: clean_character_id(character_id),
-        primary_weapon_id: clean_primary_weapon_id(primary_weapon_id),
+        primary_weapon_id: clean_weapon_id(primary_weapon_id),
     };
     let bytes = encode_client(&join)?;
     socket
@@ -244,7 +245,7 @@ pub async fn update_loadout(
     state: tauri::State<'_, SharedState>,
 ) -> Result<(), String> {
     let character_id = clean_character_id(Some(character_id));
-    let primary_weapon_id = clean_primary_weapon_id(primary_weapon_id);
+    let primary_weapon_id = clean_weapon_id(primary_weapon_id);
     let (socket, host_addr, mode, my_id) = {
         let mut st = state.lock().await;
         if st.mode == SessionMode::Host {
@@ -520,14 +521,10 @@ fn clean_character_id(character_id: Option<String>) -> String {
     .to_string()
 }
 
-fn clean_primary_weapon_id(primary_weapon_id: Option<String>) -> String {
-    let id = primary_weapon_id
-        .unwrap_or_else(|| "glock".to_string())
+fn clean_weapon_id(weapon_id: Option<String>) -> String {
+    let id = weapon_id
+        .unwrap_or_else(|| weapons::DEFAULT_WEAPON_ID.to_string())
         .trim()
         .to_ascii_lowercase();
-    if crate::weapons::get(&id).is_some() {
-        id
-    } else {
-        "glock".to_string()
-    }
+    weapons::validate_weapon_id(&id)
 }

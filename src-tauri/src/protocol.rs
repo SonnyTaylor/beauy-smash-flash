@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 7;
+pub const PROTOCOL_VERSION: u16 = 9;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -144,6 +144,7 @@ pub struct InputSnapshot {
 pub enum EffectKind {
     Explosion,
     AimReticle,
+    Splat,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -224,6 +225,8 @@ pub struct PlayerSnapshot {
     pub ability_windup: f32,
     #[serde(default)]
     pub hacked_remaining: f32,
+    #[serde(default)]
+    pub slowed_remaining: f32,
     #[serde(default = "default_weapon_id")]
     pub active_weapon: String,
     #[serde(default)]

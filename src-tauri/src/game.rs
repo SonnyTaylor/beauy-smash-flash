@@ -160,6 +160,8 @@ pub struct Player {
     pub ability_aim_x: f32,
     pub ability_aim_y: f32,
     pub controls_inverted_until: f32,
+    pub slowed_until: f32,
+    pub slow_multiplier: f32,
 }
 
 impl Player {
@@ -171,7 +173,8 @@ impl Player {
         spawn_index: usize,
         spawn: (f32, f32),
     ) -> Self {
-        let primary = weapons::primary_slot_for(&primary_weapon_id);
+        let primary_id = weapons::validate_weapon_id(&primary_weapon_id);
+        let primary = weapons::primary_slot_for(&primary_id);
         let weapon = weapons::get_or_default(&primary.weapon_id);
         Self {
             id,
@@ -181,7 +184,7 @@ impl Player {
             color: PALETTE[id as usize % PALETTE.len()],
             name,
             character_id,
-            loadout_primary_weapon_id: primary.weapon_id.clone(),
+            loadout_primary_weapon_id: primary_id,
             hp: PLAYER_MAX_HP,
             max_hp: PLAYER_MAX_HP,
             primary: Some(primary),
@@ -203,6 +206,8 @@ impl Player {
             ability_aim_x: 0.0,
             ability_aim_y: 0.0,
             controls_inverted_until: 0.0,
+            slowed_until: 0.0,
+            slow_multiplier: 1.0,
         }
     }
 
@@ -304,6 +309,7 @@ impl Player {
             ability_charge: self.ability_charge,
             ability_windup: self.ability_windup.max(0.0),
             hacked_remaining: self.controls_inverted_until.max(0.0),
+            slowed_remaining: self.slowed_until.max(0.0),
             active_weapon,
             active_slot: self.active_slot as u8,
             reload_duration,
@@ -365,12 +371,13 @@ impl Player {
         self.ability_charge = snapshot.ability_charge;
         self.ability_windup = snapshot.ability_windup;
         self.controls_inverted_until = snapshot.hacked_remaining;
+        self.slowed_until = snapshot.slowed_remaining;
     }
 
     pub fn apply_loadout(&mut self, character_id: String, primary_weapon_id: String) {
         let character_changed = self.character_id != character_id;
         self.character_id = character_id;
-        self.loadout_primary_weapon_id = primary_weapon_id;
+        self.loadout_primary_weapon_id = weapons::validate_weapon_id(&primary_weapon_id);
 
         if character_changed {
             self.ability_charge = 0.0;
@@ -635,6 +642,8 @@ impl GameWorld {
             player.respawn_timer = 0.0;
             player.spawn_protection = spawn_protection;
             player.controls_inverted_until = 0.0;
+            player.slowed_until = 0.0;
+            player.slow_multiplier = 1.0;
             player.ability_windup = 0.0;
         }
     }
@@ -926,13 +935,19 @@ impl GameWorld {
                 if invert { -input.dy } else { input.dy },
             );
 
-            let next_x = (player.x + move_x * PLAYER_SPEED * dt)
+            let speed = if player.slowed_until > 0.0 {
+                PLAYER_SPEED * player.slow_multiplier
+            } else {
+                PLAYER_SPEED
+            };
+
+            let next_x = (player.x + move_x * speed * dt)
                 .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
             if !circle_hits_walls(next_x, player.y, PLAYER_RADIUS, &self.map.walls) {
                 player.x = next_x;
             }
 
-            let next_y = (player.y + move_y * PLAYER_SPEED * dt)
+            let next_y = (player.y + move_y * speed * dt)
                 .clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
             if !circle_hits_walls(player.x, next_y, PLAYER_RADIUS, &self.map.walls) {
                 player.y = next_y;
@@ -1063,7 +1078,7 @@ impl GameWorld {
     }
 
     fn process_bullets(&mut self, dt: f32) {
-        let mut hits: Vec<(u32, u8, u8, u16)> = Vec::new();
+        let mut hits: Vec<(u32, u8, u8, u16, String, f32, f32)> = Vec::new();
 
         for bullet in &mut self.bullets {
             bullet.life -= dt;
@@ -1097,7 +1112,15 @@ impl GameWorld {
                     player.y,
                     PLAYER_RADIUS,
                 ) {
-                    hits.push((bullet.id, bullet.owner_id, player.id, bullet.damage));
+                    hits.push((
+                        bullet.id,
+                        bullet.owner_id,
+                        player.id,
+                        bullet.damage,
+                        bullet.weapon_id.clone(),
+                        bullet.x,
+                        bullet.y,
+                    ));
                     break;
                 }
             }
@@ -1107,13 +1130,53 @@ impl GameWorld {
             return;
         }
 
-        let hit_bullet_ids: std::collections::HashSet<u32> =
-            hits.iter().map(|(bullet_id, _, _, _)| *bullet_id).collect();
+        let hit_bullet_ids: std::collections::HashSet<u32> = hits
+            .iter()
+            .map(|(bullet_id, _, _, _, _, _, _)| *bullet_id)
+            .collect();
         self.bullets
             .retain(|bullet| !hit_bullet_ids.contains(&bullet.id));
 
-        for (_, killer_id, victim_id, damage) in hits {
+        for (_, killer_id, victim_id, damage, weapon_id, hit_x, hit_y) in hits {
+            self.apply_weapon_on_hit(killer_id, victim_id, &weapon_id, hit_x, hit_y);
             self.apply_damage(killer_id, victim_id, damage);
+        }
+    }
+
+    fn apply_weapon_on_hit(
+        &mut self,
+        owner_id: u8,
+        victim_id: u8,
+        weapon_id: &str,
+        hit_x: f32,
+        hit_y: f32,
+    ) {
+        let weapon = weapons::get_or_default(weapon_id);
+        let Some(victim) = self.players.get_mut(&victim_id) else {
+            return;
+        };
+        if !victim.alive {
+            return;
+        }
+
+        weapons::apply_on_hit_to_player(
+            weapon.on_hit,
+            &mut victim.slowed_until,
+            &mut victim.slow_multiplier,
+        );
+
+        if matches!(weapon.on_hit, weapons::WeaponOnHit::Slow { .. }) {
+            let id = self.next_effect_id;
+            self.next_effect_id += 1;
+            self.effects.push(WorldEffect {
+                id,
+                kind: EffectKind::Splat,
+                x: hit_x,
+                y: hit_y,
+                radius: 28.0,
+                life: 0.35,
+                owner_id,
+            });
         }
     }
 
@@ -1455,6 +1518,36 @@ mod tests {
         );
         assert!(victim.alive);
         assert!(world.bullets.is_empty());
+    }
+
+    #[test]
+    fn yoghurt_bullet_applies_slow_on_hit() {
+        let mut world = test_world_with_two_players();
+        let victim_pos = {
+            let victim = world.players.get(&1).unwrap();
+            (victim.x, victim.y)
+        };
+        let weapon = weapons::get_or_default("yoghurt_effect");
+
+        world.bullets.push(Bullet {
+            id: 1,
+            owner_id: 0,
+            weapon_id: weapon.id.to_string(),
+            damage: weapon.damage,
+            radius: weapon.bullet_radius,
+            x: victim_pos.0 - 20.0,
+            y: victim_pos.1,
+            vx: 720.0,
+            vy: 0.0,
+            life: weapon.bullet_life,
+        });
+
+        world.process_bullets(1.0 / 60.0);
+
+        let victim = world.players.get(&1).unwrap();
+        assert!(victim.slowed_until > 0.0);
+        assert_eq!(victim.slow_multiplier, 0.55);
+        assert!(!world.effects.is_empty());
     }
 
     #[test]

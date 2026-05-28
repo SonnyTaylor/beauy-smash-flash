@@ -1,0 +1,17 @@
+{
+  "id": "yoghurt_effect",
+  "sprite": "weapons/yoghurt_effect.png",
+  "width": 800,
+  "height": 800,
+  "displayScale": 0.09,
+  "orbitRadius": 28,
+  "pivot": {
+    "x": 0.2019,
+    "y": 0.4998
+  },
+  "muzzle": {
+    "x": 0.9024,
+    "y": 0.5004
+  },
+  "defaultRotation": 0
+}
