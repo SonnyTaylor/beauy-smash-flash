@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterDefinition, PlayerSnapshot, StateSnapshot } from '../../shared/types';
-import { formatMatchTime, GLOCK_RELOAD_SECS } from '../constants';
+import { formatMatchTime } from '../constants';
 import { getCharacter } from '../character';
 import { MatchScoreboard } from './MatchScoreboard';
+import { HudPlayerCard } from './HudPlayerCard';
+import { HudAbilityButton } from './HudAbilityButton';
+import { HudAmmoReadout } from './HudAmmoReadout';
+import { HudMatchStrip } from './HudMatchStrip';
 
 interface HitMarker {
   id: number;
   text: string;
   kind: 'taken' | 'dealt';
 }
+
+const CONTROLS_HINT_VISIBLE_MS = 6500;
 
 function matchGoalLabel(state: StateSnapshot | null): string {
   if (!state) return '';
@@ -113,7 +119,7 @@ export function GameOverlay({
   onReturnToLobby: () => void;
   onRematch: () => void;
 }) {
-  const me = state?.players.find((player) => player.id === myId);
+  const me = state?.players.find((player) => player.id === myId) ?? null;
   const character = getCharacter(me?.character_id ?? selectedCharacter.id);
   const matchEnded = state?.match_ended ?? false;
   const winner =
@@ -123,17 +129,10 @@ export function GameOverlay({
   const sortedScores = [...(state?.players ?? [])].sort(
     (a, b) => b.score - a.score || b.kills - a.kills,
   );
-  const hpRatio = me ? me.hp / Math.max(me.max_hp, 1) : 0;
   const reloadRemaining = me?.reload_remaining ?? 0;
   const isReloading = reloadRemaining > 0 || (me?.reloading ?? false);
-  const reloadRatio = isReloading
-    ? 1 - reloadRemaining / GLOCK_RELOAD_SECS
-    : 0;
-  const ammoLabel = isReloading ? 'Reloading...' : `${me?.ammo ?? 0} / ${me?.max_ammo ?? 0}`;
   const abilityCharge = me?.ability_charge ?? 0;
   const abilityWindup = me?.ability_windup ?? 0;
-  const abilityReady = abilityCharge >= 100;
-  const abilityCasting = abilityWindup > 0;
   const isHacked = (me?.hacked_remaining ?? 0) > 0;
   const remaining = timeRemaining(state);
   const showTimer = (state?.time_limit_secs ?? 0) > 0 && state?.win_condition !== 'kills';
@@ -142,6 +141,7 @@ export function GameOverlay({
   const [showScoreboard, setShowScoreboard] = useState(false);
   const [hitFlash, setHitFlash] = useState(false);
   const [hitMarkers, setHitMarkers] = useState<HitMarker[]>([]);
+  const [hintFading, setHintFading] = useState(false);
   const hpRef = useRef<Map<number, number>>(new Map());
   const markerIdRef = useRef(0);
 
@@ -205,6 +205,21 @@ export function GameOverlay({
     }
   }, [matchEnded]);
 
+  // Auto-fade the controls hint once the match has been going a few seconds.
+  // Re-show on pause; hide again when unpaused. This keeps the bottom strip
+  // clean during real combat without hiding the cheatsheet from a player who
+  // alt-tabbed away and forgot the keys.
+  useEffect(() => {
+    if (!showControlsHint || matchEnded) return;
+    if (paused) {
+      setHintFading(false);
+      return;
+    }
+    setHintFading(false);
+    const timer = window.setTimeout(() => setHintFading(true), CONTROLS_HINT_VISIBLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [showControlsHint, paused, matchEnded]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Tab' && state && !matchEnded && !paused) {
@@ -231,128 +246,100 @@ export function GameOverlay({
   return (
     <>
       <div
-        className={`game-overlay ${paused || matchEnded ? 'paused' : ''} ${isHacked ? 'hud-hacked' : ''}`}
+        className={`game-overlay ${paused || matchEnded ? 'is-paused' : ''} ${isHacked ? 'is-hacked' : ''}`}
       >
         {isHacked && !matchEnded && (
           <div className="hud-hack-banner" role="status">
             Controls hacked — {me?.hacked_remaining.toFixed(1)}s
           </div>
         )}
-        <div className="hud-left">
-          <div className="hud-pill hud-player">
-            <span
-              className="hud-avatar"
-              style={{ '--accent': `rgb(${character.color.join(' ')})` } as React.CSSProperties}
-            >
-              <img
-                src={`/assets/${character.sprite}`}
-                alt=""
-                onError={(event) => {
-                  event.currentTarget.style.display = 'none';
-                }}
-              />
-              <span>{character.initials}</span>
-            </span>
-            <span className="hud-player-text">
-              <strong>{me?.name || 'Player'}</strong>
-              <span>{character.abilityName}</span>
-            </span>
-          </div>
-
-          <div className="hud-pill hud-combat">
-            <div className="hud-bar-label">
-              <span>Health</span>
-              <span>{me?.hp ?? 0}</span>
-            </div>
-            <div className="hud-bar-track">
-              <div className="hud-bar-fill hud-bar-health" style={{ width: `${hpRatio * 100}%` }} />
-            </div>
-            <div className="hud-bar-label hud-ammo-row">
-              <span>Ammo</span>
-              <span className={isReloading ? 'hud-reloading' : ''}>{ammoLabel}</span>
-            </div>
-            {isReloading && (
-              <div className="hud-bar-track hud-reload-track">
-                <div
-                  className="hud-bar-fill hud-bar-reload"
-                  style={{ width: `${Math.min(1, Math.max(0, reloadRatio)) * 100}%` }}
-                />
-              </div>
-            )}
-            <div className="hud-bar-label hud-ability-row">
-              <span>{character.abilityName}</span>
-              <span className={abilityCasting ? 'hud-casting' : abilityReady ? 'hud-ready' : ''}>
-                {abilityCasting
-                  ? 'Arming...'
-                  : abilityReady
-                    ? 'Ready — E'
-                    : `${Math.round(abilityCharge)}%`}
-              </span>
-            </div>
-            <div className="hud-bar-track hud-ability-track">
-              <div
-                className={`hud-bar-fill hud-bar-ability ${abilityReady ? 'hud-bar-ability-ready' : ''}`}
-                style={{ width: `${Math.min(100, Math.max(0, abilityCharge))}%` }}
-              />
-              {abilityCasting && (
-                <div
-                  className="hud-bar-fill hud-bar-windup"
-                  style={{
-                    width: `${Math.min(100, (1 - abilityWindup / 1.2) * 100)}%`,
-                  }}
-                />
-              )}
-            </div>
-          </div>
-
-          <div className="hud-pill hud-stats">
-            {state?.win_condition !== 'time' && (
-              <span>
-                Score {me?.score ?? 0}
-                {state?.score_limit ? ` / ${state.score_limit}` : ''}
-              </span>
-            )}
-            <span>
-              K {me?.kills ?? 0} · D {me?.deaths ?? 0}
-            </span>
-          </div>
-        </div>
 
         {!matchEnded && state && (
-          <div className="hud-objective">
-            <span>{matchGoalLabel(state)}</span>
+          <div className="hud-zone hud-zone-top">
+            <HudMatchStrip state={state} me={me} timeRemaining={showTimer ? remaining : null} />
           </div>
         )}
-
-        {showTimer && remaining != null && !matchEnded && (
-          <div className={`hud-timer ${remaining <= 30 ? 'hud-timer-low' : ''}`}>
-            <span className="hud-timer-label">Time</span>
-            <strong>{formatMatchTime(remaining)}</strong>
-          </div>
-        )}
-
-        {showControlsHint && !matchEnded && !paused && (
-          <div className="hud-controls-hint">
-            <span>WASD move · Mouse aim · LMB fire · R reload · E ability · Tab scores · Esc menu</span>
-          </div>
-        )}
-
-        <div className="hud-right">
-          <div className="hud-pill hud-kill-feed">
-            {(state?.kill_feed ?? []).slice().reverse().map((entry, index) => (
-              <div key={`${entry.killer_id}-${entry.victim_id}-${index}`} className="kill-feed-line">
-                <strong>{entry.killer_name}</strong>
-                <span> fragged </span>
-                <strong>{entry.victim_name}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
 
         {!matchEnded && (
-          <button type="button" className="game-menu-button" onClick={() => onPauseChange(true)}>
-            Menu
-          </button>
+          <div className="hud-zone hud-zone-top-right">
+            <button
+              type="button"
+              className="hud-menu-button"
+              onClick={() => onPauseChange(true)}
+              aria-label="Open menu"
+            >
+              <span className="hud-menu-icon" aria-hidden>
+                <span />
+                <span />
+                <span />
+              </span>
+              <span className="hud-menu-text">Menu</span>
+            </button>
+            <div className="hud-kill-feed">
+              {(state?.kill_feed ?? []).slice().reverse().slice(0, 5).map((entry, index) => (
+                <div
+                  key={`${entry.killer_id}-${entry.victim_id}-${index}`}
+                  className="kill-feed-line"
+                >
+                  <strong>{entry.killer_name}</strong>
+                  <span> fragged </span>
+                  <strong>{entry.victim_name}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!matchEnded && me && (
+          <>
+            <div className="hud-zone hud-zone-bottom-left">
+              <HudPlayerCard
+                name={me.name || 'Player'}
+                hp={me.hp}
+                maxHp={me.max_hp}
+                character={character}
+              />
+            </div>
+
+            <div className="hud-zone hud-zone-bottom-center">
+              <HudAbilityButton
+                character={character}
+                charge={abilityCharge}
+                windup={abilityWindup}
+                hacked={isHacked}
+              />
+            </div>
+
+            <div className="hud-zone hud-zone-bottom-right">
+              <HudAmmoReadout
+                ammo={me.ammo}
+                maxAmmo={me.max_ammo}
+                reloading={isReloading}
+                reloadRemaining={reloadRemaining}
+              />
+            </div>
+          </>
+        )}
+
+        {showControlsHint && !matchEnded && (
+          <div
+            className={`hud-controls-hint ${hintFading && !paused ? 'is-faded' : ''}`}
+            aria-hidden={hintFading && !paused}
+          >
+            <kbd>WASD</kbd> move
+            <span className="dot">·</span>
+            <kbd>Mouse</kbd> aim
+            <span className="dot">·</span>
+            <kbd>LMB</kbd> fire
+            <span className="dot">·</span>
+            <kbd>R</kbd> reload
+            <span className="dot">·</span>
+            <kbd>E</kbd> ability
+            <span className="dot">·</span>
+            <kbd>Tab</kbd> scores
+            <span className="dot">·</span>
+            <kbd>Esc</kbd> menu
+          </div>
         )}
       </div>
 
