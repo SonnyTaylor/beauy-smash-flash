@@ -1075,57 +1075,31 @@ h2 {
   }
 }
 
-/* --- Player card (bottom-left) --- */
+/* --- Player card (bottom-left) ---
+   Identity comes from the accent glow + the name in display caps;
+   no portrait here on purpose — the ability button already shows
+   the character's face. */
 .hud-card {
   --accent: var(--cyan);
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 20px 10px 10px;
+  padding: 12px 22px;
   border-radius: 18px;
-  min-width: 260px;
+  min-width: 220px;
   background: linear-gradient(135deg, rgba(8, 11, 22, 0.95), rgba(8, 11, 22, 0.72));
   border: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(10px);
   box-shadow:
     0 16px 38px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.hud-card-portrait {
-  position: relative;
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  overflow: hidden;
-  border: 2px solid color-mix(in srgb, var(--accent) 75%, white);
-  background: #0d1120;
-  box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.4),
-    0 0 22px color-mix(in srgb, var(--accent) 28%, transparent);
-  display: grid;
-  place-items: center;
-  font-weight: 900;
-  font-size: 0.85rem;
-  color: color-mix(in srgb, var(--accent) 70%, white);
-}
-
-.hud-card-portrait img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.hud-card-portrait img:not([style*='display: none']) + span {
-  opacity: 0;
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+    -3px 0 0 0 var(--accent);
 }
 
 .hud-card-body {
   display: grid;
   gap: 4px;
   min-width: 0;
+  flex: 1;
 }
 
 .hud-card-name {
@@ -1333,31 +1307,36 @@ h2 {
   white-space: nowrap;
 }
 
+/* Ready state stays on the character accent (matches the ring drawn
+   around the player in the arena). Distinction from charging comes
+   from a stronger glow + the pulse animation, not a color swap. */
 .hud-ability.is-ready .hud-ability-core {
-  border-color: #b9ff61;
+  border-color: color-mix(in srgb, var(--accent) 55%, white);
   box-shadow:
-    inset 0 0 22px rgba(180, 255, 100, 0.35),
-    0 0 28px rgba(180, 255, 100, 0.4),
+    inset 0 0 22px color-mix(in srgb, var(--accent) 42%, transparent),
+    0 0 28px color-mix(in srgb, var(--accent) 55%, transparent),
     0 8px 22px rgba(0, 0, 0, 0.55);
   animation: hud-ability-pulse 1.1s ease-in-out infinite;
 }
 
 .hud-ability.is-ready .hud-ability-ring {
-  background: conic-gradient(#b9ff61 0% 100%);
-  filter: drop-shadow(0 0 14px rgba(180, 255, 100, 0.55));
+  background: conic-gradient(
+    color-mix(in srgb, var(--accent) 75%, white) 0% 100%
+  );
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--accent) 70%, transparent));
 }
 
 .hud-ability.is-ready .hud-ability-key {
-  border-color: #b9ff61;
-  color: #061008;
-  background: #b9ff61;
-  box-shadow: 0 4px 16px rgba(180, 255, 100, 0.55);
+  border-color: color-mix(in srgb, var(--accent) 55%, white);
+  background: color-mix(in srgb, var(--accent) 92%, white);
+  color: #060810;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .hud-ability.is-ready .hud-ability-name {
-  color: #d6ff9d;
-  border-color: rgba(185, 255, 97, 0.45);
-  background: rgba(30, 60, 22, 0.85);
+  color: color-mix(in srgb, var(--accent) 40%, white);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 22%, rgba(8, 11, 22, 0.88));
 }
 
 .hud-ability.is-casting .hud-ability-core {

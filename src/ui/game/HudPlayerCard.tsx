@@ -22,16 +22,6 @@ export function HudPlayerCard({
       className={`hud-card hud-card-player ${low ? 'is-low' : ''} ${critical ? 'is-critical' : ''}`}
       style={{ '--accent': rgbCss(character.color) } as React.CSSProperties}
     >
-      <div className="hud-card-portrait" aria-hidden>
-        <img
-          src={`/assets/${character.sprite}`}
-          alt=""
-          onError={(event) => {
-            event.currentTarget.style.display = 'none';
-          }}
-        />
-        <span>{character.initials}</span>
-      </div>
       <div className="hud-card-body">
         <div className="hud-card-name">{name}</div>
         <div className="hud-card-hp-row">
