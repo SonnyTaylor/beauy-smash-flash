@@ -51,6 +51,13 @@ input {
   height: 100%;
 }
 
+/* Hide the system cursor over the gameplay canvas; the HUD draws its own
+   crosshair. Interactive HUD elements (e.g. the menu button) re-enable a
+   pointer cursor via their own `cursor` rules. */
+.game-container canvas {
+  cursor: none;
+}
+
 .screen-backdrop {
   position: fixed;
   inset: 0;
@@ -1032,10 +1039,12 @@ h2 {
   gap: 4px;
   min-width: 220px;
   max-width: min(320px, 38vw);
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-radius: 10px;
-  background: rgba(8, 11, 22, 0.62);
-  backdrop-filter: blur(8px);
+  /* Kill feed extends below the top safe area; keep it transparent so
+     players moving through the top-right corner stay visible behind it. */
+  background: rgba(8, 11, 22, 0.32);
+  backdrop-filter: blur(4px);
   text-align: right;
 }
 
@@ -1520,6 +1529,70 @@ h2 {
 .hud-controls-hint.is-faded {
   opacity: 0;
   transform: translate(-50%, 8px);
+}
+
+/* --- Crosshair (follows mouse) ---
+   The element is a zero-size anchor placed at the mouse position via a
+   `transform` poke from JS. The four ticks and center dot are positioned
+   absolutely around that anchor. */
+.hud-crosshair {
+  --accent: var(--cyan);
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 6;
+  pointer-events: none;
+  will-change: transform;
+  mix-blend-mode: screen;
+}
+
+.hud-crosshair-dot {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 0 6px color-mix(in srgb, var(--accent) 80%, white);
+}
+
+.hud-crosshair-tick {
+  position: absolute;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 0 4px color-mix(in srgb, var(--accent) 80%, white);
+  transition: transform 80ms ease-out;
+}
+
+.hud-crosshair-tick-up    { left: -1px; top: -12px; width: 2px; height: 7px; }
+.hud-crosshair-tick-down  { left: -1px; top:   5px; width: 2px; height: 7px; }
+.hud-crosshair-tick-left  { left: -12px; top: -1px; width: 7px; height: 2px; }
+.hud-crosshair-tick-right { left:   5px; top: -1px; width: 7px; height: 2px; }
+
+.hud-crosshair.is-empty .hud-crosshair-dot {
+  background: #ff7c8c;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 8px rgba(255, 80, 100, 0.9);
+}
+.hud-crosshair.is-empty .hud-crosshair-tick {
+  background: #ff7c8c;
+}
+
+.hud-crosshair.is-reloading .hud-crosshair-tick-up    { transform: translateY(-3px); }
+.hud-crosshair.is-reloading .hud-crosshair-tick-down  { transform: translateY(3px); }
+.hud-crosshair.is-reloading .hud-crosshair-tick-left  { transform: translateX(-3px); }
+.hud-crosshair.is-reloading .hud-crosshair-tick-right { transform: translateX(3px); }
+.hud-crosshair.is-reloading .hud-crosshair-dot {
+  background: #fde68a;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 8px rgba(253, 230, 138, 0.7);
+}
+.hud-crosshair.is-reloading .hud-crosshair-tick {
+  background: #fde68a;
 }
 
 /* --- Hack banner (kept; refresh) --- */

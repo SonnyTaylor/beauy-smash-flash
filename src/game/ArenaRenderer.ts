@@ -13,6 +13,7 @@ import type {
 } from '../shared/types';
 import { VfxManager } from './vfx/VfxManager';
 import { fitWorldToViewport } from './Viewport';
+import { GAME_SAFE_AREA_INSETS } from './safeArea';
 
 const PLAYER_RADIUS = 26;
 const PLAYER_DIAMETER = PLAYER_RADIUS * 2;
@@ -508,7 +509,12 @@ export class ArenaRenderer {
 
   private resize = () => {
     if (!this.app) return;
-    const transform = fitWorldToViewport(this.world, this.app.screen.width, this.app.screen.height);
+    const transform = fitWorldToViewport(
+      this.world,
+      this.app.screen.width,
+      this.app.screen.height,
+      GAME_SAFE_AREA_INSETS,
+    );
     this.root.scale.set(transform.scale);
     this.root.position.set(transform.offsetX, transform.offsetY);
     this.drawFloor();

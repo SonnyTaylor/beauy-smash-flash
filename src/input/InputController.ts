@@ -1,5 +1,6 @@
 import type { InputSnapshot, WorldConfig } from '../shared/types';
 import { fitWorldToViewport } from '../game/Viewport';
+import { GAME_SAFE_AREA_INSETS } from '../game/safeArea';
 
 const MOVEMENT_KEYS = new Set(['w', 'a', 's', 'd']);
 
@@ -95,7 +96,12 @@ export class InputController {
   private updatePointerFromEvent(event: MouseEvent) {
     if (!this.canvas) return;
     const rect = this.canvas.getBoundingClientRect();
-    const transform = fitWorldToViewport(this.world, rect.width, rect.height);
+    const transform = fitWorldToViewport(
+      this.world,
+      rect.width,
+      rect.height,
+      GAME_SAFE_AREA_INSETS,
+    );
     const x = (event.clientX - rect.left - transform.offsetX) / transform.scale;
     const y = (event.clientY - rect.top - transform.offsetY) / transform.scale;
     this.pointer = {

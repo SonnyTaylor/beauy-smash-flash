@@ -7,6 +7,7 @@ import { HudPlayerCard } from './HudPlayerCard';
 import { HudAbilityButton } from './HudAbilityButton';
 import { HudAmmoReadout } from './HudAmmoReadout';
 import { HudMatchStrip } from './HudMatchStrip';
+import { HudCrosshair } from './HudCrosshair';
 
 interface HitMarker {
   id: number;
@@ -319,6 +320,14 @@ export function GameOverlay({
               />
             </div>
           </>
+        )}
+
+        {!matchEnded && !paused && me && me.alive && (
+          <HudCrosshair
+            character={character}
+            reloading={isReloading}
+            empty={!isReloading && me.ammo <= 0}
+          />
         )}
 
         {showControlsHint && !matchEnded && (
