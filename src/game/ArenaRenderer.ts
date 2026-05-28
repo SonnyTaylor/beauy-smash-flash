@@ -74,6 +74,11 @@ export class ArenaRenderer {
   private knownBulletIds = new Set<number>();
   private knownEffectIds = new Set<number>();
   private lastFrameMs = 0;
+  private mountContainer: HTMLElement | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private viewportMask = new Graphics();
+  private viewportWidth = 0;
+  private viewportHeight = 0;
 
   get canvas(): HTMLCanvasElement {
     if (!this.app?.canvas) {
@@ -99,6 +104,7 @@ export class ArenaRenderer {
   async mount(container: HTMLElement, world: WorldConfig, myId: number) {
     this.world = world;
     this.myId = myId;
+    this.mountContainer = container;
 
     if (this.mounted) {
       this.destroy();
@@ -113,17 +119,20 @@ export class ArenaRenderer {
     this.mapTheme = getMapTheme(undefined);
     this.vfx.clear();
 
+    const initialWidth = Math.max(1, container.clientWidth);
+    const initialHeight = Math.max(1, container.clientHeight);
+
     this.app = new Application();
     await this.app.init({
       backgroundColor: 0x060810,
       antialias: true,
-      autoDensity: true,
+      autoDensity: false,
       resolution: window.devicePixelRatio || 1,
-      resizeTo: window,
+      width: initialWidth,
+      height: initialHeight,
     });
-    await this.loadTextures();
-
     container.appendChild(this.app.canvas);
+    await this.loadTextures();
 
     this.root = new Container();
     this.floorLayer = new Container();
@@ -146,17 +155,24 @@ export class ArenaRenderer {
     this.entityLayer.addChild(this.bullets);
     this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer, this.vfxLayer);
     this.root.sortChildren();
-    this.app.stage.addChild(this.root);
-    this.resize();
+    this.viewportMask = new Graphics();
+    this.root.mask = this.viewportMask;
+    this.app.stage.addChild(this.viewportMask, this.root);
+    this.resizeObserver = new ResizeObserver(() => this.syncViewport(true));
+    this.resizeObserver.observe(container);
+    this.syncViewport(true);
 
-    window.addEventListener('resize', this.resize);
     this.lastFrameMs = performance.now();
     this.app.ticker.add(() => this.renderFrame());
     this.mounted = true;
   }
 
   destroy() {
-    window.removeEventListener('resize', this.resize);
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.mountContainer = null;
+    this.viewportWidth = 0;
+    this.viewportHeight = 0;
     if (!this.mounted || !this.app) return;
 
     this.app.canvas.remove();
@@ -178,9 +194,13 @@ export class ArenaRenderer {
   applyState(snapshot: StateSnapshot) {
     if (!this.mounted || !this.app) return;
 
+    const worldChanged =
+      this.world.width !== snapshot.world.width || this.world.height !== snapshot.world.height;
     this.world = snapshot.world;
     this.applyMap(snapshot.map);
-    this.resize();
+    if (worldChanged) {
+      this.syncViewport(true);
+    }
     this.syncBulletTargets(snapshot.bullets);
     this.syncWorldEffects(snapshot.effects ?? []);
     this.detectMuzzleFlashes(snapshot.bullets, snapshot.players);
@@ -469,6 +489,14 @@ export class ArenaRenderer {
   }
 
   private renderFrame() {
+    if (this.mountContainer) {
+      const width = Math.max(1, this.mountContainer.clientWidth);
+      const height = Math.max(1, this.mountContainer.clientHeight);
+      if (width !== this.viewportWidth || height !== this.viewportHeight) {
+        this.syncViewport(true);
+      }
+    }
+
     const now = performance.now();
     const dt = Math.min(0.05, (now - this.lastFrameMs) / 1000);
     this.lastFrameMs = now;
@@ -507,18 +535,37 @@ export class ArenaRenderer {
     }
   }
 
-  private resize = () => {
-    if (!this.app) return;
-    const transform = fitWorldToViewport(
-      this.world,
-      this.app.screen.width,
-      this.app.screen.height,
-      GAME_SAFE_AREA_INSETS,
-    );
+  private syncViewport(redrawFloor: boolean) {
+    if (!this.app || !this.mountContainer) return;
+
+    const width = Math.max(1, this.mountContainer.clientWidth);
+    const height = Math.max(1, this.mountContainer.clientHeight);
+    const sizeChanged = width !== this.viewportWidth || height !== this.viewportHeight;
+
+    if (sizeChanged) {
+      this.app.renderer.resize(width, height, window.devicePixelRatio || 1);
+      this.viewportWidth = width;
+      this.viewportHeight = height;
+    }
+
+    const transform = fitWorldToViewport(this.world, width, height, GAME_SAFE_AREA_INSETS);
     this.root.scale.set(transform.scale);
     this.root.position.set(transform.offsetX, transform.offsetY);
-    this.drawFloor();
-  };
+
+    if (sizeChanged) {
+      const insets = GAME_SAFE_AREA_INSETS;
+      const innerWidth = Math.max(1, width - insets.left - insets.right);
+      const innerHeight = Math.max(1, height - insets.top - insets.bottom);
+      this.viewportMask.clear();
+      this.viewportMask
+        .rect(insets.left, insets.top, innerWidth, innerHeight)
+        .fill({ color: 0xffffff, alpha: 1 });
+    }
+
+    if (redrawFloor || sizeChanged) {
+      this.drawFloor();
+    }
+  }
 
   private drawFloor() {
     const floor = hexToNumber(this.mapTheme.floor);

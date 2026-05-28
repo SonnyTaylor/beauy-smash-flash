@@ -95,13 +95,15 @@ export class InputController {
 
   private updatePointerFromEvent(event: MouseEvent) {
     if (!this.canvas) return;
-    const rect = this.canvas.getBoundingClientRect();
+    const width = Math.max(1, this.canvas.clientWidth);
+    const height = Math.max(1, this.canvas.clientHeight);
     const transform = fitWorldToViewport(
       this.world,
-      rect.width,
-      rect.height,
+      width,
+      height,
       GAME_SAFE_AREA_INSETS,
     );
+    const rect = this.canvas.getBoundingClientRect();
     const x = (event.clientX - rect.left - transform.offsetX) / transform.scale;
     const y = (event.clientY - rect.top - transform.offsetY) / transform.scale;
     this.pointer = {

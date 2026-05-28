@@ -43,18 +43,21 @@ input {
   height: 100%;
 }
 
-.game-container,
-.game-container canvas {
+.game-container {
   position: fixed;
   inset: 0;
-  width: 100%;
-  height: 100%;
+  overflow: hidden;
 }
 
 /* Hide the system cursor over the gameplay canvas; the HUD draws its own
    crosshair. Interactive HUD elements (e.g. the menu button) re-enable a
-   pointer cursor via their own `cursor` rules. */
+   pointer cursor via their own `cursor` rules.
+   Canvas size is owned by Pixi (resizeTo + autoDensity); do not force 100%
+   width/height here or un-maximizing the window can stretch stale frames. */
 .game-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
   cursor: none;
 }
 
