@@ -243,13 +243,22 @@ button:disabled {
 }
 
 .ability-preview p,
-.error-text {
+.error-text,
+.network-note {
   margin: 8px 0 0;
   color: var(--muted);
 }
 
 .error-text {
   color: #ff6b6b;
+}
+
+.network-note {
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
+  font-size: 0.86rem;
 }
 
 .status-dot {

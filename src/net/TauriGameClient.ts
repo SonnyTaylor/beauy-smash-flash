@@ -1,11 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { InputSnapshot, SessionInfo, StateSnapshot } from '../shared/types';
+import type { InputSnapshot, LobbySnapshot, ServerInfo, SessionInfo, StateSnapshot } from '../shared/types';
 
 type StateHandler = (state: StateSnapshot) => void;
+type LobbyHandler = (lobby: LobbySnapshot) => void;
+type MatchStartedHandler = (state: StateSnapshot) => void;
 
 export class TauriGameClient {
   private unlistenState: UnlistenFn | null = null;
+  private unlistenLobby: UnlistenFn | null = null;
+  private unlistenMatchStarted: UnlistenFn | null = null;
 
   async listenForState(handler: StateHandler) {
     this.unlistenState?.();
@@ -26,8 +30,42 @@ export class TauriGameClient {
     await invoke('send_input', { input });
   }
 
+  async listenForLobby(handler: LobbyHandler) {
+    this.unlistenLobby?.();
+    this.unlistenLobby = await listen<LobbySnapshot>('lobby', (event) => {
+      handler(event.payload);
+    });
+  }
+
+  async listenForMatchStarted(handler: MatchStartedHandler) {
+    this.unlistenMatchStarted?.();
+    this.unlistenMatchStarted = await listen<StateSnapshot>('match_started', (event) => {
+      handler(event.payload);
+    });
+  }
+
+  async scanServers(timeoutMs = 900): Promise<ServerInfo[]> {
+    return invoke<ServerInfo[]>('scan_servers', { timeoutMs });
+  }
+
+  async setReady(ready: boolean): Promise<void> {
+    await invoke('set_ready', { ready });
+  }
+
+  async selectCharacter(characterId: string): Promise<void> {
+    await invoke('select_character', { characterId });
+  }
+
+  async startMatch(): Promise<void> {
+    await invoke('start_match');
+  }
+
   dispose() {
     this.unlistenState?.();
+    this.unlistenLobby?.();
+    this.unlistenMatchStarted?.();
     this.unlistenState = null;
+    this.unlistenLobby = null;
+    this.unlistenMatchStarted = null;
   }
 }

@@ -23,6 +23,30 @@ export interface SessionInfo {
   world: WorldConfig;
 }
 
+export interface ServerInfo {
+  name: string;
+  address: string;
+  game_port: number;
+  player_count: number;
+  max_players: number;
+  version: number;
+}
+
+export interface LobbyPlayerSnapshot {
+  id: number;
+  name: string;
+  character_id: string;
+  ready: boolean;
+  is_host: boolean;
+}
+
+export interface LobbySnapshot {
+  players: LobbyPlayerSnapshot[];
+  max_players: number;
+  match_started: boolean;
+  network_note: string;
+}
+
 export interface InputSnapshot {
   seq: number;
   dx: number;

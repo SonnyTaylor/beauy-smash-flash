@@ -1,11 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tauri::Emitter;
 use tokio::net::UdpSocket;
 
+use crate::discovery::{discovery_loop, scan_servers as scan_lan_servers};
 use crate::game::GameWorld;
-use crate::net::{decode_server, encode_client, GAME_PORT};
-use crate::protocol::{ClientMessage, InputSnapshot, ServerMessage, SessionInfo};
+use crate::net::{decode_server, encode_client, encode_server, GAME_PORT};
+use crate::protocol::{ClientMessage, InputSnapshot, ServerInfo, ServerMessage, SessionInfo};
 use crate::session::{client_loop, game_addr, host_loop, input_message, SessionMode, SharedState};
 
 #[tauri::command]
@@ -26,6 +28,8 @@ pub async fn start_host(
         st.socket = Some(socket.clone());
         st.mode = SessionMode::Host;
         st.peers.clear();
+        st.ready_players.clear();
+        st.match_started = false;
         st.host_addr = None;
         st.my_id = 0;
         st.world = GameWorld::default();
@@ -40,6 +44,10 @@ pub async fn start_host(
     let state_clone = state.inner().clone();
     tokio::spawn(async move {
         host_loop(socket, state_clone, window).await;
+    });
+    let discovery_state = state.inner().clone();
+    tokio::spawn(async move {
+        discovery_loop(discovery_state).await;
     });
 
     Ok(info)
@@ -84,6 +92,8 @@ pub async fn join_game(
             st.socket = Some(socket.clone());
             st.mode = SessionMode::Client;
             st.peers.clear();
+            st.ready_players.clear();
+            st.match_started = false;
             st.host_addr = Some(host_addr);
             st.my_id = id;
             st.world = GameWorld::new(world.clone());
@@ -100,7 +110,9 @@ pub async fn join_game(
             (id, world)
         }
         ServerMessage::Error { message } => return Err(message),
-        ServerMessage::State(_) => return Err("Expected assignment from host".to_string()),
+        ServerMessage::State(_) | ServerMessage::Lobby(_) | ServerMessage::MatchStarted(_) => {
+            return Err("Expected assignment from host".to_string())
+        }
     };
 
     let state_clone = state.inner().clone();
@@ -109,6 +121,99 @@ pub async fn join_game(
     });
 
     Ok(SessionInfo { player_id, world })
+}
+
+#[tauri::command]
+pub async fn scan_servers(timeout_ms: Option<u64>) -> Result<Vec<ServerInfo>, String> {
+    scan_lan_servers(timeout_ms.unwrap_or(900)).await
+}
+
+#[tauri::command]
+pub async fn set_ready(ready: bool, state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let (socket, host_addr, mode, my_id) = {
+        let mut st = state.lock().await;
+        if st.mode == SessionMode::Host {
+            let my_id = st.my_id;
+            if ready {
+                st.ready_players.insert(my_id);
+            } else {
+                st.ready_players.remove(&my_id);
+            }
+        }
+        (st.socket.clone(), st.host_addr, st.mode.clone(), st.my_id)
+    };
+
+    if mode == SessionMode::Client {
+        if let (Some(socket), Some(host_addr)) = (socket, host_addr) {
+            let bytes = encode_client(&ClientMessage::SetReady { ready })?;
+            socket
+                .send_to(&bytes, host_addr)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
+    } else if mode == SessionMode::Host {
+        let _ = my_id;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn select_character(
+    character_id: String,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let character_id = clean_character_id(Some(character_id));
+    let (socket, host_addr, mode, my_id) = {
+        let mut st = state.lock().await;
+        if st.mode == SessionMode::Host {
+            let my_id = st.my_id;
+            if let Some(player) = st.world.players.get_mut(&my_id) {
+                player.character_id = character_id.clone();
+            }
+        }
+        (st.socket.clone(), st.host_addr, st.mode.clone(), st.my_id)
+    };
+
+    if mode == SessionMode::Client {
+        if let (Some(socket), Some(host_addr)) = (socket, host_addr) {
+            let bytes = encode_client(&ClientMessage::SelectCharacter { character_id })?;
+            socket
+                .send_to(&bytes, host_addr)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
+    } else if mode == SessionMode::Host {
+        let _ = my_id;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn start_match(
+    window: tauri::Window,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let (socket, peers, snapshot) = {
+        let mut st = state.lock().await;
+        if st.mode != SessionMode::Host {
+            return Err("Only the host can start the match".to_string());
+        }
+        st.match_started = true;
+        (st.socket.clone(), st.peers.clone(), st.world.snapshot())
+    };
+
+    if let Some(socket) = socket {
+        let bytes = encode_server(&ServerMessage::MatchStarted(snapshot.clone()))?;
+        for peer in peers {
+            let _ = socket.send_to(&bytes, peer.addr).await;
+        }
+    }
+
+    let _ = window.emit("match_started", snapshot.clone());
+    let _ = window.emit("state", snapshot);
+    Ok(())
 }
 
 #[tauri::command]

@@ -3,6 +3,33 @@ use serde::{Deserialize, Serialize};
 pub const PROTOCOL_VERSION: u16 = 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerInfo {
+    pub name: String,
+    pub address: String,
+    pub game_port: u16,
+    pub player_count: usize,
+    pub max_players: usize,
+    pub version: u16,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LobbyPlayerSnapshot {
+    pub id: u8,
+    pub name: String,
+    pub character_id: String,
+    pub ready: bool,
+    pub is_host: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LobbySnapshot {
+    pub players: Vec<LobbyPlayerSnapshot>,
+    pub max_players: usize,
+    pub match_started: bool,
+    pub network_note: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorldConfig {
     pub width: f32,
     pub height: f32,
@@ -69,6 +96,8 @@ pub struct StateSnapshot {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum ClientMessage {
     Join { name: String, character_id: String },
+    SetReady { ready: bool },
+    SelectCharacter { character_id: String },
     Input(InputSnapshot),
     Leave,
 }
@@ -83,13 +112,22 @@ pub enum ServerMessage {
         players: Vec<PlayerSnapshot>,
     },
     State(StateSnapshot),
+    Lobby(LobbySnapshot),
+    MatchStarted(StateSnapshot),
     Error {
         message: String,
     },
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub player_id: u8,
     pub world: WorldConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data", rename_all = "snake_case")]
+pub enum DiscoveryMessage {
+    Query { version: u16 },
+    Host(ServerInfo),
 }

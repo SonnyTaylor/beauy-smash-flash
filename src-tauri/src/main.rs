@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 mod commands;
+mod discovery;
 mod game;
 mod net;
 mod protocol;
@@ -15,6 +16,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::start_host,
             commands::join_game,
+            commands::scan_servers,
+            commands::set_ready,
+            commands::select_character,
+            commands::start_match,
             commands::send_input
         ])
         .run(tauri::generate_context!())

@@ -4,15 +4,16 @@ import { MAPS } from '../content/maps';
 import { ArenaRenderer } from '../game/ArenaRenderer';
 import { InputController } from '../input/InputController';
 import { TauriGameClient } from '../net/TauriGameClient';
-import type { CharacterDefinition, SessionInfo, StateSnapshot } from '../shared/types';
+import type {
+  CharacterDefinition,
+  LobbySnapshot,
+  ServerInfo,
+  SessionInfo,
+  StateSnapshot,
+} from '../shared/types';
 
 type Screen = 'main-menu' | 'server-select' | 'character-select' | 'lobby' | 'game';
 type SessionKind = 'host' | 'join';
-
-const MOCK_SERVERS = [
-  { id: 'local', name: "Sonny's Laptop", address: '127.0.0.1', players: '1/12', ping: 'LAN' },
-  { id: 'manual', name: 'Manual IP', address: '127.0.0.1', players: '?', ping: '--' },
-];
 
 export function App() {
   const client = useMemo(() => new TauriGameClient(), []);
@@ -21,12 +22,20 @@ export function App() {
   const gameContainerRef = useRef<HTMLDivElement | null>(null);
   const inputTimerRef = useRef<number | null>(null);
   const latestStateRef = useRef<StateSnapshot | null>(null);
+  const sessionInfoRef = useRef<SessionInfo | null>(null);
+  const myIdRef = useRef(0);
 
   const [screen, setScreen] = useState<Screen>('main-menu');
   const [sessionKind, setSessionKind] = useState<SessionKind>('host');
   const [playerName, setPlayerName] = useState('Sonny');
   const [joinIp, setJoinIp] = useState('127.0.0.1');
   const [selectedCharacterId, setSelectedCharacterId] = useState(CHARACTERS[0].id);
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  const [servers, setServers] = useState<ServerInfo[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanMessage, setScanMessage] = useState('Broadcast discovery works only when the WiFi allows peer UDP.');
+  const [lobby, setLobby] = useState<LobbySnapshot | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [myId, setMyId] = useState(0);
@@ -42,6 +51,14 @@ export function App() {
       input.setWorld(state.world);
       renderer.applyState(state);
     });
+    client.listenForLobby((nextLobby) => {
+      setLobby(nextLobby);
+    });
+    client.listenForMatchStarted((state) => {
+      latestStateRef.current = state;
+      setLatestState(state);
+      void enterGame(state);
+    });
 
     return () => {
       client.dispose();
@@ -52,7 +69,25 @@ export function App() {
     };
   }, [client, input, renderer]);
 
-  async function startSession() {
+  async function scanForServers() {
+    setIsScanning(true);
+    setScanMessage('Scanning LAN broadcast on UDP 5554...');
+    try {
+      const found = await client.scanServers();
+      setServers(found);
+      setScanMessage(
+        found.length
+          ? `Found ${found.length} host${found.length === 1 ? '' : 's'}.`
+          : 'No hosts found. School WiFi may block broadcast or peer-to-peer traffic; manual IP may still work.',
+      );
+    } catch (caught) {
+      setScanMessage(`Scan failed: ${String(caught)}. Manual IP is still available.`);
+    } finally {
+      setIsScanning(false);
+    }
+  }
+
+  async function createLobbySession() {
     setIsBusy(true);
     setError(null);
     try {
@@ -60,7 +95,13 @@ export function App() {
         sessionKind === 'host'
           ? await client.host(playerName, selectedCharacterId)
           : await client.join(joinIp.trim() || '127.0.0.1', playerName, selectedCharacterId);
-      await enterGame(session);
+      setSessionInfo(session);
+      sessionInfoRef.current = session;
+      setMyId(session.player_id);
+      myIdRef.current = session.player_id;
+      setIsReady(sessionKind === 'host');
+      setScreen('lobby');
+      await client.setReady(sessionKind === 'host');
     } catch (caught) {
       setError(String(caught));
     } finally {
@@ -68,15 +109,43 @@ export function App() {
     }
   }
 
-  async function enterGame(session: SessionInfo) {
+  async function updateReady(nextReady: boolean) {
+    setIsReady(nextReady);
+    await client.setReady(nextReady);
+  }
+
+  async function updateCharacter(characterId: string) {
+    setSelectedCharacterId(characterId);
+    if (sessionInfo) {
+      await client.selectCharacter(characterId);
+    }
+  }
+
+  async function startMatch() {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await client.startMatch();
+    } catch (caught) {
+      setError(String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function enterGame(initialState: StateSnapshot) {
     const container = gameContainerRef.current;
     if (!container) return;
-    setMyId(session.player_id);
+    if (inputTimerRef.current !== null) {
+      window.clearInterval(inputTimerRef.current);
+    }
+    const playerId = sessionInfoRef.current?.player_id ?? myIdRef.current;
     setScreen('game');
-    await renderer.mount(container, session.world, session.player_id);
-    input.attach(renderer.app.canvas, session.world);
+    await renderer.mount(container, initialState.world, playerId);
+    renderer.applyState(initialState);
+    input.attach(renderer.app.canvas, initialState.world);
     inputTimerRef.current = window.setInterval(async () => {
-      const player = latestStateRef.current?.players.find((candidate) => candidate.id === session.player_id) ?? null;
+      const player = latestStateRef.current?.players.find((candidate) => candidate.id === playerId) ?? null;
       try {
         await client.sendInput(input.sample(player));
       } catch {
@@ -115,8 +184,12 @@ export function App() {
 
             {screen === 'server-select' && (
               <ServerSelect
+                servers={servers}
                 joinIp={joinIp}
+                isScanning={isScanning}
+                scanMessage={scanMessage}
                 onJoinIpChange={setJoinIp}
+                onScan={scanForServers}
                 onBack={() => setScreen('main-menu')}
                 onContinue={() => setScreen('character-select')}
               />
@@ -126,9 +199,10 @@ export function App() {
               <CharacterSelect
                 selectedCharacter={selectedCharacter}
                 selectedCharacterId={selectedCharacterId}
-                onSelect={setSelectedCharacterId}
+                onSelect={(id) => void updateCharacter(id)}
                 onBack={() => setScreen(sessionKind === 'join' ? 'server-select' : 'main-menu')}
-                onContinue={() => setScreen('lobby')}
+                onContinue={createLobbySession}
+                isBusy={isBusy}
               />
             )}
 
@@ -136,11 +210,16 @@ export function App() {
               <Lobby
                 sessionKind={sessionKind}
                 selectedCharacter={selectedCharacter}
-                players={players}
+                lobby={lobby}
+                fallbackPlayers={players}
+                isReady={isReady}
                 isBusy={isBusy}
                 error={error}
+                myId={myId}
+                networkNote={lobby?.network_note}
+                onReadyChange={(ready) => void updateReady(ready)}
                 onBack={() => setScreen('character-select')}
-                onStart={startSession}
+                onStart={startMatch}
               />
             )}
           </div>
@@ -188,13 +267,21 @@ function MainMenu({
 }
 
 function ServerSelect({
+  servers,
   joinIp,
+  isScanning,
+  scanMessage,
   onJoinIpChange,
+  onScan,
   onBack,
   onContinue,
 }: {
+  servers: ServerInfo[];
   joinIp: string;
+  isScanning: boolean;
+  scanMessage: string;
   onJoinIpChange: (value: string) => void;
+  onScan: () => void;
   onBack: () => void;
   onContinue: () => void;
 }) {
@@ -202,9 +289,9 @@ function ServerSelect({
     <section className="flow-stack">
       <ScreenHeader kicker="Server Select" title="Pick a LAN host" />
       <div className="server-list">
-        {MOCK_SERVERS.map((server) => (
+        {servers.map((server) => (
           <button
-            key={server.id}
+            key={`${server.address}:${server.game_port}`}
             className="server-row"
             onClick={() => {
               onJoinIpChange(server.address);
@@ -213,17 +300,25 @@ function ServerSelect({
           >
             <span>
               <strong>{server.name}</strong>
-              <small>{server.address}</small>
+              <small>
+                {server.address}:{server.game_port}
+              </small>
             </span>
-            <span>{server.players}</span>
-            <span>{server.ping}</span>
+            <span>
+              {server.player_count}/{server.max_players}
+            </span>
+            <span>LAN</span>
           </button>
         ))}
+        {!servers.length && <p className="network-note">{scanMessage}</p>}
       </div>
       <label className="field-label">
-        Manual IP
+        Manual IP or IP:port
         <input value={joinIp} onChange={(event) => onJoinIpChange(event.currentTarget.value)} inputMode="decimal" />
       </label>
+      <button className="secondary-button" onClick={onScan} disabled={isScanning}>
+        {isScanning ? 'Scanning...' : 'Scan LAN'}
+      </button>
       <div className="button-grid">
         <button className="secondary-button" onClick={onBack}>
           Back
@@ -240,12 +335,14 @@ function CharacterSelect({
   onSelect,
   onBack,
   onContinue,
+  isBusy,
 }: {
   selectedCharacter: CharacterDefinition;
   selectedCharacterId: string;
   onSelect: (id: string) => void;
   onBack: () => void;
   onContinue: () => void;
+  isBusy: boolean;
 }) {
   return (
     <section className="flow-stack">
@@ -272,7 +369,9 @@ function CharacterSelect({
         <button className="secondary-button" onClick={onBack}>
           Back
         </button>
-        <button onClick={onContinue}>Lock In</button>
+        <button onClick={onContinue} disabled={isBusy}>
+          {isBusy ? 'Creating...' : 'Lock In'}
+        </button>
       </div>
     </section>
   );
@@ -281,46 +380,74 @@ function CharacterSelect({
 function Lobby({
   sessionKind,
   selectedCharacter,
-  players,
+  lobby,
+  fallbackPlayers,
+  isReady,
   isBusy,
   error,
+  myId,
+  networkNote,
+  onReadyChange,
   onBack,
   onStart,
 }: {
   sessionKind: SessionKind;
   selectedCharacter: CharacterDefinition;
-  players: StateSnapshot['players'];
+  lobby: LobbySnapshot | null;
+  fallbackPlayers: StateSnapshot['players'];
+  isReady: boolean;
   isBusy: boolean;
   error: string | null;
+  myId: number;
+  networkNote: string | undefined;
+  onReadyChange: (ready: boolean) => void;
   onBack: () => void;
   onStart: () => void;
 }) {
-  const mockPlayers = players.length
-    ? players
-    : [{ id: 0, name: 'You', character_id: selectedCharacter.id, color: selectedCharacter.color, x: 0, y: 0, angle: 0 }];
+  const lobbyPlayers =
+    lobby?.players ??
+    fallbackPlayers.map((player) => ({
+      id: player.id,
+      name: player.name,
+      character_id: player.character_id,
+      ready: player.id === myId,
+      is_host: player.id === 0,
+    }));
+  const displayPlayers = lobbyPlayers.length
+    ? lobbyPlayers
+    : [{ id: myId, name: 'You', character_id: selectedCharacter.id, ready: isReady, is_host: sessionKind === 'host' }];
 
   return (
     <section className="flow-stack">
-      <ScreenHeader kicker="Lobby" title={sessionKind === 'host' ? 'Ready to host' : 'Ready to join'} />
+      <ScreenHeader kicker="Lobby" title={sessionKind === 'host' ? 'Host lobby' : 'Joined lobby'} />
       <div className="lobby-list">
-        {mockPlayers.map((player) => (
+        {displayPlayers.map((player) => {
+          const character = getCharacter(player.character_id);
+          return (
           <div key={player.id} className="lobby-player">
-            <span className="status-dot" style={{ background: rgbCss(player.color) }} />
+            <span className="status-dot" style={{ background: rgbCss(character.color) }} />
             <span>
-              <strong>{player.name}</strong>
-              <small>{getCharacter(player.character_id).name}</small>
+              <strong>
+                {player.name} {player.is_host ? '(Host)' : ''}
+              </strong>
+              <small>{character.name}</small>
             </span>
-            <em>Ready</em>
+            <em>{player.ready ? 'Ready' : 'Not ready'}</em>
           </div>
-        ))}
+          );
+        })}
       </div>
+      {networkNote && <p className="network-note">{networkNote}</p>}
       {error && <p className="error-text">{error}</p>}
+      <button className="secondary-button" onClick={() => onReadyChange(!isReady)}>
+        {isReady ? 'Mark Not Ready' : 'Mark Ready'}
+      </button>
       <div className="button-grid">
         <button className="secondary-button" onClick={onBack}>
           Back
         </button>
-        <button onClick={onStart} disabled={isBusy}>
-          {isBusy ? 'Starting...' : sessionKind === 'host' ? 'Start Host' : 'Join Game'}
+        <button onClick={onStart} disabled={isBusy || sessionKind !== 'host'}>
+          {sessionKind !== 'host' ? 'Waiting for Host' : isBusy ? 'Starting...' : 'Start Match'}
         </button>
       </div>
     </section>
