@@ -1,0 +1,17 @@
+{
+  "id": "feces",
+  "sprite": "weapons/feces.png",
+  "width": 200,
+  "height": 200,
+  "displayScale": 0.225,
+  "orbitRadius": 24.0,
+  "pivot": {
+    "x": 0.2466,
+    "y": 0.4845
+  },
+  "muzzle": {
+    "x": 0.9287,
+    "y": 0.4739
+  },
+  "defaultRotation": 0.0
+}

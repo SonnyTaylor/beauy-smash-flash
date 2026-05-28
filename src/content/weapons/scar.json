@@ -1,0 +1,17 @@
+{
+  "id": "scar",
+  "sprite": "weapons/scar.png",
+  "width": 1200,
+  "height": 598,
+  "displayScale": 0.0917,
+  "orbitRadius": 32.0,
+  "pivot": {
+    "x": 0.1889,
+    "y": 0.4524
+  },
+  "muzzle": {
+    "x": 0.9338,
+    "y": 0.3953
+  },
+  "defaultRotation": 0.0
+}

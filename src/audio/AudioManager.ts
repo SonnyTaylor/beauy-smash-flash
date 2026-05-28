@@ -44,6 +44,7 @@ export class AudioManager {
   private musicGain: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private gunshotBuffer: AudioBuffer | null = null;
+  private truthNukeBuffer: AudioBuffer | null = null;
   private assetsPromise: Promise<void> | null = null;
   private musicSequencer: MusicSequencer | null = null;
   private musicSessionGain: GainNode | null = null;
@@ -138,6 +139,7 @@ export class AudioManager {
     this.musicGain = null;
     this.noiseBuffer = null;
     this.gunshotBuffer = null;
+    this.truthNukeBuffer = null;
     this.musicSequencer = null;
     this.musicSessionGain = null;
     this.assetsPromise = null;
@@ -265,6 +267,23 @@ export class AudioManager {
     });
   }
 
+  playTruthExplosion(pan = 0, volume = 0.9, distance = 0, maxDistance = 900) {
+    const attenuation = distanceAttenuation(distance, maxDistance);
+    if (attenuation <= 0.02) return;
+
+    if (this.truthNukeBuffer) {
+      void this.playSample({
+        buffer: this.truthNukeBuffer,
+        volume: volume * attenuation,
+        pan,
+        lowpassHz: lowpassForDistance(distance, maxDistance),
+      });
+      return;
+    }
+
+    this.playExplosion(pan, volume * 0.75, distance, maxDistance);
+  }
+
   playKill(volume = 0.45) {
     void this.playTone({
       frequency: 660,
@@ -376,6 +395,11 @@ export class AudioManager {
         this.gunshotBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.gunshot);
       } catch (error) {
         console.warn('[audio] gunshot sample failed to load', error);
+      }
+      try {
+        this.truthNukeBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.truthNuke);
+      } catch (error) {
+        console.warn('[audio] truth nuke sample failed to load', error);
       }
     })();
 

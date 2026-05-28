@@ -285,9 +285,10 @@ async fn handle_host_message(
                     peer.id
                 });
             if let Some(player_id) = player_id {
+                let match_in_progress = st.match_started;
                 if let Some(player) = st.world.players.get_mut(&player_id) {
                     let weapon_id = player.loadout_primary_weapon_id.clone();
-                    player.apply_loadout(character_id, weapon_id);
+                    player.apply_loadout(character_id, weapon_id, match_in_progress);
                 }
             }
         }
@@ -305,8 +306,9 @@ async fn handle_host_message(
                     peer.id
                 });
             if let Some(player_id) = player_id {
+                let match_in_progress = st.match_started;
                 if let Some(player) = st.world.players.get_mut(&player_id) {
-                    player.apply_loadout(character_id, primary_weapon_id);
+                    player.apply_loadout(character_id, primary_weapon_id, match_in_progress);
                     st.ready_players.remove(&player_id);
                 }
             }

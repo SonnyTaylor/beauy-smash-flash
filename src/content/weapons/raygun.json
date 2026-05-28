@@ -1,0 +1,17 @@
+{
+  "id": "raygun",
+  "sprite": "weapons/raygun.png",
+  "width": 1000,
+  "height": 500,
+  "displayScale": 0.08,
+  "orbitRadius": 30.0,
+  "pivot": {
+    "x": 0.2422,
+    "y": 0.473
+  },
+  "muzzle": {
+    "x": 0.8667,
+    "y": 0.3173
+  },
+  "defaultRotation": 0.0
+}

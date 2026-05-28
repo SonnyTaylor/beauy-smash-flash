@@ -250,8 +250,13 @@ pub async fn update_loadout(
         let mut st = state.lock().await;
         if st.mode == SessionMode::Host {
             let my_id = st.my_id;
+            let match_in_progress = st.match_started;
             if let Some(player) = st.world.players.get_mut(&my_id) {
-                player.apply_loadout(character_id.clone(), primary_weapon_id.clone());
+                player.apply_loadout(
+                    character_id.clone(),
+                    primary_weapon_id.clone(),
+                    match_in_progress,
+                );
             }
             st.ready_players.remove(&my_id);
         }

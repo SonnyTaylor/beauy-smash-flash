@@ -9,7 +9,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     initials: 'SN',
     abilityId: 'reverse_shell',
     abilityName: 'Reverse Shell',
-    abilityDescription: "Hack the nearest enemy's controls and aim.",
+    abilityDescription: "Hack the nearest enemy for 4s — their movement and aim flip.",
   },
   {
     id: 'bailey',
@@ -19,7 +19,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     initials: 'BL',
     abilityId: 'truth_nuke',
     abilityName: 'Truth Nuke',
-    abilityDescription: 'Launch an arcing bomb with a huge blast radius.',
+    abilityDescription: '60 blast damage (150 radius). Sweep the reticle, lob the nuke, flashbang everyone else.',
   },
   {
     id: 'jacob',
@@ -29,7 +29,8 @@ export const CHARACTERS: CharacterDefinition[] = [
     initials: 'JC',
     abilityId: 'directors_cut',
     abilityName: "Director's Cut",
-    abilityDescription: 'Enter cinematic mode and fire bouncing popcorn shots.',
+    abilityDescription:
+      "30s cinematic mode — 1.67× speed, 15 bouncing popcorn shots that mark targets for 3s.",
   },
   {
     id: 'isaak',

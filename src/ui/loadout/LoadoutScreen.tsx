@@ -54,7 +54,7 @@ export function LoadoutScreen({
           <h2 className="loadout-title">Gear Up</h2>
           <p className="loadout-subtitle">
             {inSession
-              ? 'Applies now when alive, or on your next respawn.'
+              ? 'Class changes on your next death. Weapon swaps immediately.'
               : 'Choose mate and weapon before the lobby.'}
           </p>
         </div>

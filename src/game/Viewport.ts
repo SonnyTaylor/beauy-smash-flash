@@ -54,3 +54,19 @@ export function mapScreenRect(
     scale: transform.scale,
   };
 }
+
+/** Map arena world coordinates to screen pixels (matches Pixi root placement). */
+export function worldToScreen(
+  worldX: number,
+  worldY: number,
+  world: WorldConfig,
+  viewportWidth: number,
+  viewportHeight: number,
+  insets?: SafeAreaInsets,
+): { x: number; y: number } {
+  const transform = fitWorldToViewport(world, viewportWidth, viewportHeight, insets);
+  return {
+    x: transform.offsetX + worldX * transform.scale,
+    y: transform.offsetY + worldY * transform.scale,
+  };
+}

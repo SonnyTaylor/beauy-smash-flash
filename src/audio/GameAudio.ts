@@ -137,6 +137,8 @@ export class GameAudio {
       const pan = panFromWorld(listenerX, effect.x, snapshot.world.width);
       if (effect.kind === 'explosion') {
         this.audio.playExplosion(pan, 0.65, distance, maxDistance);
+      } else if (effect.kind === 'truth_explosion') {
+        this.audio.playTruthExplosion(pan, 0.95, distance, maxDistance);
       } else if (effect.kind === 'aim_reticle') {
         this.audio.playAbilityCharge(pan, 0.34, distance, maxDistance);
       }

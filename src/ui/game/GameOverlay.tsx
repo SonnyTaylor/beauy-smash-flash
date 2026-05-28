@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CharacterDefinition, PlayerSnapshot, StateSnapshot } from '../../shared/types';
+import type { CharacterDefinition, GameSettings, PlayerSnapshot, StateSnapshot } from '../../shared/types';
 import { formatMatchTime } from '../constants';
 import { getCharacter } from '../character';
 import { MatchScoreboard } from './MatchScoreboard';
@@ -10,11 +10,15 @@ import { HudWeaponBar } from './HudWeaponBar';
 import { HudMatchStrip } from './HudMatchStrip';
 import { HudCrosshair } from './HudCrosshair';
 import { useArenaLayout } from '../hooks/useArenaLayout';
+import { worldToScreen } from '../../game/Viewport';
+import { GAME_SAFE_AREA_INSETS } from '../../game/safeArea';
 
 interface HitMarker {
   id: number;
   text: string;
   kind: 'taken' | 'dealt';
+  worldX: number;
+  worldY: number;
 }
 
 const CONTROLS_HINT_VISIBLE_MS = 6500;
@@ -105,10 +109,12 @@ export function GameOverlay({
   paused,
   isBusy,
   onPauseChange,
-  onLeaveToMenu,
+  onExitGame,
   onReturnToLobby,
   onRematch,
   onChangeLoadout,
+  gameSettings,
+  onSaveGameSettings,
   showControlsHint = true,
 }: {
   state: StateSnapshot | null;
@@ -119,13 +125,19 @@ export function GameOverlay({
   isBusy?: boolean;
   showControlsHint?: boolean;
   onPauseChange: (paused: boolean) => void;
-  onLeaveToMenu: () => void;
+  onExitGame: () => void;
   onReturnToLobby: () => void;
   onRematch: () => void;
   onChangeLoadout: () => void;
+  gameSettings: GameSettings;
+  onSaveGameSettings: (settings: GameSettings) => void;
 }) {
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const me = state?.players.find((player) => player.id === myId) ?? null;
   const character = getCharacter(me?.character_id ?? selectedCharacter.id);
+  const pendingCharacter = me?.pending_character_id
+    ? getCharacter(me.pending_character_id)
+    : null;
   const matchEnded = state?.match_ended ?? false;
   const winner =
     state?.winner_id != null
@@ -140,6 +152,12 @@ export function GameOverlay({
   const abilityWindup = me?.ability_windup ?? 0;
   const isHacked = (me?.hacked_remaining ?? 0) > 0;
   const isSlowed = (me?.slowed_remaining ?? 0) > 0;
+  const isMarked = (me?.marked_remaining ?? 0) > 0;
+  const isPoisoned = (me?.poison_remaining ?? 0) > 0;
+  const inDirectorsCut = (me?.directors_cut_remaining ?? 0) > 0;
+  const directorsCutActive = (state?.players ?? []).some(
+    (player) => (player.directors_cut_remaining ?? 0) > 0,
+  );
   const remaining = timeRemaining(state);
   const showTimer = (state?.time_limit_secs ?? 0) > 0 && state?.win_condition !== 'kills';
   const isDead = me && !me.alive && me.respawn_in > 0 && !matchEnded;
@@ -148,9 +166,11 @@ export function GameOverlay({
   const [showScoreboard, setShowScoreboard] = useState(false);
   const [hitFlash, setHitFlash] = useState(false);
   const [hitMarkers, setHitMarkers] = useState<HitMarker[]>([]);
+  const [truthFlash, setTruthFlash] = useState(false);
   const [hintFading, setHintFading] = useState(false);
   const hpRef = useRef<Map<number, number>>(new Map());
   const markerIdRef = useRef(0);
+  const knownTruthExplosionsRef = useRef<Set<number>>(new Set());
 
   const lastKiller = useMemo(() => {
     if (!state || !me) return null;
@@ -180,12 +200,16 @@ export function GameOverlay({
           id: markerIdRef.current++,
           text: `-${damage}`,
           kind: 'taken',
+          worldX: player.x,
+          worldY: player.y,
         });
       } else if (player.id !== myId && damage > 0) {
         nextMarkers.push({
           id: markerIdRef.current++,
           text: `-${damage}`,
           kind: 'dealt',
+          worldX: player.x,
+          worldY: player.y,
         });
       }
     }
@@ -205,10 +229,38 @@ export function GameOverlay({
   }, [state, matchEnded, myId]);
 
   useEffect(() => {
+    if (!state || matchEnded) return;
+
+    for (const effect of state.effects ?? []) {
+      if (effect.kind !== 'truth_explosion') {
+        continue;
+      }
+      if (knownTruthExplosionsRef.current.has(effect.id)) {
+        continue;
+      }
+      knownTruthExplosionsRef.current.add(effect.id);
+      if (effect.owner_id === myId) {
+        continue;
+      }
+      setTruthFlash(true);
+      window.setTimeout(() => setTruthFlash(false), 1400);
+    }
+
+    const liveIds = new Set((state.effects ?? []).map((effect) => effect.id));
+    for (const id of knownTruthExplosionsRef.current) {
+      if (!liveIds.has(id)) {
+        knownTruthExplosionsRef.current.delete(id);
+      }
+    }
+  }, [state, matchEnded, myId]);
+
+  useEffect(() => {
     if (matchEnded) {
       hpRef.current.clear();
       setHitMarkers([]);
       setHitFlash(false);
+      setTruthFlash(false);
+      knownTruthExplosionsRef.current.clear();
     }
   }, [matchEnded]);
 
@@ -226,6 +278,12 @@ export function GameOverlay({
     const timer = window.setTimeout(() => setHintFading(true), CONTROLS_HINT_VISIBLE_MS);
     return () => window.clearTimeout(timer);
   }, [showControlsHint, paused, matchEnded]);
+
+  useEffect(() => {
+    if (!paused) {
+      setExitConfirmOpen(false);
+    }
+  }, [paused]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -253,18 +311,36 @@ export function GameOverlay({
   return (
     <>
       <div
-        className={`game-overlay ${paused || matchEnded ? 'is-paused' : ''} ${isHacked ? 'is-hacked' : ''} ${isSlowed ? 'is-slowed' : ''}`}
+        className={`game-overlay ${paused || matchEnded ? 'is-paused' : ''} ${isHacked ? 'is-hacked' : ''} ${isSlowed ? 'is-slowed' : ''} ${directorsCutActive ? 'is-directors-cut' : ''}`}
         style={arenaLayout as React.CSSProperties}
       >
         {isHacked && !matchEnded && (
           <div className="hud-hack-banner" role="status">
-            Controls hacked — {me?.hacked_remaining.toFixed(1)}s
+            Reverse shell active — {me?.hacked_remaining.toFixed(1)}s
           </div>
         )}
 
         {isSlowed && !matchEnded && !isHacked && (
           <div className="hud-slow-banner" role="status">
             Gooed up — {me?.slowed_remaining?.toFixed(1)}s
+          </div>
+        )}
+
+        {isMarked && !matchEnded && !isHacked && (
+          <div className="hud-mark-banner" role="status">
+            Marked — {me?.marked_remaining?.toFixed(1)}s
+          </div>
+        )}
+
+        {isPoisoned && !matchEnded && !isHacked && (
+          <div className="hud-poison-banner" role="status">
+            Poisoned — {me?.poison_remaining?.toFixed(1)}s
+          </div>
+        )}
+
+        {inDirectorsCut && !matchEnded && (
+          <div className="hud-directors-banner" role="status">
+            Director&apos;s Cut — {me?.directors_cut_shots ?? 0} popcorn shots left
           </div>
         )}
 
@@ -312,18 +388,27 @@ export function GameOverlay({
         {!matchEnded && me && (
           <>
             <div className="hud-zone hud-zone-bottom-left">
-              <HudPlayerCard
-                name={me.name || 'Player'}
-                hp={me.hp}
-                maxHp={me.max_hp}
-                character={character}
-              />
-              <HudWeaponBar
-                activeWeapon={me.active_weapon ?? 'glock'}
-                activeSlot={me.active_slot ?? 0}
-                primary={me.primary_weapon}
-                secondary={me.secondary_weapon}
-              />
+              <div className="hud-bottom-left-cluster">
+                {me.alive && pendingCharacter && (
+                  <p className="hud-pending-class">
+                    Next respawn: <strong>{pendingCharacter.name}</strong>
+                  </p>
+                )}
+                <div className="hud-bottom-left-row">
+                  <HudPlayerCard
+                    name={me.name || 'Player'}
+                    hp={me.hp}
+                    maxHp={me.max_hp}
+                    character={character}
+                  />
+                  <HudWeaponBar
+                    activeWeapon={me.active_weapon ?? 'glock'}
+                    activeSlot={me.active_slot ?? 0}
+                    primary={me.primary_weapon}
+                    secondary={me.secondary_weapon}
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="hud-zone hud-zone-bottom-center">
@@ -332,6 +417,7 @@ export function GameOverlay({
                 charge={abilityCharge}
                 windup={abilityWindup}
                 hacked={isHacked}
+                directorsCutShots={inDirectorsCut ? (me?.directors_cut_shots ?? 0) : null}
               />
             </div>
 
@@ -352,6 +438,9 @@ export function GameOverlay({
             character={character}
             reloading={isReloading}
             empty={!isReloading && me.ammo <= 0}
+            hacked={isHacked}
+            playerWorld={me ? { x: me.x, y: me.y } : null}
+            world={state?.world ?? null}
           />
         )}
 
@@ -389,12 +478,31 @@ export function GameOverlay({
 
       {hitFlash && <div className="hit-vignette" aria-hidden />}
 
+      {truthFlash && !matchEnded && (
+        <div className="truth-flash" aria-hidden />
+      )}
+
       <div className="hit-marker-layer" aria-hidden>
-        {hitMarkers.map((marker) => (
-          <span key={marker.id} className={`hit-marker hit-marker-${marker.kind}`}>
-            {marker.text}
-          </span>
-        ))}
+        {state?.world &&
+          hitMarkers.map((marker) => {
+            const screen = worldToScreen(
+              marker.worldX,
+              marker.worldY,
+              state.world,
+              window.innerWidth,
+              window.innerHeight,
+              GAME_SAFE_AREA_INSETS,
+            );
+            return (
+              <span
+                key={marker.id}
+                className={`hit-marker hit-marker-${marker.kind}`}
+                style={{ left: `${screen.x}px`, top: `${screen.y}px` }}
+              >
+                {marker.text}
+              </span>
+            );
+          })}
       </div>
 
       {isDead && (
@@ -418,27 +526,90 @@ export function GameOverlay({
       {paused && !matchEnded && (
         <div className="game-pause-backdrop" role="dialog" aria-label="Pause menu">
           <div className="game-pause-panel">
-            <p className="screen-kicker">Paused</p>
-            <h2>Game Menu</h2>
-            <div className="game-pause-actions">
-              <button type="button" className="primary-action" onClick={() => onPauseChange(false)}>
-                Resume
-              </button>
-              <button type="button" className="secondary-button" onClick={onChangeLoadout}>
-                Change Loadout
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => {
-                  onPauseChange(false);
-                  onLeaveToMenu();
-                }}
-              >
-                Main Menu
-              </button>
-            </div>
-            <p className="game-pause-hint">Esc to resume</p>
+            {!exitConfirmOpen ? (
+              <>
+                <p className="screen-kicker">Paused</p>
+                <h2>Game Menu</h2>
+                {state && (
+                  <div className="game-pause-stats">
+                    <span>{state.map.name}</span>
+                    {remaining !== null && <span>{formatMatchTime(remaining)} left</span>}
+                    {me && (
+                      <span>
+                        {me.score} pts · {me.kills}K / {me.deaths}D
+                      </span>
+                    )}
+                  </div>
+                )}
+                <div className="game-pause-actions">
+                  <button type="button" className="primary-action" onClick={() => onPauseChange(false)}>
+                    Resume
+                  </button>
+                  <button type="button" className="secondary-button" onClick={onChangeLoadout}>
+                    Change Loadout
+                  </button>
+                  {sessionKind === 'host' && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={isBusy}
+                      onClick={() => {
+                        onPauseChange(false);
+                        onReturnToLobby();
+                      }}
+                    >
+                      {isBusy ? 'Returning…' : 'Back to Lobby'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="ghost-button game-pause-toggle"
+                    onClick={() =>
+                      onSaveGameSettings({
+                        ...gameSettings,
+                        musicEnabled: !gameSettings.musicEnabled,
+                      })
+                    }
+                  >
+                    Music: {gameSettings.musicEnabled ? 'On' : 'Off'}
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    onClick={() => setExitConfirmOpen(true)}
+                  >
+                    Exit Game
+                  </button>
+                </div>
+                <p className="game-pause-hint">Esc to resume</p>
+              </>
+            ) : (
+              <>
+                <p className="screen-kicker">Confirm</p>
+                <h2>Exit game?</h2>
+                <p className="game-pause-warning">
+                  {sessionKind === 'host'
+                    ? "You're hosting this match. Exiting will shut down the session for everyone on your LAN."
+                    : "You'll disconnect from the match and close Beauy Smash Flash."}
+                </p>
+                <div className="game-pause-actions">
+                  <button
+                    type="button"
+                    className="danger-button"
+                    onClick={() => void onExitGame()}
+                  >
+                    Yes, exit
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setExitConfirmOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -491,8 +662,8 @@ export function GameOverlay({
                   {isBusy ? 'Rematch starting…' : 'Waiting for host to rematch or return to lobby…'}
                 </p>
               )}
-              <button type="button" className="secondary-button" onClick={onLeaveToMenu}>
-                Main Menu
+              <button type="button" className="secondary-button" onClick={() => void onExitGame()}>
+                Exit Game
               </button>
             </div>
           </div>

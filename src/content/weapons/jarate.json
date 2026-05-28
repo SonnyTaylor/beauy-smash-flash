@@ -1,0 +1,17 @@
+{
+  "id": "jarate",
+  "sprite": "weapons/jarate.png",
+  "width": 512,
+  "height": 512,
+  "displayScale": 0.1074,
+  "orbitRadius": 26.0,
+  "pivot": {
+    "x": 0.323,
+    "y": 0.3832
+  },
+  "muzzle": {
+    "x": 0.7248,
+    "y": 0.6316
+  },
+  "defaultRotation": 0.0
+}

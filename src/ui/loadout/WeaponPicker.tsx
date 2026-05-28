@@ -18,16 +18,17 @@ export function WeaponPicker({
           className={`weapon-card ${weapon.id === selectedWeaponId ? 'selected' : ''}`}
           onClick={() => onSelect(weapon.id)}
         >
-          <span className="weapon-card-art">
+          <span className="weapon-card-art" aria-hidden>
             <img
               src={`/assets/weapons/${weapon.id}.png`}
               alt=""
+              draggable={false}
               onError={(event) => {
                 event.currentTarget.style.display = 'none';
               }}
             />
           </span>
-          <span className="weapon-card-text">
+          <span className="weapon-card-body">
             <strong>{weapon.name}</strong>
             <span className="weapon-card-hint">{weapon.tagline}</span>
           </span>

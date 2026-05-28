@@ -81,6 +81,7 @@ pub struct Bullet {
     pub vx: f32,
     pub vy: f32,
     pub life: f32,
+    pub bounces_remaining: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -102,6 +103,38 @@ pub struct WorldEffect {
     pub radius: f32,
     pub life: f32,
     pub owner_id: u8,
+    pub origin_x: f32,
+    pub origin_y: f32,
+    pub target_x: f32,
+    pub target_y: f32,
+    pub max_life: f32,
+}
+
+impl WorldEffect {
+    pub(crate) fn burst(
+        id: u32,
+        kind: EffectKind,
+        x: f32,
+        y: f32,
+        radius: f32,
+        life: f32,
+        owner_id: u8,
+    ) -> Self {
+        Self {
+            id,
+            kind,
+            x,
+            y,
+            radius,
+            life,
+            owner_id,
+            origin_x: x,
+            origin_y: y,
+            target_x: x,
+            target_y: y,
+            max_life: life,
+        }
+    }
 }
 
 impl Bullet {
@@ -138,6 +171,7 @@ pub struct Player {
     pub color: [u8; 3],
     pub name: String,
     pub character_id: String,
+    pub pending_character_id: Option<String>,
     pub loadout_primary_weapon_id: String,
     pub hp: u16,
     pub max_hp: u16,
@@ -162,6 +196,14 @@ pub struct Player {
     pub controls_inverted_until: f32,
     pub slowed_until: f32,
     pub slow_multiplier: f32,
+    pub marked_until: f32,
+    pub mark_damage_multiplier: f32,
+    pub poison_until: f32,
+    pub poison_dps: u16,
+    pub poison_owner_id: u8,
+    pub poison_accumulator: f32,
+    pub directors_cut_until: f32,
+    pub directors_cut_shots: u8,
 }
 
 impl Player {
@@ -184,6 +226,7 @@ impl Player {
             color: PALETTE[id as usize % PALETTE.len()],
             name,
             character_id,
+            pending_character_id: None,
             loadout_primary_weapon_id: primary_id,
             hp: PLAYER_MAX_HP,
             max_hp: PLAYER_MAX_HP,
@@ -208,6 +251,14 @@ impl Player {
             controls_inverted_until: 0.0,
             slowed_until: 0.0,
             slow_multiplier: 1.0,
+            marked_until: 0.0,
+            mark_damage_multiplier: 1.0,
+            poison_until: 0.0,
+            poison_dps: 0,
+            poison_owner_id: 0,
+            poison_accumulator: 0.0,
+            directors_cut_until: 0.0,
+            directors_cut_shots: 0,
         }
     }
 
@@ -290,6 +341,7 @@ impl Player {
             color: self.color,
             name: self.name.clone(),
             character_id: self.character_id.clone(),
+            pending_character_id: self.pending_character_id.clone(),
             hp: self.hp,
             max_hp: self.max_hp,
             ammo: self.ammo,
@@ -308,8 +360,26 @@ impl Player {
             },
             ability_charge: self.ability_charge,
             ability_windup: self.ability_windup.max(0.0),
+            ability_aim_x: if self.ability_windup > 0.0 {
+                self.ability_aim_x
+            } else {
+                0.0
+            },
+            ability_aim_y: if self.ability_windup > 0.0 {
+                self.ability_aim_y
+            } else {
+                0.0
+            },
             hacked_remaining: self.controls_inverted_until.max(0.0),
             slowed_remaining: self.slowed_until.max(0.0),
+            marked_remaining: self.marked_until.max(0.0),
+            directors_cut_remaining: self.directors_cut_until.max(0.0),
+            directors_cut_shots: if self.directors_cut_shots > 0 {
+                self.directors_cut_shots
+            } else {
+                0
+            },
+            poison_remaining: self.poison_until.max(0.0),
             active_weapon,
             active_slot: self.active_slot as u8,
             reload_duration,
@@ -325,6 +395,7 @@ impl Player {
         self.color = snapshot.color;
         self.name = snapshot.name.clone();
         self.character_id = snapshot.character_id.clone();
+        self.pending_character_id = snapshot.pending_character_id.clone();
         self.hp = snapshot.hp;
         self.max_hp = snapshot.max_hp;
         self.ammo = snapshot.ammo;
@@ -372,18 +443,37 @@ impl Player {
         self.ability_windup = snapshot.ability_windup;
         self.controls_inverted_until = snapshot.hacked_remaining;
         self.slowed_until = snapshot.slowed_remaining;
+        self.marked_until = snapshot.marked_remaining;
+        self.directors_cut_until = snapshot.directors_cut_remaining;
+        self.directors_cut_shots = snapshot.directors_cut_shots;
+        self.poison_until = snapshot.poison_remaining;
     }
 
-    pub fn apply_loadout(&mut self, character_id: String, primary_weapon_id: String) {
-        let character_changed = self.character_id != character_id;
-        self.character_id = character_id;
+    pub fn apply_loadout(
+        &mut self,
+        character_id: String,
+        primary_weapon_id: String,
+        match_in_progress: bool,
+    ) {
         self.loadout_primary_weapon_id = weapons::validate_weapon_id(&primary_weapon_id);
+        let defer_character = match_in_progress && self.alive;
 
-        if character_changed {
-            self.ability_charge = 0.0;
-        }
-        if crate::abilities::is_casting(self) {
-            self.ability_windup = 0.0;
+        if defer_character {
+            if character_id == self.character_id {
+                self.pending_character_id = None;
+            } else {
+                self.pending_character_id = Some(character_id);
+            }
+        } else {
+            let character_changed = self.character_id != character_id;
+            self.character_id = character_id;
+            self.pending_character_id = None;
+            if character_changed {
+                self.ability_charge = 0.0;
+            }
+            if crate::abilities::is_casting(self) {
+                self.ability_windup = 0.0;
+            }
         }
 
         if !self.alive {
@@ -396,6 +486,16 @@ impl Player {
         self.reload_timer = 0.0;
         self.fire_cooldown = 0.0;
         self.apply_active_slot_to_combat_state();
+    }
+
+    fn apply_pending_character(&mut self) {
+        let Some(pending) = self.pending_character_id.take() else {
+            return;
+        };
+        if self.character_id != pending {
+            self.character_id = pending;
+            self.ability_charge = 0.0;
+        }
     }
 
     fn reorganize_loadout_after_drop(&mut self) {
@@ -589,6 +689,9 @@ impl GameWorld {
                 player.deaths = 0;
                 player.ability_charge = 0.0;
                 player.ability_windup = 0.0;
+                player.pending_character_id = None;
+                player.directors_cut_until = 0.0;
+                player.directors_cut_shots = 0;
             }
             self.reset_player_for_spawn(id, SPAWN_PROTECTION_TIME);
         }
@@ -609,6 +712,9 @@ impl GameWorld {
 
         let ids: Vec<u8> = self.players.keys().copied().collect();
         for id in ids {
+            if let Some(player) = self.players.get_mut(&id) {
+                player.pending_character_id = None;
+            }
             self.reset_player_for_spawn(id, 0.0);
         }
     }
@@ -629,6 +735,7 @@ impl GameWorld {
         };
 
         if let Some(player) = self.players.get_mut(&id) {
+            player.apply_pending_character();
             player.x = spawn.0;
             player.y = spawn.1;
             player.hp = PLAYER_MAX_HP;
@@ -644,7 +751,15 @@ impl GameWorld {
             player.controls_inverted_until = 0.0;
             player.slowed_until = 0.0;
             player.slow_multiplier = 1.0;
+            player.marked_until = 0.0;
+            player.mark_damage_multiplier = 1.0;
+            player.poison_until = 0.0;
+            player.poison_dps = 0;
+            player.poison_owner_id = 0;
+            player.poison_accumulator = 0.0;
             player.ability_windup = 0.0;
+            player.directors_cut_until = 0.0;
+            player.directors_cut_shots = 0;
         }
     }
 
@@ -819,18 +934,30 @@ impl GameWorld {
             .bullets
             .iter()
             .map(|bullet| {
-                let weapon = weapons::get_or_default(&bullet.weapon_id);
+                let (damage, radius, life, bounces_remaining) =
+                    if bullet.weapon_id == abilities::POPCORN_WEAPON_ID {
+                        (
+                            abilities::POPCORN_DAMAGE,
+                            abilities::POPCORN_RADIUS,
+                            abilities::POPCORN_LIFE,
+                            abilities::POPCORN_BOUNCES,
+                        )
+                    } else {
+                        let weapon = weapons::get_or_default(&bullet.weapon_id);
+                        (weapon.damage, weapon.bullet_radius, weapon.bullet_life, 0)
+                    };
                 Bullet {
                     id: bullet.id,
                     owner_id: bullet.owner_id,
                     weapon_id: bullet.weapon_id.clone(),
-                    damage: weapon.damage,
-                    radius: weapon.bullet_radius,
+                    damage,
+                    radius,
                     x: bullet.x,
                     y: bullet.y,
                     vx: 0.0,
                     vy: 0.0,
-                    life: weapon.bullet_life,
+                    life,
+                    bounces_remaining,
                 }
             })
             .collect();
@@ -890,8 +1017,10 @@ impl GameWorld {
 
         abilities::passive_charge_tick(&mut self.players, dt);
         abilities::tick_status_effects(&mut self.players, dt);
+        self.tick_poison_damage(dt);
         self.process_ability_input();
         abilities::process_abilities(self, dt);
+        abilities::process_projectile_effects(self, dt);
         abilities::process_effects(self, dt);
         self.process_respawns(dt);
         self.process_movement(dt);
@@ -929,14 +1058,13 @@ impl GameWorld {
             }
 
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
-            let invert = player.controls_inverted_until > 0.0;
-            let (move_x, move_y) = normalize(
-                if invert { -input.dx } else { input.dx },
-                if invert { -input.dy } else { input.dy },
-            );
+            let input = apply_hack_inversion(player, &input);
+            let (move_x, move_y) = normalize(input.dx, input.dy);
 
             let speed = if player.slowed_until > 0.0 {
                 PLAYER_SPEED * player.slow_multiplier
+            } else if abilities::in_directors_cut(player) {
+                PLAYER_SPEED * abilities::JACOB_DIRECTORS_CUT_SPEED
             } else {
                 PLAYER_SPEED
             };
@@ -975,21 +1103,82 @@ impl GameWorld {
         }
     }
 
-    fn process_combat(&mut self, dt: f32) {
-        let mut shots: Vec<(u8, String, u16, f32, f32, f32, f32, f32, f32, f32)> = Vec::new();
-        let mut reload_requests: Vec<(u8, f32)> = Vec::new();
+    fn tick_poison_damage(&mut self, dt: f32) {
+        if !self.friendly_fire {
+            return;
+        }
 
+        let mut damage_events: Vec<(u8, u8, u16)> = Vec::new();
         for player in self.players.values_mut() {
-            if !player.alive || is_casting(player) || !player.has_active_weapon() {
+            if !player.alive || player.poison_until <= 0.0 || player.poison_dps == 0 {
                 continue;
             }
+            player.poison_until = (player.poison_until - dt).max(0.0);
+            player.poison_accumulator += player.poison_dps as f32 * dt;
+            let damage = player.poison_accumulator.floor() as u16;
+            if damage > 0 {
+                player.poison_accumulator -= damage as f32;
+                damage_events.push((player.poison_owner_id, player.id, damage));
+            }
+            if player.poison_until <= 0.0 {
+                player.poison_dps = 0;
+                player.poison_accumulator = 0.0;
+            }
+        }
 
+        for (killer_id, victim_id, damage) in damage_events {
+            self.apply_damage(killer_id, victim_id, damage);
+        }
+    }
+
+    fn process_combat(&mut self, dt: f32) {
+        let mut shots: Vec<(u8, String, u16, f32, f32, f32, f32, f32, f32, f32)> = Vec::new();
+        let mut melee_swings: Vec<(u8, String, u16, f32, f32, f32, f32, f32, f32)> = Vec::new();
+        let mut reload_requests: Vec<(u8, f32)> = Vec::new();
+        let mut popcorn_shots: Vec<(u8, f32, f32, f32, f32)> = Vec::new();
+
+        for player in self.players.values_mut() {
+            if !player.alive || is_casting(player) {
+                continue;
+            }
             if player.fire_cooldown > 0.0 {
                 player.fire_cooldown = (player.fire_cooldown - dt).max(0.0);
             }
+        }
+
+        for player in self.players.values() {
+            if !player.alive || is_casting(player) || !abilities::in_directors_cut(player) {
+                continue;
+            }
+            let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
+            let input = apply_hack_inversion(player, &input);
+            if input.fire && player.fire_cooldown <= 0.0 {
+                let (aim_x, aim_y) = normalize(input.aim_x, input.aim_y);
+                if aim_x != 0.0 || aim_y != 0.0 {
+                    popcorn_shots.push((player.id, player.x, player.y, aim_x, aim_y));
+                }
+            }
+        }
+
+        for (player_id, x, y, aim_x, aim_y) in popcorn_shots {
+            if abilities::try_fire_popcorn(self, player_id, x, y, aim_x, aim_y) {
+                if let Some(player) = self.players.get_mut(&player_id) {
+                    player.fire_cooldown = abilities::POPCORN_FIRE_RATE;
+                }
+            }
+        }
+
+        for player in self.players.values_mut() {
+            if !player.alive || is_casting(player) || abilities::in_directors_cut(player) {
+                continue;
+            }
+
+            if !player.has_active_weapon() {
+                continue;
+            }
 
             let weapon = player.active_weapon();
-            if player.reload_timer > 0.0 {
+            if weapon.can_reload() && player.reload_timer > 0.0 {
                 player.reload_timer = (player.reload_timer - dt).max(0.0);
                 if player.reload_timer <= 0.0 {
                     player.ammo = player.max_ammo;
@@ -999,8 +1188,9 @@ impl GameWorld {
             }
 
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
+            let input = apply_hack_inversion(player, &input);
 
-            if input.reload && player.ammo < player.max_ammo {
+            if weapon.can_reload() && input.reload && player.ammo < player.max_ammo {
                 reload_requests.push((player.id, weapon.reload_time));
                 continue;
             }
@@ -1009,34 +1199,79 @@ impl GameWorld {
                 continue;
             }
 
-            if player.ammo == 0 {
-                reload_requests.push((player.id, weapon.reload_time));
-                continue;
-            }
-
             let (aim_x, aim_y) = normalize(input.aim_x, input.aim_y);
             if aim_x == 0.0 && aim_y == 0.0 {
                 continue;
             }
 
-            player.ammo -= 1;
-            player.save_ammo_to_active_slot();
-            player.fire_cooldown = weapon.fire_rate;
+            match weapon.kind {
+                weapons::WeaponKind::Melee { range, arc_deg } => {
+                    player.fire_cooldown = weapon.fire_rate;
+                    melee_swings.push((
+                        player.id,
+                        weapon.id.to_string(),
+                        weapon.damage,
+                        player.x,
+                        player.y,
+                        aim_x,
+                        aim_y,
+                        range,
+                        arc_deg,
+                    ));
+                }
+                weapons::WeaponKind::Pellets { count, spread_deg } => {
+                    if player.ammo == 0 {
+                        reload_requests.push((player.id, weapon.reload_time));
+                        continue;
+                    }
+                    player.ammo -= 1;
+                    player.save_ammo_to_active_slot();
+                    player.fire_cooldown = weapon.fire_rate;
 
-            let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
-            let spawn_y = player.y + aim_y * (PLAYER_RADIUS + weapon.muzzle_offset);
-            shots.push((
-                player.id,
-                weapon.id.to_string(),
-                weapon.damage,
-                weapon.bullet_speed,
-                weapon.bullet_life,
-                weapon.bullet_radius,
-                spawn_x,
-                spawn_y,
-                aim_x,
-                aim_y,
-            ));
+                    let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
+                    let spawn_y = player.y + aim_y * (PLAYER_RADIUS + weapon.muzzle_offset);
+                    for (dir_x, dir_y) in
+                        weapons::pellet_directions(aim_x, aim_y, count, spread_deg)
+                    {
+                        shots.push((
+                            player.id,
+                            weapon.id.to_string(),
+                            weapon.damage,
+                            weapon.bullet_speed,
+                            weapon.bullet_life,
+                            weapon.bullet_radius,
+                            spawn_x,
+                            spawn_y,
+                            dir_x,
+                            dir_y,
+                        ));
+                    }
+                }
+                weapons::WeaponKind::Bullet => {
+                    if player.ammo == 0 {
+                        reload_requests.push((player.id, weapon.reload_time));
+                        continue;
+                    }
+                    player.ammo -= 1;
+                    player.save_ammo_to_active_slot();
+                    player.fire_cooldown = weapon.fire_rate;
+
+                    let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
+                    let spawn_y = player.y + aim_y * (PLAYER_RADIUS + weapon.muzzle_offset);
+                    shots.push((
+                        player.id,
+                        weapon.id.to_string(),
+                        weapon.damage,
+                        weapon.bullet_speed,
+                        weapon.bullet_life,
+                        weapon.bullet_radius,
+                        spawn_x,
+                        spawn_y,
+                        aim_x,
+                        aim_y,
+                    ));
+                }
+            }
         }
 
         for (id, reload_time) in reload_requests {
@@ -1073,27 +1308,138 @@ impl GameWorld {
                 vx: aim_x * bullet_speed,
                 vy: aim_y * bullet_speed,
                 life: bullet_life,
+                bounces_remaining: 0,
             });
+        }
+
+        for (owner_id, weapon_id, damage, x, y, aim_x, aim_y, range, arc_deg) in melee_swings {
+            let candidates: Vec<(u8, f32, f32)> = self
+                .players
+                .values()
+                .filter(|player| {
+                    player.alive
+                        && player.id != owner_id
+                        && !player.spawn_protected()
+                        && self.friendly_fire
+                })
+                .map(|player| (player.id, player.x, player.y))
+                .collect();
+            let targets = weapons::melee_targets(x, y, aim_x, aim_y, range, arc_deg, &candidates);
+            let hit_x = x + aim_x * range * 0.55;
+            let hit_y = y + aim_y * range * 0.55;
+
+            let id = self.next_effect_id;
+            self.next_effect_id += 1;
+            self.effects.push(WorldEffect::burst(
+                id,
+                EffectKind::Slash,
+                hit_x,
+                hit_y,
+                range * 0.65,
+                0.18,
+                owner_id,
+            ));
+
+            for victim_id in targets {
+                self.apply_weapon_on_hit(owner_id, victim_id, &weapon_id, hit_x, hit_y, 0.0, 0.0);
+                self.apply_damage(owner_id, victim_id, damage);
+                break;
+            }
         }
     }
 
     fn process_bullets(&mut self, dt: f32) {
-        let mut hits: Vec<(u32, u8, u8, u16, String, f32, f32)> = Vec::new();
+        let mut hits: Vec<(u32, u8, u8, u16, String, f32, f32, f32, f32)> = Vec::new();
+        let mut wall_hits: Vec<(f32, f32, f32, f32, f32, u8)> = Vec::new();
+        let mut surviving = Vec::with_capacity(self.bullets.len());
 
-        for bullet in &mut self.bullets {
+        for mut bullet in self.bullets.drain(..) {
+            let prev_x = bullet.x;
+            let prev_y = bullet.y;
             bullet.life -= dt;
             bullet.x += bullet.vx * dt;
             bullet.y += bullet.vy * dt;
-        }
 
-        self.bullets.retain(|bullet| {
-            bullet.life > 0.0
-                && bullet.x >= 0.0
-                && bullet.y >= 0.0
-                && bullet.x <= self.config.width
-                && bullet.y <= self.config.height
-                && !circle_hits_walls(bullet.x, bullet.y, bullet.radius, &self.map.walls)
-        });
+            if bullet.life <= 0.0 {
+                continue;
+            }
+            if bullet.x < 0.0
+                || bullet.y < 0.0
+                || bullet.x > self.config.width
+                || bullet.y > self.config.height
+            {
+                continue;
+            }
+            if circle_hits_walls(bullet.x, bullet.y, bullet.radius, &self.map.walls) {
+                let (impact_x, impact_y) = wall_impact_point(
+                    prev_x,
+                    prev_y,
+                    bullet.x,
+                    bullet.y,
+                    bullet.vx,
+                    bullet.vy,
+                    bullet.radius,
+                    &self.map.walls,
+                );
+                if bullet.weapon_id == abilities::POPCORN_WEAPON_ID && bullet.bounces_remaining > 0
+                {
+                    if let Some((nx, ny)) =
+                        wall_normal_at(
+                            impact_x,
+                            impact_y,
+                            bullet.vx,
+                            bullet.vy,
+                            bullet.radius,
+                            &self.map.walls,
+                        )
+                    {
+                        bullet.bounces_remaining -= 1;
+                        let (vx, vy) = abilities::deflect_popcorn(
+                            bullet.vx,
+                            bullet.vy,
+                            nx,
+                            ny,
+                            bullet.id ^ bullet.bounces_remaining as u32,
+                        );
+                        bullet.vx = vx;
+                        bullet.vy = vy;
+                        bullet.x = impact_x;
+                        bullet.y = impact_y;
+                        surviving.push(bullet);
+                        continue;
+                    }
+                }
+                wall_hits.push((
+                    impact_x,
+                    impact_y,
+                    bullet.vx,
+                    bullet.vy,
+                    bullet.radius,
+                    bullet.owner_id,
+                ));
+                continue;
+            }
+            surviving.push(bullet);
+        }
+        self.bullets = surviving;
+
+        for (impact_x, impact_y, vx, vy, radius, owner_id) in wall_hits {
+            let id = self.next_effect_id;
+            self.next_effect_id += 1;
+            let speed = (vx * vx + vy * vy).sqrt().max(1.0);
+            let mut effect = WorldEffect::burst(
+                id,
+                EffectKind::WallHit,
+                impact_x,
+                impact_y,
+                radius.max(6.0),
+                0.22,
+                owner_id,
+            );
+            effect.target_x = vx / speed;
+            effect.target_y = vy / speed;
+            self.effects.push(effect);
+        }
 
         for bullet in &self.bullets {
             for player in self.players.values() {
@@ -1120,6 +1466,8 @@ impl GameWorld {
                         bullet.weapon_id.clone(),
                         bullet.x,
                         bullet.y,
+                        bullet.vx,
+                        bullet.vy,
                     ));
                     break;
                 }
@@ -1132,15 +1480,115 @@ impl GameWorld {
 
         let hit_bullet_ids: std::collections::HashSet<u32> = hits
             .iter()
-            .map(|(bullet_id, _, _, _, _, _, _)| *bullet_id)
+            .map(|(bullet_id, _, _, _, _, _, _, _, _)| *bullet_id)
             .collect();
         self.bullets
             .retain(|bullet| !hit_bullet_ids.contains(&bullet.id));
 
-        for (_, killer_id, victim_id, damage, weapon_id, hit_x, hit_y) in hits {
-            self.apply_weapon_on_hit(killer_id, victim_id, &weapon_id, hit_x, hit_y);
+        for (
+            _,
+            killer_id,
+            victim_id,
+            damage,
+            weapon_id,
+            hit_x,
+            hit_y,
+            knockback_vx,
+            knockback_vy,
+        ) in hits
+        {
+            if weapon_id == abilities::POPCORN_WEAPON_ID {
+                self.apply_popcorn_hit(killer_id, victim_id, hit_x, hit_y);
+            } else {
+                self.apply_weapon_on_hit(
+                    killer_id,
+                    victim_id,
+                    &weapon_id,
+                    hit_x,
+                    hit_y,
+                    knockback_vx,
+                    knockback_vy,
+                );
+            }
             self.apply_damage(killer_id, victim_id, damage);
+            let weapon = weapons::get_or_default(&weapon_id);
+            if weapon.splash_radius > 0.0 && weapon.splash_damage > 0 {
+                self.apply_splash_damage(
+                    killer_id,
+                    victim_id,
+                    hit_x,
+                    hit_y,
+                    weapon.splash_radius,
+                    weapon.splash_damage,
+                );
+            }
         }
+    }
+
+    fn apply_splash_damage(
+        &mut self,
+        owner_id: u8,
+        primary_victim_id: u8,
+        x: f32,
+        y: f32,
+        radius: f32,
+        damage: u16,
+    ) {
+        if !self.friendly_fire {
+            return;
+        }
+
+        let id = self.next_effect_id;
+        self.next_effect_id += 1;
+        self.effects.push(WorldEffect::burst(
+            id,
+            EffectKind::Zap,
+            x,
+            y,
+            radius,
+            0.28,
+            owner_id,
+        ));
+
+        let victims: Vec<u8> = self
+            .players
+            .values()
+            .filter(|player| {
+                player.alive
+                    && !player.spawn_protected()
+                    && player.id != owner_id
+                    && player.id != primary_victim_id
+                    && circle_hits_circle(player.x, player.y, PLAYER_RADIUS, x, y, radius)
+            })
+            .map(|player| player.id)
+            .collect();
+
+        for victim_id in victims {
+            self.apply_damage(owner_id, victim_id, damage);
+        }
+    }
+
+    fn apply_popcorn_hit(&mut self, owner_id: u8, victim_id: u8, hit_x: f32, hit_y: f32) {
+        let Some(victim) = self.players.get_mut(&victim_id) else {
+            return;
+        };
+        if !victim.alive {
+            return;
+        }
+        victim.marked_until = abilities::POPCORN_MARK_DURATION;
+        victim.mark_damage_multiplier = abilities::POPCORN_MARK_DAMAGE_MULT;
+
+        let id = self.next_effect_id;
+        self.next_effect_id += 1;
+        self.effects.push(WorldEffect::burst(
+            id,
+            EffectKind::Mark,
+            hit_x,
+            hit_y,
+            32.0,
+            0.4,
+            owner_id,
+        ));
     }
 
     fn apply_weapon_on_hit(
@@ -1150,6 +1598,8 @@ impl GameWorld {
         weapon_id: &str,
         hit_x: f32,
         hit_y: f32,
+        knockback_vx: f32,
+        knockback_vy: f32,
     ) {
         let weapon = weapons::get_or_default(weapon_id);
         let Some(victim) = self.players.get_mut(&victim_id) else {
@@ -1159,25 +1609,61 @@ impl GameWorld {
             return;
         }
 
-        weapons::apply_on_hit_to_player(
+        let vfx = weapons::apply_on_hit(
             weapon.on_hit,
-            &mut victim.slowed_until,
-            &mut victim.slow_multiplier,
+            &mut weapons::HitStatusApply {
+                slowed_until: &mut victim.slowed_until,
+                slow_multiplier: &mut victim.slow_multiplier,
+                marked_until: &mut victim.marked_until,
+                mark_damage_multiplier: &mut victim.mark_damage_multiplier,
+                poison_until: &mut victim.poison_until,
+                poison_dps: &mut victim.poison_dps,
+            },
         );
 
-        if matches!(weapon.on_hit, weapons::WeaponOnHit::Slow { .. }) {
-            let id = self.next_effect_id;
-            self.next_effect_id += 1;
-            self.effects.push(WorldEffect {
-                id,
-                kind: EffectKind::Splat,
-                x: hit_x,
-                y: hit_y,
-                radius: 28.0,
-                life: 0.35,
-                owner_id,
-            });
+        if matches!(weapon.on_hit, weapons::WeaponOnHit::Poison { .. }) {
+            victim.poison_owner_id = owner_id;
+            victim.poison_accumulator = 0.0;
         }
+
+        if let weapons::WeaponOnHit::Knockback { impulse } = weapon.on_hit {
+            let (dir_x, dir_y) = if knockback_vx != 0.0 || knockback_vy != 0.0 {
+                normalize(knockback_vx, knockback_vy)
+            } else {
+                normalize(victim.x - hit_x, victim.y - hit_y)
+            };
+            let next_x = (victim.x + dir_x * impulse)
+                .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
+            let next_y = (victim.y + dir_y * impulse)
+                .clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
+            if !circle_hits_walls(next_x, victim.y, PLAYER_RADIUS, &self.map.walls) {
+                victim.x = next_x;
+            }
+            if !circle_hits_walls(victim.x, next_y, PLAYER_RADIUS, &self.map.walls) {
+                victim.y = next_y;
+            }
+        }
+
+        let effect_kind = match vfx {
+            weapons::HitVfxKind::None => return,
+            weapons::HitVfxKind::Splat => EffectKind::Splat,
+            weapons::HitVfxKind::Mark => EffectKind::Mark,
+            weapons::HitVfxKind::Poison => EffectKind::Poison,
+            weapons::HitVfxKind::Zap => EffectKind::Zap,
+            weapons::HitVfxKind::Slash => EffectKind::Slash,
+        };
+
+        let id = self.next_effect_id;
+        self.next_effect_id += 1;
+        self.effects.push(WorldEffect::burst(
+            id,
+            effect_kind,
+            hit_x,
+            hit_y,
+            28.0,
+            0.35,
+            owner_id,
+        ));
     }
 
     pub(crate) fn apply_damage(&mut self, killer_id: u8, victim_id: u8, damage: u16) {
@@ -1188,7 +1674,15 @@ impl GameWorld {
             if !victim.alive || victim.spawn_protected() {
                 return;
             }
-            victim.hp = victim.hp.saturating_sub(damage);
+            let multiplier = if victim.marked_until > 0.0 {
+                victim.mark_damage_multiplier
+            } else {
+                1.0
+            };
+            let adjusted = ((damage as f32) * multiplier)
+                .round()
+                .clamp(1.0, f32::from(u16::MAX)) as u16;
+            victim.hp = victim.hp.saturating_sub(adjusted);
             victim.hp == 0
         };
 
@@ -1219,6 +1713,8 @@ impl GameWorld {
             victim.deaths += 1;
             victim.respawn_timer = RESPAWN_TIME;
             victim.reload_timer = 0.0;
+            victim.directors_cut_until = 0.0;
+            victim.directors_cut_shots = 0;
         }
 
         if let Some(killer) = self.players.get_mut(&killer_id) {
@@ -1323,6 +1819,20 @@ impl GameWorld {
     }
 }
 
+fn apply_hack_inversion(player: &Player, input: &InputSnapshot) -> InputSnapshot {
+    if player.controls_inverted_until <= 0.0 {
+        return input.clone();
+    }
+
+    InputSnapshot {
+        dx: -input.dx,
+        dy: -input.dy,
+        aim_x: -input.aim_x,
+        aim_y: -input.aim_y,
+        ..input.clone()
+    }
+}
+
 pub fn normalize(x: f32, y: f32) -> (f32, f32) {
     let length = (x * x + y * y).sqrt();
     if length > 1.0 {
@@ -1338,6 +1848,80 @@ pub fn circle_hits_walls(x: f32, y: f32, radius: f32, walls: &[Rect]) -> bool {
     walls
         .iter()
         .any(|wall| circle_hits_rect(x, y, radius, wall))
+}
+
+pub fn wall_impact_point(
+    prev_x: f32,
+    prev_y: f32,
+    x: f32,
+    y: f32,
+    vx: f32,
+    vy: f32,
+    radius: f32,
+    walls: &[Rect],
+) -> (f32, f32) {
+    for wall in walls {
+        if !circle_hits_rect(x, y, radius, wall) {
+            continue;
+        }
+        if !circle_hits_rect(prev_x, prev_y, radius, wall) {
+            return ((prev_x + x) * 0.5, (prev_y + y) * 0.5);
+        }
+        return snap_to_wall_face(x, y, vx, vy, radius, wall);
+    }
+    (x, y)
+}
+
+fn snap_to_wall_face(x: f32, y: f32, vx: f32, vy: f32, radius: f32, wall: &Rect) -> (f32, f32) {
+    if vx.abs() >= vy.abs() {
+        if vx > 0.0 {
+            (
+                wall.x - radius,
+                y.clamp(wall.y + radius, wall.y + wall.h - radius),
+            )
+        } else {
+            (
+                wall.x + wall.w + radius,
+                y.clamp(wall.y + radius, wall.y + wall.h - radius),
+            )
+        }
+    } else if vy > 0.0 {
+        (
+            x.clamp(wall.x + radius, wall.x + wall.w - radius),
+            wall.y - radius,
+        )
+    } else {
+        (
+            x.clamp(wall.x + radius, wall.x + wall.w - radius),
+            wall.y + wall.h + radius,
+        )
+    }
+}
+
+pub fn wall_normal_at(
+    x: f32,
+    y: f32,
+    vx: f32,
+    vy: f32,
+    radius: f32,
+    walls: &[Rect],
+) -> Option<(f32, f32)> {
+    for wall in walls {
+        if !circle_hits_rect(x, y, radius, wall) {
+            continue;
+        }
+        if vx.abs() >= vy.abs() {
+            if vx > 0.0 {
+                return Some((-1.0, 0.0));
+            }
+            return Some((1.0, 0.0));
+        }
+        if vy > 0.0 {
+            return Some((0.0, -1.0));
+        }
+        return Some((0.0, 1.0));
+    }
+    None
 }
 
 pub fn circle_hits_rect(x: f32, y: f32, radius: f32, rect: &Rect) -> bool {
@@ -1392,7 +1976,112 @@ mod tests {
             vx,
             vy,
             life: weapon.bullet_life,
+            bounces_remaining: 0,
         }
+    }
+
+    fn test_jacob_player() -> GameWorld {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Jacob".to_string(),
+            "jacob".to_string(),
+            "glock".to_string(),
+        );
+        world.reset_for_match(20, 0, WinCondition::Kills, true, false);
+        for player in world.players.values_mut() {
+            player.spawn_protection = 0.0;
+            player.ability_charge = abilities::ABILITY_CHARGE_MAX;
+        }
+        world
+    }
+
+    #[test]
+    fn jacob_directors_cut_grants_popcorn_shots() {
+        let mut world = test_jacob_player();
+        world.inputs.insert(
+            0,
+            InputSnapshot {
+                ability: true,
+                ..Default::default()
+            },
+        );
+        world.process_ability_input();
+        world.ability_held.insert(0, true);
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(
+            player.directors_cut_shots,
+            abilities::JACOB_DIRECTORS_CUT_SHOTS
+        );
+        assert!(player.directors_cut_until > 0.0);
+        assert_eq!(player.ability_charge, 0.0);
+    }
+
+    #[test]
+    fn popcorn_marks_enemy_on_hit() {
+        let mut world = test_world_with_two_players();
+        world.players.get_mut(&0).unwrap().character_id = "jacob".to_string();
+        let victim_pos = {
+            let victim = world.players.get(&1).unwrap();
+            (victim.x, victim.y)
+        };
+
+        world.bullets.push(Bullet {
+            id: 1,
+            owner_id: 0,
+            weapon_id: abilities::POPCORN_WEAPON_ID.to_string(),
+            damage: abilities::POPCORN_DAMAGE,
+            radius: abilities::POPCORN_RADIUS,
+            x: victim_pos.0 - 12.0,
+            y: victim_pos.1,
+            vx: 720.0,
+            vy: 0.0,
+            life: abilities::POPCORN_LIFE,
+            bounces_remaining: 0,
+        });
+
+        world.process_bullets(1.0 / 60.0);
+
+        let victim = world.players.get(&1).unwrap();
+        assert!(victim.marked_until > 0.0);
+        assert_eq!(
+            victim.mark_damage_multiplier,
+            abilities::POPCORN_MARK_DAMAGE_MULT
+        );
+    }
+
+    #[test]
+    fn popcorn_bounces_off_wall() {
+        let mut world = GameWorld::default();
+        let wall = world
+            .map
+            .walls
+            .iter()
+            .find(|wall| wall.w >= 80.0 && wall.h >= 80.0)
+            .cloned()
+            .expect("interior wall");
+
+        world.bullets.push(Bullet {
+            id: 1,
+            owner_id: 0,
+            weapon_id: abilities::POPCORN_WEAPON_ID.to_string(),
+            damage: abilities::POPCORN_DAMAGE,
+            radius: abilities::POPCORN_RADIUS,
+            x: wall.x - 8.0,
+            y: wall.y + wall.h / 2.0,
+            vx: 720.0,
+            vy: 0.0,
+            life: abilities::POPCORN_LIFE,
+            bounces_remaining: 3,
+        });
+
+        world.process_bullets(1.0 / 60.0);
+
+        assert_eq!(world.bullets.len(), 1);
+        let bullet = &world.bullets[0];
+        assert_eq!(bullet.bounces_remaining, 2);
+        assert!(bullet.life > 0.0);
     }
 
     #[test]
@@ -1490,6 +2179,10 @@ mod tests {
         world.process_bullets(1.0 / 60.0);
 
         assert!(world.bullets.is_empty());
+        assert!(world
+            .effects
+            .iter()
+            .any(|effect| effect.kind == EffectKind::WallHit));
     }
 
     #[test]
@@ -1540,6 +2233,7 @@ mod tests {
             vx: 720.0,
             vy: 0.0,
             life: weapon.bullet_life,
+            bounces_remaining: 0,
         });
 
         world.process_bullets(1.0 / 60.0);
@@ -1652,7 +2346,7 @@ mod tests {
 
     #[test]
     fn bailey_truth_nuke_damages_players_in_blast() {
-        use crate::abilities::{ABILITY_CHARGE_MAX, BAILEY_NUKE_DAMAGE};
+        use crate::abilities::ABILITY_CHARGE_MAX;
 
         let mut world = test_world_with_two_players();
         {
@@ -1679,21 +2373,71 @@ mod tests {
         world.process_ability_input();
         world.ability_held.insert(1, true);
 
-        for _ in 0..90 {
+        for _ in 0..150 {
             world.tick(1.0 / 60.0);
         }
 
         let victim = world.players.get(&0).unwrap();
-        assert_eq!(victim.hp, PLAYER_MAX_HP - BAILEY_NUKE_DAMAGE);
-        assert!(world
-            .effects
-            .iter()
-            .any(|effect| effect.kind == EffectKind::Explosion));
+        assert!(victim.hp < PLAYER_MAX_HP);
+        assert!(world.effects.iter().any(|effect| {
+            effect.kind == EffectKind::TruthExplosion || effect.kind == EffectKind::Explosion
+        }));
+    }
+
+    #[test]
+    fn bailey_truth_nuke_respects_blast_falloff() {
+        use crate::abilities::{blast_damage_at_distance, BAILEY_NUKE_DAMAGE, BAILEY_NUKE_RADIUS};
+
+        assert_eq!(
+            blast_damage_at_distance(BAILEY_NUKE_DAMAGE, 0.0, BAILEY_NUKE_RADIUS),
+            BAILEY_NUKE_DAMAGE
+        );
+        let edge =
+            blast_damage_at_distance(BAILEY_NUKE_DAMAGE, BAILEY_NUKE_RADIUS, BAILEY_NUKE_RADIUS);
+        assert!(edge < BAILEY_NUKE_DAMAGE);
+        assert!(edge >= 20);
+    }
+
+    #[test]
+    fn bailey_truth_nuke_damages_even_when_friendly_fire_off() {
+        use crate::abilities::ABILITY_CHARGE_MAX;
+
+        let mut world = test_world_with_two_players();
+        world.friendly_fire = false;
+        {
+            let caster = world.players.get_mut(&1).unwrap();
+            caster.ability_charge = ABILITY_CHARGE_MAX;
+            caster.x = 400.0;
+            caster.y = 400.0;
+        }
+        {
+            let victim = world.players.get_mut(&0).unwrap();
+            victim.x = 700.0;
+            victim.y = 400.0;
+        }
+
+        world.set_input(
+            1,
+            InputSnapshot {
+                ability: true,
+                aim_x: 1.0,
+                aim_y: 0.0,
+                ..Default::default()
+            },
+        );
+        world.process_ability_input();
+        world.ability_held.insert(1, true);
+
+        for _ in 0..150 {
+            world.tick(1.0 / 60.0);
+        }
+
+        assert!(world.players.get(&0).unwrap().hp < PLAYER_MAX_HP);
     }
 
     #[test]
     fn sonny_reverse_shell_hacks_nearest_enemy() {
-        use crate::abilities::ABILITY_CHARGE_MAX;
+        use crate::abilities::{ABILITY_CHARGE_MAX, SONNY_HACK_DURATION};
 
         let mut world = test_world_with_two_players();
         {
@@ -1721,8 +2465,63 @@ mod tests {
         world.ability_held.insert(0, true);
 
         let victim = world.players.get(&1).unwrap();
-        assert!(victim.controls_inverted_until > 0.0);
+        assert_eq!(victim.controls_inverted_until, SONNY_HACK_DURATION);
         assert_eq!(world.players.get(&0).unwrap().ability_charge, 0.0);
+        assert!(world
+            .effects
+            .iter()
+            .any(|effect| effect.kind == EffectKind::Hack));
+    }
+
+    #[test]
+    fn apply_hack_inversion_flips_input() {
+        let player = {
+            let mut world = test_world_with_two_players();
+            let player = world.players.remove(&0).unwrap();
+            player
+        };
+        let mut hacked = player.clone();
+        hacked.controls_inverted_until = 2.0;
+        let input = InputSnapshot {
+            dx: 1.0,
+            dy: 0.0,
+            aim_x: 1.0,
+            aim_y: 0.0,
+            ..Default::default()
+        };
+
+        let flipped = apply_hack_inversion(&hacked, &input);
+        assert_eq!(flipped.dx, -1.0);
+        assert_eq!(flipped.dy, 0.0);
+        assert_eq!(flipped.aim_x, -1.0);
+        assert_eq!(flipped.aim_y, 0.0);
+
+        let normal = apply_hack_inversion(&player, &input);
+        assert_eq!(normal.dx, 1.0);
+        assert_eq!(normal.aim_x, 1.0);
+    }
+
+    #[test]
+    fn hacked_player_inverts_movement_during_tick() {
+        let mut world = test_world_with_two_players();
+        {
+            let player = world.players.get_mut(&0).unwrap();
+            player.controls_inverted_until = 4.0;
+            player.x = 960.0;
+            player.y = 540.0;
+        }
+
+        world.set_input(
+            0,
+            InputSnapshot {
+                dx: 1.0,
+                dy: 0.0,
+                ..Default::default()
+            },
+        );
+        world.tick(0.1);
+
+        assert!(world.players.get(&0).unwrap().x < 960.0);
     }
 
     #[test]
@@ -1738,11 +2537,11 @@ mod tests {
             player.save_ammo_to_active_slot();
         }
 
-        world
-            .players
-            .get_mut(&0)
-            .unwrap()
-            .apply_loadout("bailey".to_string(), "glock".to_string());
+        world.players.get_mut(&0).unwrap().apply_loadout(
+            "bailey".to_string(),
+            "glock".to_string(),
+            false,
+        );
 
         let player = world.players.get(&0).unwrap();
         assert_eq!(player.character_id, "bailey");
@@ -1753,6 +2552,45 @@ mod tests {
             weapons::get_or_default("glock").max_ammo
         );
         assert_eq!(player.secondary.as_ref().unwrap().ammo, 5);
+    }
+
+    #[test]
+    fn apply_loadout_defers_character_change_while_alive_in_match() {
+        let mut world = test_world_with_two_players();
+        world.players.get_mut(&0).unwrap().apply_loadout(
+            "bailey".to_string(),
+            "glock".to_string(),
+            true,
+        );
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.character_id, "sonny");
+        assert_eq!(player.pending_character_id.as_deref(), Some("bailey"));
+
+        world.reset_player_for_spawn(0, 0.0);
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.character_id, "bailey");
+        assert!(player.pending_character_id.is_none());
+    }
+
+    #[test]
+    fn apply_loadout_clears_pending_when_reselecting_current_character() {
+        let mut world = test_world_with_two_players();
+        world.players.get_mut(&0).unwrap().apply_loadout(
+            "bailey".to_string(),
+            "glock".to_string(),
+            true,
+        );
+        world.players.get_mut(&0).unwrap().apply_loadout(
+            "sonny".to_string(),
+            "glock".to_string(),
+            true,
+        );
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.character_id, "sonny");
+        assert!(player.pending_character_id.is_none());
     }
 
     #[test]

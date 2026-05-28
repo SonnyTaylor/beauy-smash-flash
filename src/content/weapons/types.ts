@@ -8,6 +8,8 @@ export interface WeaponMeta {
   pivot: { x: number; y: number };
   muzzle: { x: number; y: number };
   defaultRotation: number;
+  projectileSprite?: string;
+  projectileScale?: number;
 }
 
 export interface WeaponDefinition {

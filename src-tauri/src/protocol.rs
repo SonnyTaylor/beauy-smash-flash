@@ -144,7 +144,16 @@ pub struct InputSnapshot {
 pub enum EffectKind {
     Explosion,
     AimReticle,
+    Hack,
+    TruthNuke,
+    TruthExplosion,
     Splat,
+    Mark,
+    Poison,
+    Zap,
+    Slash,
+    WallHit,
+    DirectorsCut,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -156,6 +165,16 @@ pub struct WorldEffectSnapshot {
     pub radius: f32,
     pub life: f32,
     pub owner_id: u8,
+    #[serde(default)]
+    pub origin_x: f32,
+    #[serde(default)]
+    pub origin_y: f32,
+    #[serde(default)]
+    pub target_x: f32,
+    #[serde(default)]
+    pub target_y: f32,
+    #[serde(default)]
+    pub max_life: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -206,6 +225,8 @@ pub struct PlayerSnapshot {
     pub color: [u8; 3],
     pub name: String,
     pub character_id: String,
+    #[serde(default)]
+    pub pending_character_id: Option<String>,
     pub hp: u16,
     pub max_hp: u16,
     pub ammo: u8,
@@ -224,9 +245,21 @@ pub struct PlayerSnapshot {
     #[serde(default)]
     pub ability_windup: f32,
     #[serde(default)]
+    pub ability_aim_x: f32,
+    #[serde(default)]
+    pub ability_aim_y: f32,
+    #[serde(default)]
     pub hacked_remaining: f32,
     #[serde(default)]
     pub slowed_remaining: f32,
+    #[serde(default)]
+    pub marked_remaining: f32,
+    #[serde(default)]
+    pub directors_cut_remaining: f32,
+    #[serde(default)]
+    pub directors_cut_shots: u8,
+    #[serde(default)]
+    pub poison_remaining: f32,
     #[serde(default = "default_weapon_id")]
     pub active_weapon: String,
     #[serde(default)]

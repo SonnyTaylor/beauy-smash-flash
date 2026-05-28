@@ -100,10 +100,12 @@ export function App() {
           paused={session.paused}
           isBusy={session.isBusy}
           onPauseChange={session.setPaused}
-          onLeaveToMenu={() => void session.leaveGame()}
+          onExitGame={() => void session.exitGame()}
           onReturnToLobby={() => void session.returnToLobby()}
           onRematch={() => void session.rematch()}
           onChangeLoadout={session.openLoadoutFromSession}
+          gameSettings={session.gameSettings}
+          onSaveGameSettings={session.saveGameSettings}
           showControlsHint={session.gameSettings.showControlsHint}
         />
       )}

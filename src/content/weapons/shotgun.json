@@ -1,0 +1,17 @@
+{
+  "id": "shotgun",
+  "sprite": "weapons/shotgun.png",
+  "width": 800,
+  "height": 255,
+  "displayScale": 0.125,
+  "orbitRadius": 32.0,
+  "pivot": {
+    "x": 0.2255,
+    "y": 0.4491
+  },
+  "muzzle": {
+    "x": 0.8806,
+    "y": 0.3248
+  },
+  "defaultRotation": 0.0
+}

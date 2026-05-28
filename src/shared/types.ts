@@ -131,7 +131,19 @@ export interface BulletSnapshot {
   weapon_id?: string;
 }
 
-export type EffectKind = 'explosion' | 'aim_reticle' | 'splat';
+export type EffectKind =
+  | 'explosion'
+  | 'aim_reticle'
+  | 'hack'
+  | 'truth_nuke'
+  | 'truth_explosion'
+  | 'splat'
+  | 'mark'
+  | 'poison'
+  | 'zap'
+  | 'slash'
+  | 'wall_hit'
+  | 'directors_cut';
 
 export interface WorldEffectSnapshot {
   id: number;
@@ -141,6 +153,11 @@ export interface WorldEffectSnapshot {
   radius: number;
   life: number;
   owner_id: number;
+  origin_x?: number;
+  origin_y?: number;
+  target_x?: number;
+  target_y?: number;
+  max_life?: number;
 }
 
 export interface KillFeedEntry {
@@ -158,6 +175,7 @@ export interface PlayerSnapshot {
   color: Rgb;
   name: string;
   character_id: string;
+  pending_character_id?: string | null;
   hp: number;
   max_hp: number;
   ammo: number;
@@ -172,8 +190,14 @@ export interface PlayerSnapshot {
   respawn_in: number;
   ability_charge: number;
   ability_windup: number;
+  ability_aim_x?: number;
+  ability_aim_y?: number;
   hacked_remaining: number;
   slowed_remaining?: number;
+  marked_remaining?: number;
+  directors_cut_remaining?: number;
+  directors_cut_shots?: number;
+  poison_remaining?: number;
   active_weapon?: string;
   active_slot?: number;
   reload_duration?: number;

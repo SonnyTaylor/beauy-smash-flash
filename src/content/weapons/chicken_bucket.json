@@ -1,0 +1,19 @@
+{
+  "id": "chicken_bucket",
+  "sprite": "weapons/chicken_bucket.png",
+  "width": 1004,
+  "height": 980,
+  "displayScale": 0.0747,
+  "orbitRadius": 28.0,
+  "pivot": {
+    "x": 0.2132,
+    "y": 0.4612
+  },
+  "muzzle": {
+    "x": 0.9367,
+    "y": 0.264
+  },
+  "defaultRotation": 0.0,
+  "projectileSprite": "weapons/chicken_leg.png",
+  "projectileScale": 0.022
+}

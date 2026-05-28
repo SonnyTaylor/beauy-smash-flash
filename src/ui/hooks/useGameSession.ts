@@ -25,6 +25,7 @@ import {
   writeStoredPrimaryWeaponId,
 } from '../storage';
 import { DEFAULT_LOBBY_CONFIG } from '../../shared/types';
+import { closeApplicationWindow } from '../appClose';
 
 export function useGameSession() {
   const client = useMemo(() => new TauriGameClient(), []);
@@ -337,6 +338,27 @@ export function useGameSession() {
     latestStateRef.current = null;
   }
 
+  async function exitGame() {
+    try {
+      await client.stopSession();
+    } catch {
+      // Still try to close the app.
+    }
+    teardownGameRuntime();
+    setSessionInfo(null);
+    sessionInfoRef.current = null;
+    setLobby(null);
+    setIsReady(false);
+    setError(null);
+    setLatestState(null);
+    latestStateRef.current = null;
+
+    const closed = await closeApplicationWindow();
+    if (!closed) {
+      setScreen('main-menu');
+    }
+  }
+
   async function leaveLobbyToLobbyScreen() {
     teardownGameRuntime();
     setScreen('lobby');
@@ -455,7 +477,7 @@ export function useGameSession() {
         (player) => player.id === myIdRef.current,
       );
       if (me) {
-        setSelectedCharacterId(me.character_id);
+        setSelectedCharacterId(me.pending_character_id ?? me.character_id);
         const weaponId =
           me.primary_weapon?.weapon_id ?? me.active_weapon ?? readStoredPrimaryWeaponId();
         if (weaponId) {
@@ -561,6 +583,7 @@ export function useGameSession() {
     startMatch,
     leaveLobby,
     leaveGame: leaveLobby,
+    exitGame,
     returnToLobby,
     rematch,
     goToServerSelect,

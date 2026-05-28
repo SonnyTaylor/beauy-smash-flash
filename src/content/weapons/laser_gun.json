@@ -1,0 +1,17 @@
+{
+  "id": "laser_gun",
+  "sprite": "weapons/laser_gun.png",
+  "width": 1200,
+  "height": 760,
+  "displayScale": 0.0667,
+  "orbitRadius": 30.0,
+  "pivot": {
+    "x": 0.1958,
+    "y": 0.5377
+  },
+  "muzzle": {
+    "x": 0.9144,
+    "y": 0.3371
+  },
+  "defaultRotation": 0.0
+}

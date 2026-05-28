@@ -1,4 +1,4 @@
-import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { Application, ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { CHARACTERS, getCharacter } from '../content/characters';
 import { getMap, getMapTheme } from '../content/maps';
 import { getWeapon, listWeapons, weaponOrbitPosition } from '../content/weapons';
@@ -35,23 +35,51 @@ const PLAYER_LERP_RATE = 24;
 const BULLET_TRAIL_LENGTH = 4;
 const BULLET_COLORS: Record<string, number> = {
   glock: 0xffff32,
+  scar: 0xffaa44,
+  shotgun: 0xd4d4d4,
+  raygun: 0x44ffcc,
+  laser_gun: 0xff3344,
+  chicken_bucket: 0xe8940a,
+  jarate: 0xffdd44,
+  feces: 0x8b5a2b,
   yoghurt_effect: 0xff6eb4,
+  popcorn: 0xfff2c4,
 };
+const POPCORN_TRAIL_LENGTH = 10;
 const BULLET_RADIUS_BY_WEAPON: Record<string, number> = {
   glock: BULLET_RADIUS,
+  scar: 4,
+  shotgun: 3,
+  raygun: 5,
+  laser_gun: 3,
+  chicken_bucket: 7,
+  jarate: 4,
+  feces: 5,
   yoghurt_effect: 6,
+  popcorn: 5,
 };
 const RELOAD_GUN_TILT = Math.PI * 0.42;
+const MELEE_SWING_DURATION = 0.18;
+const MELEE_SWING_ARC = Math.PI * 0.72;
 const FOG_VISION_RADIUS = 420;
+
+const HACK_GREEN_BRIGHT = 0x00ff41;
+const HACK_GREEN_NEON = 0x39ff14;
+const HACK_GREEN_DIM = 0x00b32d;
 
 function assetUrl(relativePath: string): string {
   return `/assets/${relativePath}`;
 }
 
+const MARK_GOLD = 0xffcc00;
+
 interface PlayerView {
   container: Container;
   gun: Sprite | null;
   shield: Graphics;
+  hackAura: Graphics;
+  markAura: Graphics;
+  truthReticle: Graphics;
   weaponId: string;
   targetX: number;
   targetY: number;
@@ -66,6 +94,22 @@ interface PlayerView {
   wasSpawnProtected: boolean;
   characterId: string;
   accentColor: number;
+  meleeSwingRemaining: number;
+  meleeSwingAngle: number;
+  hackedRemaining: number;
+  markedRemaining: number;
+  abilityWindup: number;
+  abilityAimX: number;
+  abilityAimY: number;
+}
+
+interface TruthNukeView {
+  gfx: Graphics;
+  targetX: number;
+  targetY: number;
+  lastX: number;
+  lastY: number;
+  lastTrailAt: number;
 }
 
 interface PickupView {
@@ -109,6 +153,7 @@ export class ArenaRenderer {
   private headTextures = new Map<string, Texture>();
   private weaponTextures = new Map<string, Texture>();
   private vfx = new VfxManager();
+  private truthNukes = new Map<number, TruthNukeView>();
   private mounted = false;
   private myId = 0;
   private mapId: string | null = null;
@@ -124,6 +169,13 @@ export class ArenaRenderer {
   private viewportWidth = 0;
   private viewportHeight = 0;
   private fogEnabled = false;
+  private directorsCutCasterId: number | null = null;
+  private readonly directorsCutGrayFilter = (() => {
+    const filter = new ColorMatrixFilter();
+    filter.desaturate();
+    filter.brightness(0.72, false);
+    return filter;
+  })();
   private fogOriginX = 0;
   private fogOriginY = 0;
   private localPlayerX = 0;
@@ -148,6 +200,10 @@ export class ArenaRenderer {
     this.knownEffectIds.clear();
     this.bulletStates.clear();
     this.vfx.clear();
+    for (const view of this.truthNukes.values()) {
+      view.gfx.destroy();
+    }
+    this.truthNukes.clear();
     for (const view of this.pickups.values()) {
       view.container.destroy({ children: true });
     }
@@ -252,6 +308,10 @@ export class ArenaRenderer {
     this.knownEffectIds.clear();
     this.bulletStates.clear();
     this.vfx.clear();
+    for (const view of this.truthNukes.values()) {
+      view.gfx.destroy();
+    }
+    this.truthNukes.clear();
     this.mounted = false;
     this.mapId = null;
     this.mapSignature = '';
@@ -265,6 +325,8 @@ export class ArenaRenderer {
     if (!this.mounted || !this.app) return;
 
     this.fogEnabled = snapshot.fog_of_war ?? false;
+    this.directorsCutCasterId =
+      snapshot.players.find((player) => (player.directors_cut_remaining ?? 0) > 0)?.id ?? null;
     const me = snapshot.players.find((player) => player.id === this.myId);
     if (me) {
       this.localPlayerX = me.x;
@@ -283,6 +345,7 @@ export class ArenaRenderer {
     this.syncBulletTargets(snapshot.bullets);
     this.syncWeaponPickups(snapshot.weapon_pickups ?? []);
     this.syncWorldEffects(snapshot.effects ?? []);
+    this.syncTruthNukes(snapshot.effects ?? []);
     this.detectMuzzleFlashes(snapshot.bullets, snapshot.players, me);
 
     const aliveIds = new Set<number>();
@@ -294,6 +357,7 @@ export class ArenaRenderer {
       aliveIds.add(player.id);
       let view = this.players.get(player.id);
       if (view && view.characterId !== player.character_id) {
+        view.truthReticle.destroy();
         view.container.destroy({ children: true });
         this.players.delete(player.id);
         view = undefined;
@@ -333,6 +397,7 @@ export class ArenaRenderer {
 
     for (const [id, view] of this.players) {
       if (!aliveIds.has(id)) {
+        view.truthReticle.destroy();
         view.container.destroy({ children: true });
         this.players.delete(id);
       }
@@ -353,16 +418,74 @@ export class ArenaRenderer {
       this.knownEffectIds.add(effect.id);
       if (effect.kind === 'explosion') {
         this.vfx.emitExplosion(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'truth_explosion') {
+        this.vfx.emitTruthExplosion(effect.x, effect.y, effect.radius);
       } else if (effect.kind === 'aim_reticle') {
         this.vfx.emitAimReticle(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'hack') {
+        const caster = this.players.get(effect.owner_id);
+        const casterX = caster?.targetX ?? effect.x;
+        const casterY = caster?.targetY ?? effect.y;
+        this.vfx.emitHackPulse(casterX, casterY, effect.x, effect.y, effect.radius);
       } else if (effect.kind === 'splat') {
         this.vfx.emitSplat(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'mark') {
+        this.vfx.emitMark(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'poison') {
+        this.vfx.emitPoison(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'zap') {
+        this.vfx.emitZap(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'slash') {
+        const view = this.players.get(effect.owner_id);
+        if (view) {
+          const aimAngle = Math.atan2(effect.y - view.targetY, effect.x - view.targetX);
+          view.meleeSwingRemaining = MELEE_SWING_DURATION;
+          view.meleeSwingAngle = aimAngle;
+          this.vfx.emitSlash(view.targetX, view.targetY, aimAngle, effect.radius);
+        }
+      } else if (effect.kind === 'wall_hit') {
+        const dirX = effect.target_x ?? 1;
+        const dirY = effect.target_y ?? 0;
+        this.vfx.emitWallImpact(effect.x, effect.y, dirX, dirY, effect.radius);
+      } else if (effect.kind === 'directors_cut') {
+        this.vfx.emitDirectorsCut(effect.x, effect.y, effect.radius);
       }
     }
 
     for (const id of this.knownEffectIds) {
       if (!liveIds.has(id)) {
         this.knownEffectIds.delete(id);
+      }
+    }
+  }
+
+  private syncTruthNukes(effects: WorldEffectSnapshot[]) {
+    const liveIds = new Set<number>();
+    for (const effect of effects) {
+      if (effect.kind !== 'truth_nuke') {
+        continue;
+      }
+      liveIds.add(effect.id);
+      if (this.fogEnabled && !this.isInVision(effect.x, effect.y)) {
+        continue;
+      }
+
+      let view = this.truthNukes.get(effect.id);
+      if (!view) {
+        const gfx = new Graphics();
+        this.entityLayer.addChild(gfx);
+        view = { gfx, targetX: effect.x, targetY: effect.y, lastX: effect.x, lastY: effect.y, lastTrailAt: 0 };
+        this.truthNukes.set(effect.id, view);
+      }
+      view.targetX = effect.x;
+      view.targetY = effect.y;
+      view.gfx.visible = true;
+    }
+
+    for (const [id, view] of this.truthNukes) {
+      if (!liveIds.has(id)) {
+        view.gfx.destroy();
+        this.truthNukes.delete(id);
       }
     }
   }
@@ -406,9 +529,18 @@ export class ArenaRenderer {
   private updateGun(view: PlayerView, angle: number) {
     if (!view.gun) return;
     const meta = getWeapon(view.weaponId).meta;
-    const orbit = weaponOrbitPosition(meta, angle);
+    let aimAngle = angle;
+
+    if (view.meleeSwingRemaining > 0) {
+      const progress = 1 - view.meleeSwingRemaining / MELEE_SWING_DURATION;
+      const eased = 1 - (1 - progress) ** 2.4;
+      const halfArc = MELEE_SWING_ARC * 0.5;
+      aimAngle = view.meleeSwingAngle - halfArc + eased * MELEE_SWING_ARC;
+    }
+
+    const orbit = weaponOrbitPosition(meta, aimAngle);
     view.gun.position.set(orbit.x, orbit.y);
-    view.gun.rotation = angle;
+    view.gun.rotation = aimAngle + meta.defaultRotation;
   }
 
   private syncPlayerWeapon(view: PlayerView, weaponId: string) {
@@ -516,7 +648,22 @@ export class ArenaRenderer {
 
     view.container.alpha = player.spawn_protected ? 0.85 : 1;
     view.shield.visible = player.spawn_protected;
-    if (player.spawn_protected) {
+      view.hackedRemaining = player.hacked_remaining;
+      view.markedRemaining = player.marked_remaining ?? 0;
+      view.hackAura.visible = player.hacked_remaining > 0;
+      view.container.filters =
+        this.directorsCutCasterId !== null && player.id !== this.directorsCutCasterId
+          ? [this.directorsCutGrayFilter]
+          : null;
+      view.abilityWindup = player.ability_windup;
+      view.abilityAimX = player.ability_aim_x ?? 0;
+      view.abilityAimY = player.ability_aim_y ?? 0;
+      view.truthReticle.visible =
+        player.character_id === 'bailey' && player.ability_windup > 0;
+      if (view.truthReticle.visible) {
+        view.truthReticle.position.set(view.abilityAimX, view.abilityAimY);
+      }
+      if (player.spawn_protected) {
       const pulse = 0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 120));
       view.shield.alpha = pulse;
       const scale = 1 + Math.sin(performance.now() / 200) * 0.06;
@@ -544,7 +691,8 @@ export class ArenaRenderer {
         this.bulletStates.set(bullet.id, state);
       } else {
         state.trail.push({ x: state.x, y: state.y });
-        if (state.trail.length > BULLET_TRAIL_LENGTH) {
+        const maxTrail = (state.weaponId ?? 'glock') === 'popcorn' ? POPCORN_TRAIL_LENGTH : BULLET_TRAIL_LENGTH;
+        if (state.trail.length > maxTrail) {
           state.trail.shift();
         }
         state.targetX = bullet.x;
@@ -582,9 +730,14 @@ export class ArenaRenderer {
       for (let i = 0; i < state.trail.length; i += 1) {
         const point = state.trail[i];
         const t = state.trail.length > 0 ? i / state.trail.length : 0;
-        const alpha = 0.18 + t * 0.28;
+        const alpha = state.weaponId === 'popcorn' ? 0.12 + t * 0.35 : 0.18 + t * 0.28;
         this.bullets.circle(point.x, point.y, bulletRadius * (0.55 + t * 0.25));
         this.bullets.fill({ color: bulletColor, alpha });
+      }
+
+      if (state.weaponId === 'popcorn') {
+        this.bullets.circle(state.x, state.y, bulletRadius * 1.15);
+        this.bullets.fill({ color: 0xffffff, alpha: 0.55 });
       }
 
       this.bullets.circle(state.x, state.y, bulletRadius);
@@ -609,6 +762,18 @@ export class ArenaRenderer {
     shield.visible = false;
     container.addChild(shield);
 
+    const hackAura = new Graphics();
+    hackAura.visible = false;
+    container.addChild(hackAura);
+
+    const markAura = new Graphics();
+    markAura.visible = false;
+    container.addChild(markAura);
+
+    const truthReticle = new Graphics();
+    truthReticle.visible = false;
+    this.entityLayer.addChild(truthReticle);
+
     const avatar = this.createAvatar(character.sprite, character.initials, color);
     container.addChild(avatar);
 
@@ -620,7 +785,7 @@ export class ArenaRenderer {
       gun = new Sprite(weaponTexture);
       gun.anchor.set(weaponDef.meta.pivot.x, weaponDef.meta.pivot.y);
       gun.scale.set(weaponDef.meta.displayScale);
-      gun.rotation = player.angle;
+      gun.rotation = player.angle + weaponDef.meta.defaultRotation;
       const orbit = weaponOrbitPosition(weaponDef.meta, player.angle);
       gun.position.set(orbit.x, orbit.y);
       container.addChild(gun);
@@ -655,6 +820,9 @@ export class ArenaRenderer {
       container,
       gun,
       shield,
+      hackAura,
+      markAura,
+      truthReticle,
       weaponId,
       targetX: player.x,
       targetY: player.y,
@@ -669,6 +837,13 @@ export class ArenaRenderer {
       wasSpawnProtected: player.spawn_protected,
       characterId: player.character_id,
       accentColor: color,
+      meleeSwingRemaining: 0,
+      meleeSwingAngle: player.angle,
+      hackedRemaining: player.hacked_remaining,
+      markedRemaining: player.marked_remaining ?? 0,
+      abilityWindup: player.ability_windup,
+      abilityAimX: player.ability_aim_x ?? 0,
+      abilityAimY: player.ability_aim_y ?? 0,
     };
   }
 
@@ -713,6 +888,74 @@ export class ArenaRenderer {
     return avatar;
   }
 
+  private animateTruthNukes(now: number, dt: number) {
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 90));
+    const blend = 1 - Math.exp(-PLAYER_LERP_RATE * dt * 1.4);
+    for (const view of this.truthNukes.values()) {
+      const prevX = view.gfx.x;
+      const prevY = view.gfx.y;
+      view.gfx.x += (view.targetX - view.gfx.x) * blend;
+      view.gfx.y += (view.targetY - view.gfx.y) * blend;
+      const travelAngle = Math.atan2(view.gfx.y - prevY, view.gfx.x - prevX);
+      this.vfx.drawTruthNuke(view.gfx, pulse, travelAngle);
+      if (now - view.lastTrailAt > 45) {
+        this.vfx.emitTruthFireTrail(view.gfx.x, view.gfx.y);
+        view.lastTrailAt = now;
+      }
+      view.lastX = view.gfx.x;
+      view.lastY = view.gfx.y;
+    }
+  }
+
+  private drawHackAura(view: PlayerView, now: number) {
+    const pulse = 0.45 + 0.55 * Math.abs(Math.sin(now / 90));
+    const spin = now / 320;
+    const ringRadius = PLAYER_RADIUS + 12 + Math.sin(now / 140) * 2;
+    const aura = view.hackAura;
+
+    aura.clear();
+    aura.visible = true;
+    aura.rotation = spin;
+
+    aura.circle(0, 0, ringRadius)
+      .stroke({ color: HACK_GREEN_BRIGHT, width: 2.5, alpha: 0.35 + pulse * 0.35 });
+
+    for (let i = 0; i < 6; i += 1) {
+      const angle = (i / 6) * Math.PI * 2;
+      const inner = ringRadius - 4;
+      const outer = ringRadius + 5;
+      aura.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner)
+        .lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer)
+        .stroke({ color: i % 2 === 0 ? HACK_GREEN_NEON : HACK_GREEN_DIM, width: 2, alpha: 0.55 + pulse * 0.25 });
+    }
+
+    aura.poly([
+      ringRadius * 0.55, 0,
+      ringRadius * 0.28, ringRadius * 0.48,
+      -ringRadius * 0.28, ringRadius * 0.48,
+      -ringRadius * 0.55, 0,
+      -ringRadius * 0.28, -ringRadius * 0.48,
+      ringRadius * 0.28, -ringRadius * 0.48,
+    ], true)
+      .stroke({ color: HACK_GREEN_BRIGHT, width: 1.5, alpha: 0.25 + pulse * 0.2 });
+
+    aura.circle(0, 0, PLAYER_RADIUS + 4)
+      .stroke({ color: HACK_GREEN_NEON, width: 1, alpha: 0.15 + pulse * 0.2 });
+  }
+
+  private drawMarkAura(view: PlayerView, now: number) {
+    const pulse = 0.45 + 0.55 * Math.abs(Math.sin(now / 110));
+    const ringRadius = PLAYER_RADIUS + 14 + Math.sin(now / 160) * 2;
+    const aura = view.markAura;
+
+    aura.clear();
+    aura.visible = true;
+    aura.circle(0, 0, ringRadius)
+      .stroke({ color: MARK_GOLD, width: 3, alpha: 0.35 + pulse * 0.45 })
+      .circle(0, 0, ringRadius * 0.72)
+      .stroke({ color: 0xfff4a8, width: 1.5, alpha: 0.25 + pulse * 0.25 });
+  }
+
   private renderFrame() {
     if (this.mountContainer) {
       const width = Math.max(1, this.mountContainer.clientWidth);
@@ -728,6 +971,14 @@ export class ArenaRenderer {
     this.vfx.tick(dt);
     this.drawBullets(dt);
     this.animatePickups(now, dt);
+    this.animateTruthNukes(now, dt);
+
+    const reticlePulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 120));
+    for (const view of this.players.values()) {
+      if (view.truthReticle.visible) {
+        this.vfx.drawTruthReticle(view.truthReticle, 150, reticlePulse);
+      }
+    }
 
     const myView = this.players.get(this.myId);
     if (myView) {
@@ -759,8 +1010,26 @@ export class ArenaRenderer {
       const gunBlend = view.isReloading ? 0.32 : 0.48;
       view.displayGunAngle += gunDelta * gunBlend;
 
+      if (view.meleeSwingRemaining > 0) {
+        view.meleeSwingRemaining = Math.max(0, view.meleeSwingRemaining - dt);
+      }
+
       if (view.gun) {
         this.updateGun(view, view.displayGunAngle);
+      }
+
+      if (view.hackedRemaining > 0) {
+        this.drawHackAura(view, now);
+      } else {
+        view.hackAura.clear();
+        view.hackAura.visible = false;
+      }
+
+      if (view.markedRemaining > 0) {
+        this.drawMarkAura(view, now);
+      } else {
+        view.markAura.clear();
+        view.markAura.visible = false;
       }
 
       const dx = view.container.x - prevX;
@@ -963,6 +1232,7 @@ export class ArenaRenderer {
   }
 
   private async loadTextures() {
+    await this.vfx.loadAssets();
     await Promise.all(
       listWeapons().map(async (weapon) => {
         const texture = await loadTextureFromUrl(assetUrl(weapon.meta.sprite));
