@@ -3,7 +3,7 @@ import type { Gamemode, WinCondition } from '../shared/types';
 export const GAMEMODE_OPTIONS: Array<{ id: Gamemode; label: string; available: boolean }> = [
   { id: 'deathmatch', label: 'Deathmatch', available: true },
   { id: 'team_deathmatch', label: 'Team Deathmatch', available: false },
-  { id: 'last_mate_standing', label: 'Last Mate Standing', available: false },
+  { id: 'last_mate_standing', label: 'Last Mate Standing', available: true },
 ];
 
 export const GLOCK_RELOAD_SECS = 1.2;

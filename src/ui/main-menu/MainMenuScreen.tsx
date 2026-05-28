@@ -1,3 +1,4 @@
+import { CopyChip } from '../components/CopyChip';
 import { FloatingHeads } from './FloatingHeads';
 import { MainMenu } from './MainMenu';
 
@@ -26,7 +27,11 @@ export function MainMenuScreen({
         isBusy={isBusy}
         error={error}
       />
-      {localIp && <span className="lan-ip">Your IP: {localIp}</span>}
+      {localIp && (
+        <div className="lan-ip">
+          <CopyChip label="Your IP" value={localIp} className="meta-chip lan-ip-chip" />
+        </div>
+      )}
     </>
   );
 }

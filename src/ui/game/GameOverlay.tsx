@@ -25,6 +25,9 @@ const CONTROLS_HINT_VISIBLE_MS = 6500;
 
 function matchGoalLabel(state: StateSnapshot | null): string {
   if (!state) return '';
+  if (state.gamemode === 'last_mate_standing') {
+    return 'Last mate standing — no respawns';
+  }
   if (state.win_condition === 'time') {
     return state.time_limit_secs > 0
       ? `Highest score after ${formatMatchTime(state.time_limit_secs)}`
@@ -76,7 +79,10 @@ function Podium({
             key={player.id}
             className={`podium-slot podium-place-${place} ${isWinner ? 'podium-winner' : ''}`}
             style={
-              { '--accent': `rgb(${character.color.join(' ')})` } as React.CSSProperties
+              {
+                '--accent': `rgb(${character.color.join(' ')})`,
+                '--podium-delay': `${place * 0.12}s`,
+              } as React.CSSProperties
             }
           >
             <span className="podium-rank">{place === 1 ? '1st' : place === 2 ? '2nd' : '3rd'}</span>
@@ -115,6 +121,7 @@ export function GameOverlay({
   onChangeLoadout,
   gameSettings,
   onSaveGameSettings,
+  onTestSound,
   showControlsHint = true,
 }: {
   state: StateSnapshot | null;
@@ -131,8 +138,10 @@ export function GameOverlay({
   onChangeLoadout: () => void;
   gameSettings: GameSettings;
   onSaveGameSettings: (settings: GameSettings) => void;
+  onTestSound?: (volume: number) => void;
 }) {
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const [pauseView, setPauseView] = useState<'menu' | 'settings'>('menu');
   const me = state?.players.find((player) => player.id === myId) ?? null;
   const character = getCharacter(me?.character_id ?? selectedCharacter.id);
   const pendingCharacter = me?.pending_character_id
@@ -154,6 +163,9 @@ export function GameOverlay({
   const isSlowed = (me?.slowed_remaining ?? 0) > 0;
   const isMarked = (me?.marked_remaining ?? 0) > 0;
   const isPoisoned = (me?.poison_remaining ?? 0) > 0;
+  const isSpawnProtected = (me?.spawn_protected ?? false) && (me?.alive ?? false);
+  const inBoatMode = (me?.boat_mode_remaining ?? 0) > 0;
+  const isLastMateStanding = state?.gamemode === 'last_mate_standing';
   const inDirectorsCut = (me?.directors_cut_remaining ?? 0) > 0;
   const directorsCutActive = (state?.players ?? []).some(
     (player) => (player.directors_cut_remaining ?? 0) > 0,
@@ -282,6 +294,7 @@ export function GameOverlay({
   useEffect(() => {
     if (!paused) {
       setExitConfirmOpen(false);
+      setPauseView('menu');
     }
   }, [paused]);
 
@@ -314,6 +327,18 @@ export function GameOverlay({
         className={`game-overlay ${paused || matchEnded ? 'is-paused' : ''} ${isHacked ? 'is-hacked' : ''} ${isSlowed ? 'is-slowed' : ''} ${directorsCutActive ? 'is-directors-cut' : ''}`}
         style={arenaLayout as React.CSSProperties}
       >
+        {isSpawnProtected && !matchEnded && (
+          <div className="hud-spawn-banner" role="status">
+            Spawn protected
+          </div>
+        )}
+
+        {inBoatMode && !matchEnded && (
+          <div className="hud-boat-banner" role="status">
+            Cheeky Dinghy — ram enemies · {me?.boat_mode_remaining?.toFixed(1)}s
+          </div>
+        )}
+
         {isHacked && !matchEnded && (
           <div className="hud-hack-banner" role="status">
             Reverse shell — flipped inputs · +30% damage taken · {me?.hacked_remaining.toFixed(1)}s
@@ -371,16 +396,20 @@ export function GameOverlay({
               <span className="hud-menu-text">Menu</span>
             </button>
             <div className="hud-kill-feed">
-              {(state?.kill_feed ?? []).slice().reverse().slice(0, 5).map((entry, index) => (
-                <div
-                  key={`${entry.killer_id}-${entry.victim_id}-${index}`}
-                  className="kill-feed-line"
-                >
-                  <strong>{entry.killer_name}</strong>
-                  <span> fragged </span>
-                  <strong>{entry.victim_name}</strong>
-                </div>
-              ))}
+              {(state?.kill_feed ?? []).length === 0 ? (
+                <div className="kill-feed-empty">No frags yet</div>
+              ) : (
+                (state?.kill_feed ?? []).slice().reverse().slice(0, 5).map((entry, index) => (
+                  <div
+                    key={`${entry.killer_id}-${entry.victim_id}-${index}`}
+                    className="kill-feed-line"
+                  >
+                    <strong>{entry.killer_name}</strong>
+                    <span> fragged </span>
+                    <strong>{entry.victim_name}</strong>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -512,30 +541,35 @@ export function GameOverlay({
         <div className="death-screen" role="status" aria-live="polite">
           <p className="screen-kicker">Eliminated</p>
           <h2>You&apos;re down</h2>
-          {lastKiller && lastKiller !== 'You' ? (
+          {isLastMateStanding ? (
+            <p className="death-killer">Spectating — last mate standing</p>
+          ) : lastKiller && lastKiller !== 'You' ? (
             <p className="death-killer">
               Taken out by <strong>{lastKiller}</strong>
             </p>
           ) : (
             <p className="death-killer">Respawning soon</p>
           )}
-          <div className="death-timer">
-            <span>Respawn</span>
-            <strong>{me.respawn_in.toFixed(1)}s</strong>
-          </div>
+          {!isLastMateStanding && (
+            <div className="death-timer">
+              <span>Respawn</span>
+              <strong>{me.respawn_in.toFixed(1)}s</strong>
+            </div>
+          )}
         </div>
       )}
 
       {paused && !matchEnded && (
         <div className="game-pause-backdrop" role="dialog" aria-label="Pause menu">
           <div className="game-pause-panel">
-            {!exitConfirmOpen ? (
+            {!exitConfirmOpen && pauseView === 'menu' ? (
               <>
                 <p className="screen-kicker">Paused</p>
                 <h2>Game Menu</h2>
                 {state && (
                   <div className="game-pause-stats">
                     <span>{state.map.name}</span>
+                    {isLastMateStanding && <span>Last mate standing</span>}
                     {remaining !== null && <span>{formatMatchTime(remaining)} left</span>}
                     {me && (
                       <span>
@@ -566,7 +600,59 @@ export function GameOverlay({
                   )}
                   <button
                     type="button"
-                    className="ghost-button game-pause-toggle"
+                    className="secondary-button"
+                    onClick={() => setPauseView('settings')}
+                  >
+                    Settings
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    onClick={() => setExitConfirmOpen(true)}
+                  >
+                    Exit Game
+                  </button>
+                </div>
+                <p className="game-pause-hint">Esc to resume</p>
+              </>
+            ) : !exitConfirmOpen && pauseView === 'settings' ? (
+              <>
+                <p className="screen-kicker">Paused</p>
+                <h2>Settings</h2>
+                <div className="game-pause-settings">
+                  <div className="setting-row settings-volume-row">
+                    <span className="setting-label">Master Volume</span>
+                    <div className="setting-control settings-volume-control">
+                      <input
+                        type="range"
+                        className="settings-volume-slider"
+                        min={0}
+                        max={100}
+                        value={Math.round(gameSettings.masterVolume * 100)}
+                        onChange={(event) =>
+                          onSaveGameSettings({
+                            ...gameSettings,
+                            masterVolume: Number(event.target.value) / 100,
+                          })
+                        }
+                      />
+                      <span className="settings-volume-value">
+                        {Math.round(gameSettings.masterVolume * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                  {onTestSound && (
+                    <button
+                      type="button"
+                      className="secondary-button settings-test-sound"
+                      onClick={() => onTestSound(gameSettings.masterVolume)}
+                    >
+                      Test sound
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={`toggle-pill ${gameSettings.musicEnabled ? 'on' : 'off'}`}
                     onClick={() =>
                       onSaveGameSettings({
                         ...gameSettings,
@@ -578,13 +664,22 @@ export function GameOverlay({
                   </button>
                   <button
                     type="button"
-                    className="danger-button"
-                    onClick={() => setExitConfirmOpen(true)}
+                    className={`toggle-pill ${gameSettings.showControlsHint ? 'on' : 'off'}`}
+                    onClick={() =>
+                      onSaveGameSettings({
+                        ...gameSettings,
+                        showControlsHint: !gameSettings.showControlsHint,
+                      })
+                    }
                   >
-                    Exit Game
+                    Control hints: {gameSettings.showControlsHint ? 'On' : 'Off'}
                   </button>
                 </div>
-                <p className="game-pause-hint">Esc to resume</p>
+                <div className="game-pause-actions">
+                  <button type="button" className="secondary-button" onClick={() => setPauseView('menu')}>
+                    Back
+                  </button>
+                </div>
               </>
             ) : (
               <>

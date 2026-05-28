@@ -147,6 +147,7 @@ pub async fn join_game(
                     win_condition: lobby_config.win_condition,
                     match_end_reason: None,
                     fog_of_war: lobby_config.fog_of_war,
+                    gamemode: lobby_config.gamemode,
                     weapon_pickups: Vec::new(),
                 });
             (id, world)
@@ -306,6 +307,7 @@ pub async fn start_match(
             config.score_limit,
             config.time_limit_secs,
             config.win_condition,
+            config.gamemode,
             config.friendly_fire,
             config.fog_of_war,
         );
@@ -434,6 +436,7 @@ pub async fn rematch(
             config.score_limit,
             config.time_limit_secs,
             config.win_condition,
+            config.gamemode,
             config.friendly_fire,
             config.fog_of_war,
         );

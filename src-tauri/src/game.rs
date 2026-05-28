@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::abilities::{self, is_casting};
 use crate::protocol::{
-    BulletSnapshot, EffectKind, InputSnapshot, KillFeedEntry, LobbyConfig, MapSnapshot,
+    BulletSnapshot, EffectKind, Gamemode, InputSnapshot, KillFeedEntry, LobbyConfig, MapSnapshot,
     MatchEndReason, PlayerSnapshot, RectSnapshot, StateSnapshot, WeaponPickupSnapshot,
     WeaponSlotSnapshot, WinCondition, WorldConfig, PROTOCOL_VERSION,
 };
@@ -562,6 +562,7 @@ pub struct GameWorld {
     pub time_limit_secs: u16,
     pub match_elapsed: f32,
     pub win_condition: WinCondition,
+    pub gamemode: Gamemode,
     pub friendly_fire: bool,
     pub fog_of_war: bool,
     pub match_ended: bool,
@@ -624,6 +625,7 @@ impl GameWorld {
             time_limit_secs: 0,
             match_elapsed: 0.0,
             win_condition: WinCondition::Kills,
+            gamemode: Gamemode::Deathmatch,
             friendly_fire: true,
             fog_of_war: false,
             match_ended: false,
@@ -692,6 +694,7 @@ impl GameWorld {
         score_limit: u16,
         time_limit_secs: u16,
         win_condition: WinCondition,
+        gamemode: Gamemode,
         friendly_fire: bool,
         fog_of_war: bool,
     ) {
@@ -704,6 +707,7 @@ impl GameWorld {
         self.time_limit_secs = time_limit_secs;
         self.match_elapsed = 0.0;
         self.win_condition = win_condition;
+        self.gamemode = gamemode;
         self.friendly_fire = friendly_fire;
         self.fog_of_war = fog_of_war;
         self.match_ended = false;
@@ -969,6 +973,7 @@ impl GameWorld {
         self.time_limit_secs = snapshot.time_limit_secs;
         self.match_elapsed = snapshot.match_elapsed_secs;
         self.win_condition = snapshot.win_condition;
+        self.gamemode = snapshot.gamemode;
         self.match_end_reason = snapshot.match_end_reason;
         self.fog_of_war = snapshot.fog_of_war;
         self.kill_feed = snapshot.kill_feed.clone();
@@ -1075,6 +1080,10 @@ impl GameWorld {
     }
 
     fn process_respawns(&mut self, dt: f32) {
+        if self.gamemode == Gamemode::LastMateStanding {
+            return;
+        }
+
         let respawning: Vec<u8> = self
             .players
             .values()
@@ -1832,6 +1841,22 @@ impl GameWorld {
             return;
         }
 
+        if self.gamemode == Gamemode::LastMateStanding && self.players.len() >= 2 {
+            let any_eliminated = self.players.values().any(|player| !player.alive);
+            let alive: Vec<u8> = self
+                .players
+                .values()
+                .filter(|player| player.alive)
+                .map(|player| player.id)
+                .collect();
+            if any_eliminated && alive.len() <= 1 {
+                self.match_ended = true;
+                self.winner_id = alive.first().copied();
+                self.match_end_reason = Some(MatchEndReason::Score);
+                return;
+            }
+        }
+
         let score_win = self.score_limit > 0
             && self
                 .players
@@ -1900,6 +1925,7 @@ impl GameWorld {
             time_limit_secs: self.time_limit_secs,
             match_elapsed_secs: self.match_elapsed,
             win_condition: self.win_condition,
+            gamemode: self.gamemode,
             match_end_reason: self.match_end_reason,
             fog_of_war: self.fog_of_war,
             weapon_pickups: self
@@ -2048,7 +2074,14 @@ mod tests {
             "bailey".to_string(),
             "glock".to_string(),
         );
-        world.reset_for_match(20, 0, WinCondition::Kills, true, false);
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+        );
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
         }
@@ -2080,7 +2113,14 @@ mod tests {
             "jacob".to_string(),
             "glock".to_string(),
         );
-        world.reset_for_match(20, 0, WinCondition::Kills, true, false);
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+        );
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
             player.ability_charge = abilities::ABILITY_CHARGE_MAX;
@@ -2402,6 +2442,30 @@ mod tests {
         let victim = world.players.get(&1).unwrap();
         assert_eq!(victim.hp, PLAYER_MAX_HP);
         assert!(victim.alive);
+    }
+
+    #[test]
+    fn last_mate_standing_ends_when_one_player_remains() {
+        let mut world = test_world_with_two_players();
+        world.gamemode = Gamemode::LastMateStanding;
+        world.players.get_mut(&1).unwrap().alive = false;
+
+        world.check_match_end();
+
+        assert!(world.match_ended);
+        assert_eq!(world.winner_id, Some(0));
+    }
+
+    #[test]
+    fn last_mate_standing_skips_respawns() {
+        let mut world = test_world_with_two_players();
+        world.gamemode = Gamemode::LastMateStanding;
+        world.players.get_mut(&0).unwrap().alive = false;
+        world.players.get_mut(&0).unwrap().respawn_timer = 0.0;
+
+        world.process_respawns(1.0);
+
+        assert!(!world.players.get(&0).unwrap().alive);
     }
 
     #[test]

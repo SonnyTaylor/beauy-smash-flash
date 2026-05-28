@@ -669,24 +669,43 @@ button:disabled {
   right: 18px;
   bottom: 14px;
   z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
-.lan-ip::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--cyan);
-  box-shadow: 0 0 10px var(--cyan);
+.lan-ip-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.copy-chip-button {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.copy-chip-button:hover {
+  background: rgba(0, 255, 255, 0.12);
+  color: var(--text);
+}
+
+.meta-chip-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.meta-chip-body {
+  display: grid;
+  gap: 2px;
 }
 
 /* Flow screens (server select / character select / lobby). */
@@ -1539,6 +1558,157 @@ h2 {
 
 .hud-kill-feed:empty {
   display: none;
+}
+
+.kill-feed-empty {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-style: italic;
+  letter-spacing: 0.04em;
+}
+
+.hud-spawn-banner,
+.hud-boat-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 6;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.hud-spawn-banner {
+  border: 1px solid rgba(0, 255, 255, 0.35);
+  background: rgba(0, 255, 255, 0.12);
+  color: #b8ffff;
+}
+
+.hud-boat-banner {
+  border: 1px solid rgba(80, 180, 255, 0.35);
+  background: rgba(40, 120, 220, 0.18);
+  color: #cfe8ff;
+}
+
+.hud-weapon-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.hud-weapon-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.hud-weapon-icon span {
+  position: absolute;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.hud-weapon-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cycle-soon {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lobby-network-note {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(0, 255, 255, 0.05);
+  color: var(--mute-strong);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.arena-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 6, 14, 0.82);
+  backdrop-filter: blur(8px);
+}
+
+.arena-loading-panel {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 28px 36px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(12, 16, 30, 0.92);
+  text-align: center;
+}
+
+.arena-loading-spinner {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 6px;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: arena-spin 0.8s linear infinite;
+}
+
+.arena-loading-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+@keyframes arena-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.settings-test-sound {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.game-pause-settings {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  margin: 8px 0 4px;
+}
+
+@keyframes podium-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .kill-feed-line {
@@ -2578,6 +2748,8 @@ h2 {
   border-radius: 12px;
   background: rgba(15, 19, 36, 0.72);
   width: 100%;
+  animation: podium-in 420ms ease-out both;
+  animation-delay: var(--podium-delay, 0s);
 }
 
 .podium-place-1 {

@@ -80,15 +80,19 @@ export function LobbySettingsPanel({
         <SettingRow label="Gamemode">
           <Cycle
             value={config.gamemode}
-            values={GAMEMODE_OPTIONS.filter((option) => option.available).map((option) => ({
+            values={GAMEMODE_OPTIONS.map((option) => ({
               id: option.id,
-              label: option.label,
+              label: option.available ? option.label : `${option.label} (Soon)`,
+              disabled: !option.available,
             }))}
             disabled={!isHost || GAMEMODE_OPTIONS.filter((option) => option.available).length <= 1}
             onChange={(id) => patch({ gamemode: id as Gamemode })}
             fallback={gamemodeName}
           />
         </SettingRow>
+        {config.gamemode === 'last_mate_standing' && (
+          <p className="setting-hint">No respawns — last player standing wins.</p>
+        )}
 
         <SettingRow label="Win Condition">
           <Cycle

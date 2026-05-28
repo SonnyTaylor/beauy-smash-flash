@@ -6,6 +6,23 @@ function slotLabel(slot: WeaponSlotSnapshot | null | undefined, fallback: string
   return getWeapon(slot.weapon_id).name;
 }
 
+function WeaponIcon({ weaponId }: { weaponId: string }) {
+  const weapon = getWeapon(weaponId);
+  return (
+    <span className="hud-weapon-icon" aria-hidden>
+      <img
+        src={`/assets/weapons/${weaponId}.png`}
+        alt=""
+        draggable={false}
+        onError={(event) => {
+          event.currentTarget.style.display = 'none';
+        }}
+      />
+      <span>{weapon.name.slice(0, 2).toUpperCase()}</span>
+    </span>
+  );
+}
+
 export function HudWeaponBar({
   activeWeapon,
   activeSlot,
@@ -23,6 +40,7 @@ export function HudWeaponBar({
     <div className="hud-weapon-bar">
       <div className={`hud-weapon-slot ${activeSlot === 0 ? 'is-active' : ''}`}>
         <span className="hud-weapon-key">1</span>
+        {primary ? <WeaponIcon weaponId={primary.weapon_id} /> : null}
         <span className="hud-weapon-name">{slotLabel(primary, active.name)}</span>
         {primary && (
           <span className="hud-weapon-ammo">
@@ -32,6 +50,7 @@ export function HudWeaponBar({
       </div>
       <div className={`hud-weapon-slot ${activeSlot === 1 ? 'is-active' : ''}`}>
         <span className="hud-weapon-key">2</span>
+        {secondary ? <WeaponIcon weaponId={secondary.weapon_id} /> : null}
         <span className="hud-weapon-name">{slotLabel(secondary, 'Empty')}</span>
         {secondary && (
           <span className="hud-weapon-ammo">

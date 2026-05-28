@@ -27,9 +27,10 @@ fn default_primary_weapon_id() -> String {
     "glock".to_string()
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Gamemode {
+    #[default]
     Deathmatch,
     TeamDeathmatch,
     LastMateStanding,
@@ -314,6 +315,8 @@ pub struct StateSnapshot {
     pub match_end_reason: Option<MatchEndReason>,
     #[serde(default)]
     pub fog_of_war: bool,
+    #[serde(default)]
+    pub gamemode: Gamemode,
     #[serde(default)]
     pub weapon_pickups: Vec<WeaponPickupSnapshot>,
 }

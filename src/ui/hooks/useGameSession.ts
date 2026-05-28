@@ -61,6 +61,7 @@ export function useGameSession() {
   const [localIp, setLocalIp] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [matchEnded, setMatchEnded] = useState(false);
+  const [arenaLoading, setArenaLoading] = useState(false);
   const [gameSettings, setGameSettings] = useState(readGameSettings);
   const pausedRef = useRef(false);
   const matchEndedRef = useRef(false);
@@ -68,6 +69,11 @@ export function useGameSession() {
 
   const selectedCharacter = getCharacter(selectedCharacterId);
   const players = latestState?.players ?? [];
+
+  useEffect(() => {
+    if (screen !== 'server-select') return;
+    void scanForServers();
+  }, [screen]);
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -417,7 +423,12 @@ export function useGameSession() {
         inputTimerRef.current = null;
       }
       input.detach();
-      await renderer.mount(container, state.world, playerId);
+      setArenaLoading(true);
+      try {
+        await renderer.mount(container, state.world, playerId);
+      } finally {
+        setArenaLoading(false);
+      }
       input.attach(renderer.canvas, state.world);
       if (document.pointerLockElement) {
         document.exitPointerLock();
@@ -540,6 +551,11 @@ export function useGameSession() {
     }
   }
 
+  function testSound(volume: number) {
+    audio.setMasterVolume(volume);
+    void audio.ensureReady().then(() => audio.playGunshot({ isOwnShot: true }));
+  }
+
   function backdropClass(): string {
     if (screen === 'main-menu') return 'landing-screen';
     if (screen === 'lobby') return 'lobby-screen';
@@ -574,6 +590,7 @@ export function useGameSession() {
     players,
     paused,
     setPaused,
+    arenaLoading,
     backdropClass,
     scanForServers,
     createLobbySession,
@@ -595,6 +612,7 @@ export function useGameSession() {
     openSettings,
     gameSettings,
     saveGameSettings,
+    testSound,
     setScreen,
   };
 }

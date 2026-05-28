@@ -1375,7 +1375,14 @@ mod tests {
     fn test_world_with_taj() -> GameWorld {
         let mut world = GameWorld::default();
         world.add_player(0, "Taj".to_string(), "taj".to_string(), "glock".to_string());
-        world.reset_for_match(20, 0, WinCondition::Kills, true, false);
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            crate::protocol::Gamemode::Deathmatch,
+            true,
+            false,
+        );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;
             player.x = 300.0;
@@ -1403,7 +1410,14 @@ mod tests {
             "sonny".to_string(),
             "glock".to_string(),
         );
-        world.reset_for_match(20, 0, WinCondition::Kills, true, false);
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            crate::protocol::Gamemode::Deathmatch,
+            true,
+            false,
+        );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;
             player.ability_charge = ABILITY_CHARGE_MAX;

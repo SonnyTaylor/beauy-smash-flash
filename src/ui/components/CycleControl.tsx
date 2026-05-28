@@ -15,24 +15,32 @@ export function Cycle({
   fallback,
 }: {
   value: string;
-  values: Array<{ id: string; label: string }>;
+  values: Array<{ id: string; label: string; disabled?: boolean }>;
   disabled?: boolean;
   onChange: (id: string) => void;
   fallback?: string;
 }) {
-  if (disabled || values.length <= 1) {
+  const selectable = values.filter((option) => !option.disabled);
+
+  if (disabled || selectable.length <= 1) {
     const current = values.find((option) => option.id === value)?.label ?? fallback ?? value;
-    return <span className="cycle-static">{current}</span>;
+    const locked = values.find((option) => option.id === value)?.disabled;
+    return (
+      <span className="cycle-static">
+        {current}
+        {locked && <span className="cycle-soon">Soon</span>}
+      </span>
+    );
   }
 
   const currentIndex = Math.max(
     0,
-    values.findIndex((option) => option.id === value),
+    selectable.findIndex((option) => option.id === value),
   );
 
   function step(delta: number) {
-    const nextIndex = (currentIndex + delta + values.length) % values.length;
-    onChange(values[nextIndex].id);
+    const nextIndex = (currentIndex + delta + selectable.length) % selectable.length;
+    onChange(selectable[nextIndex].id);
   }
 
   return (
@@ -40,7 +48,7 @@ export function Cycle({
       <button type="button" className="cycle-arrow" onClick={() => step(-1)} aria-label="Previous">
         ‹
       </button>
-      <span className="cycle-value">{values[currentIndex].label}</span>
+      <span className="cycle-value">{selectable[currentIndex].label}</span>
       <button type="button" className="cycle-arrow" onClick={() => step(1)} aria-label="Next">
         ›
       </button>

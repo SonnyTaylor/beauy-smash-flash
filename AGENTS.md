@@ -59,10 +59,10 @@ After making code changes, create a git commit unless the user asked for no comm
 
 ## Planned Features (not yet implemented)
 
-- Remaining character abilities (Bailey Truth Nuke is in `src-tauri/src/abilities.rs`; others still stubbed)
-- More weapons, game modes (TDM/LMS stubs in UI), fog of war
+- Team Deathmatch gamemode (LMS is playable; TDM still stubbed in UI)
 - Cosmetics, bots/zombie mode, more maps and visual map polish
-- Audio (volume slider exists in settings as placeholder)
+- Dash input (in protocol, not wired to sim)
+- Per-weapon SFX variety beyond the shared gunshot sample
 
 ## Weapons & VFX
 

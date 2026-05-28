@@ -6,10 +6,12 @@ export function SettingsScreen({
   settings,
   onSave,
   onBack,
+  onTestSound,
 }: {
   settings: GameSettings;
   onSave: (settings: GameSettings) => void;
   onBack: () => void;
+  onTestSound?: (volume: number) => void;
 }) {
   const [draft, setDraft] = useState(settings);
   const volumePercent = Math.round(draft.masterVolume * 100);
@@ -92,6 +94,15 @@ export function SettingsScreen({
                 </div>
               </div>
               <p className="setting-hint">Gunfire, hits, abilities, and UI sounds.</p>
+              {onTestSound && (
+                <button
+                  type="button"
+                  className="secondary-button settings-test-sound"
+                  onClick={() => onTestSound(draft.masterVolume)}
+                >
+                  Test sound
+                </button>
+              )}
             </div>
 
             <div className="settings-group">

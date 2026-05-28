@@ -1,3 +1,4 @@
+import { ArenaLoadingOverlay } from './components/ArenaLoadingOverlay';
 import { GameOverlay } from './game/GameOverlay';
 import { useGameSession } from './hooks/useGameSession';
 import { Lobby } from './lobby/Lobby';
@@ -12,6 +13,7 @@ export function App() {
   return (
     <div className="app-shell">
       <div ref={session.gameContainerRef} className="game-container" />
+      {session.arenaLoading && <ArenaLoadingOverlay />}
 
       {session.screen !== 'game' && (
         <div className={`screen-backdrop ${session.backdropClass()}`}>
@@ -34,6 +36,7 @@ export function App() {
                 session.setScreen('main-menu');
               }}
               onBack={() => session.setScreen('main-menu')}
+              onTestSound={session.testSound}
             />
           )}
 
@@ -106,6 +109,7 @@ export function App() {
           onChangeLoadout={session.openLoadoutFromSession}
           gameSettings={session.gameSettings}
           onSaveGameSettings={session.saveGameSettings}
+          onTestSound={session.testSound}
           showControlsHint={session.gameSettings.showControlsHint}
         />
       )}

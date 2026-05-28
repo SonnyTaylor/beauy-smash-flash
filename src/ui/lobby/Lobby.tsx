@@ -1,4 +1,5 @@
 import { type CSSProperties } from 'react';
+import { CopyChip } from '../components/CopyChip';
 import { DEFAULT_WEAPON_ID } from '../../content/weapons';
 import {
   DEFAULT_LOBBY_CONFIG,
@@ -96,12 +97,7 @@ export function Lobby({
           <h2 className="lobby-title">{config.server_name || 'LAN Game'}</h2>
         </div>
         <div className="lobby-meta">
-          {isHost && localIp && (
-            <span className="meta-chip">
-              <span className="meta-label">Share IP</span>
-              <strong>{localIp}</strong>
-            </span>
-          )}
+          {isHost && localIp && <CopyChip label="Share IP" value={localIp} />}
           <span
             className={`meta-chip ${lobbyPlayers.length < config.max_players ? 'meta-chip-open' : ''}`}
           >
@@ -112,6 +108,12 @@ export function Lobby({
           </span>
         </div>
       </header>
+
+      {lobby?.network_note && (
+        <p className="lobby-network-note" role="note">
+          {lobby.network_note}
+        </p>
+      )}
 
       <div className="lobby-body">
         <LobbySettingsPanel

@@ -232,6 +232,7 @@ export interface StateSnapshot {
   win_condition: WinCondition;
   match_end_reason: MatchEndReason | null;
   fog_of_war?: boolean;
+  gamemode?: Gamemode;
   weapon_pickups?: WeaponPickupSnapshot[];
 }
 
