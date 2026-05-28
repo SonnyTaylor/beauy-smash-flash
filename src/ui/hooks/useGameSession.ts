@@ -207,14 +207,14 @@ export function useGameSession() {
 
   async function scanForServers() {
     setIsScanning(true);
-    setScanMessage('Scanning LAN broadcast on UDP 5554...');
+    setScanMessage('Scanning LAN (broadcast + multicast on UDP 5554)...');
     try {
       const found = await client.scanServers();
       setServers(found);
       setScanMessage(
         found.length
           ? `Found ${found.length} host${found.length === 1 ? '' : 's'}.`
-          : 'No hosts found. School WiFi may block broadcast or peer-to-peer traffic; manual IP may still work.',
+          : 'No hosts found. School WiFi often blocks LAN discovery — use manual IP from the host lobby.',
       );
     } catch (caught) {
       setScanMessage(`Scan failed: ${String(caught)}. Manual IP is still available.`);

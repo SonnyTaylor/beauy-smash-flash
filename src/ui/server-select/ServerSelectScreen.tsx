@@ -40,7 +40,7 @@ export function ServerSelectScreen({
         <ul className="join-tips">
           <li>
             <span className="join-tip-label">Scan</span>
-            <span>Broadcasts on UDP 5554 — works on home networks</span>
+            <span>Broadcast + multicast on UDP 5554 — home WiFi; school networks may need manual IP</span>
           </li>
           <li>
             <span className="join-tip-label">Manual</span>

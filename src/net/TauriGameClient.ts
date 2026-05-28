@@ -80,7 +80,7 @@ export class TauriGameClient {
     });
   }
 
-  async scanServers(timeoutMs = 900): Promise<ServerInfo[]> {
+  async scanServers(timeoutMs = 1500): Promise<ServerInfo[]> {
     return invoke<ServerInfo[]>('scan_servers', { timeoutMs });
   }
 

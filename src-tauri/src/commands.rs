@@ -1,10 +1,11 @@
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::Emitter;
 use tokio::net::UdpSocket;
 
 use crate::discovery::{discovery_loop, scan_servers as scan_lan_servers};
+use crate::network::best_local_ipv4;
 use crate::game::{validate_match_config, GameWorld};
 use crate::net::{decode_server, encode_client, encode_server, GAME_PORT};
 use crate::protocol::{
@@ -104,13 +105,7 @@ pub async fn join_game(
         protocol_version: crate::protocol::PROTOCOL_VERSION,
     };
     let bytes = encode_client(&join)?;
-    socket
-        .send_to(&bytes, host_addr)
-        .await
-        .map_err(|error| error.to_string())?;
-
-    let mut buf = [0u8; 8192];
-    let assigned = wait_for_assignment(&socket, &mut buf).await?;
+    let assigned = wait_for_assignment(&socket, &host_addr, &bytes).await?;
 
     let (player_id, world) = match assigned {
         ServerMessage::Assigned {
@@ -185,26 +180,9 @@ pub async fn scan_servers(timeout_ms: Option<u64>) -> Result<Vec<ServerInfo>, St
 
 #[tauri::command]
 pub async fn local_ip() -> Result<String, String> {
-    let socket = UdpSocket::bind("0.0.0.0:0")
-        .await
-        .map_err(|error| error.to_string())?;
-
-    // UDP connect just installs a peer in the kernel and resolves the local
-    // interface for the route — no packets are sent. Try a few well-known
-    // addresses so we still resolve a sensible LAN IP without internet.
-    let candidates = ["8.8.8.8:80", "192.168.1.1:80", "10.0.0.1:80"];
-    for candidate in candidates {
-        if socket.connect(candidate).await.is_ok() {
-            if let Ok(addr) = socket.local_addr() {
-                let ip = addr.ip().to_string();
-                if ip != "0.0.0.0" && !ip.starts_with("::") {
-                    return Ok(ip);
-                }
-            }
-        }
-    }
-
-    Err("Could not determine local IP".to_string())
+    best_local_ipv4()
+        .map(|ip| ip.to_string())
+        .ok_or_else(|| "Could not determine local IP".to_string())
 }
 
 #[tauri::command]
@@ -514,14 +492,41 @@ pub async fn send_input(
     Ok(())
 }
 
-async fn wait_for_assignment(socket: &UdpSocket, buf: &mut [u8]) -> Result<ServerMessage, String> {
-    let timeout = Duration::from_secs(3);
-    let (n, _) = tokio::time::timeout(timeout, socket.recv_from(buf))
-        .await
-        .map_err(|_| "Did not receive ID from host".to_string())?
-        .map_err(|error| error.to_string())?;
+async fn wait_for_assignment(
+    socket: &UdpSocket,
+    host_addr: &std::net::SocketAddr,
+    join_bytes: &[u8],
+) -> Result<ServerMessage, String> {
+    let deadline = Instant::now() + Duration::from_secs(8);
+    let mut buf = [0u8; 8192];
+    let mut last_send = Instant::now() - Duration::from_secs(1);
 
-    decode_server(&buf[..n])
+    while Instant::now() < deadline {
+        if last_send.elapsed() >= Duration::from_millis(500) {
+            socket
+                .send_to(join_bytes, host_addr)
+                .await
+                .map_err(|error| error.to_string())?;
+            last_send = Instant::now();
+        }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let recv_timeout = remaining.min(Duration::from_millis(250));
+        match tokio::time::timeout(recv_timeout, socket.recv_from(&mut buf)).await {
+            Ok(Ok((n, _))) => match decode_server(&buf[..n]) {
+                Ok(message @ ServerMessage::Assigned { .. })
+                | Ok(message @ ServerMessage::Error { .. }) => return Ok(message),
+                Ok(_) | Err(_) => {}
+            },
+            Ok(Err(error)) => return Err(error.to_string()),
+            Err(_) => {}
+        }
+    }
+
+    Err(
+        "Did not receive ID from host. Check the IP, Windows firewall, and that both players are on the same WiFi."
+            .to_string(),
+    )
 }
 
 fn clean_player_name(name: Option<String>) -> Option<String> {

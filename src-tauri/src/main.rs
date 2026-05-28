@@ -10,6 +10,7 @@ mod discovery;
 mod game;
 mod maps;
 mod net;
+mod network;
 mod protocol;
 mod session;
 mod version;
