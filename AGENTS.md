@@ -20,7 +20,8 @@ Build a polished LAN-only top-down arena shooter in Tauri. Characters are the us
 - `src-tauri/src/session.rs`: host/client session loops and UDP message handling.
 - `src-tauri/src/commands.rs`: Tauri commands called by the frontend.
 - `src/game/ArenaRenderer.ts`: Pixi arena rendering.
-- `src/ui/App.tsx`: React UI shell and mock screens.
+- `src/ui/App.tsx`: thin screen router; session logic in `hooks/useGameSession.ts`.
+- `src/ui/main-menu/`, `server-select/`, `lobby/`, `game/`: one folder per screen flow.
 - `src/input/InputController.ts`: keyboard/mouse input snapshots.
 - `src/content/characters.ts`: character roster and ability copy.
 
