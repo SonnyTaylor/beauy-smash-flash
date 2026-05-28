@@ -1,38 +1,57 @@
-import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { CHARACTERS, getCharacter } from '../content/characters';
 import type { MapSnapshot, PlayerSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
 import { fitWorldToViewport } from './Viewport';
 
-const PLAYER_RADIUS = 24;
+const PLAYER_RADIUS = 26;
 const PLAYER_DIAMETER = PLAYER_RADIUS * 2;
+
+function assetUrl(relativePath: string): string {
+  return `/assets/${relativePath}`;
+}
 
 interface PlayerView {
   container: Container;
-  body: Graphics;
-  label: Text;
-  characterId: string;
   targetX: number;
   targetY: number;
+  characterId: string;
 }
 
 export class ArenaRenderer {
-  readonly app = new Application();
+  private app: Application | null = null;
 
   private root = new Container();
+  private floorLayer = new Container();
+  private wallLayer = new Container();
+  private entityLayer = new Container();
+  private floorFill = new Graphics();
   private grid = new Graphics();
   private walls = new Graphics();
   private players = new Map<number, PlayerView>();
   private headTextures = new Map<string, Texture>();
+  private mounted = false;
   private myId = 0;
   private mapId: string | null = null;
   private world: WorldConfig = { width: 1920, height: 1080 };
+
+  get canvas(): HTMLCanvasElement {
+    if (!this.app?.canvas) {
+      throw new Error('ArenaRenderer is not mounted');
+    }
+    return this.app.canvas;
+  }
 
   async mount(container: HTMLElement, world: WorldConfig, myId: number) {
     this.world = world;
     this.myId = myId;
 
+    if (this.mounted) {
+      this.destroy();
+    }
+
+    this.app = new Application();
     await this.app.init({
-      backgroundColor: 0x050505,
+      backgroundColor: 0x060810,
       antialias: true,
       autoDensity: true,
       resolution: window.devicePixelRatio || 1,
@@ -41,18 +60,42 @@ export class ArenaRenderer {
     await this.loadHeadTextures();
 
     container.appendChild(this.app.canvas);
-    this.root.addChild(this.grid, this.walls);
+
+    this.root = new Container();
+    this.floorLayer = new Container();
+    this.wallLayer = new Container();
+    this.entityLayer = new Container();
+    this.floorFill = new Graphics();
+    this.grid = new Graphics();
+    this.walls = new Graphics();
+
+    this.root.sortableChildren = true;
+    this.floorLayer.zIndex = 0;
+    this.wallLayer.zIndex = 1;
+    this.entityLayer.zIndex = 2;
+
+    this.floorLayer.addChild(this.floorFill, this.grid);
+    this.wallLayer.addChild(this.walls);
+    this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer);
     this.app.stage.addChild(this.root);
     this.resize();
 
     window.addEventListener('resize', this.resize);
     this.app.ticker.add(() => this.renderFrame());
+    this.mounted = true;
   }
 
   destroy() {
     window.removeEventListener('resize', this.resize);
+    if (!this.mounted || !this.app) return;
+
+    this.app.canvas.remove();
     this.app.destroy(true, { children: true });
+    this.app = null;
     this.players.clear();
+    this.headTextures.clear();
+    this.mounted = false;
+    this.mapId = null;
   }
 
   applyState(snapshot: StateSnapshot) {
@@ -73,12 +116,16 @@ export class ArenaRenderer {
       if (!view) {
         view = this.createPlayer(player);
         this.players.set(player.id, view);
-        this.root.addChild(view.container);
+        this.entityLayer.addChild(view.container);
+      }
+
+      const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
+      if (label) {
+        label.text = player.name || getCharacter(player.character_id).initials;
       }
 
       view.targetX = player.x;
       view.targetY = player.y;
-      view.label.text = player.name || `P${player.id}`;
       view.container.rotation = player.angle;
     }
 
@@ -92,66 +139,88 @@ export class ArenaRenderer {
 
   private createPlayer(player: PlayerSnapshot): PlayerView {
     const character = getCharacter(player.character_id);
-    const container = new Container();
+    const isMe = player.id === this.myId;
     const color = rgbToHex(player.color);
-    const body = new Graphics()
-      .circle(0, 0, PLAYER_RADIUS + 8)
-      .fill({ color, alpha: 0.16 })
-      .circle(0, 0, PLAYER_RADIUS + 3)
-      .stroke({ color: player.id === this.myId ? 0xffffff : color, width: player.id === this.myId ? 4 : 2, alpha: 0.95 })
-      .circle(0, 0, PLAYER_RADIUS + 10)
-      .stroke({ color, width: 2, alpha: 0.35 })
-      .moveTo(20, 0)
-      .lineTo(38, 0)
-      .stroke({ color: 0xffffff, width: 3, alpha: 0.85 });
-    const avatar = this.createCircularAvatar(character.sprite, color);
+    const container = new Container();
+
+    const shadow = new Graphics()
+      .circle(0, 4, PLAYER_RADIUS + 10)
+      .fill({ color: 0x000000, alpha: 0.35 });
+    container.addChild(shadow);
+
+    const avatar = this.createAvatar(character.sprite, character.initials, color);
+    container.addChild(avatar);
+
+    const aim = new Graphics()
+      .moveTo(PLAYER_RADIUS - 2, 0)
+      .lineTo(PLAYER_RADIUS + 16, 0)
+      .stroke({ color: isMe ? 0xffffff : color, width: isMe ? 4 : 3, alpha: 0.9 });
+    container.addChild(aim);
 
     const label = new Text({
       text: player.name || character.initials,
       style: {
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: 16,
+        fontFamily: 'Impact, Haettenschweiler, Arial Narrow Bold, sans-serif',
+        fontSize: 15,
         fontWeight: '700',
-        fill: player.id === this.myId ? 0xffffff : color,
+        fill: isMe ? 0xffffff : color,
+        stroke: { color: 0x000000, width: 3 },
         align: 'center',
       },
     });
     label.anchor.set(0.5);
-    label.y = -44;
-    label.rotation = 0;
+    label.y = -PLAYER_RADIUS - 18;
+    container.addChild(label);
 
     container.x = player.x;
     container.y = player.y;
-    container.addChild(body, avatar, label);
 
     return {
       container,
-      body,
-      label,
       characterId: player.character_id,
       targetX: player.x,
       targetY: player.y,
     };
   }
 
-  private createCircularAvatar(spritePath: string, fallbackColor: number): Container {
+  private createAvatar(spritePath: string, initials: string, accentColor: number): Container {
     const avatar = new Container();
     const texture = this.headTextures.get(spritePath);
 
     if (texture) {
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5);
-      const scale = PLAYER_DIAMETER / Math.min(texture.width, texture.height);
+      const scale = PLAYER_DIAMETER / Math.max(texture.width, texture.height);
       sprite.scale.set(scale);
-
-      const mask = new Graphics().circle(0, 0, PLAYER_RADIUS).fill(0xffffff);
-      sprite.mask = mask;
-      avatar.addChild(sprite, mask);
+      avatar.addChild(sprite);
     } else {
-      avatar.addChild(new Graphics().circle(0, 0, PLAYER_RADIUS).fill({ color: fallbackColor }));
+      const fallback = new Graphics()
+        .circle(0, 0, PLAYER_RADIUS)
+        .fill({ color: accentColor, alpha: 0.9 })
+        .circle(0, 0, PLAYER_RADIUS)
+        .stroke({ color: 0xffffff, width: 2, alpha: 0.5 });
+      avatar.addChild(fallback);
+
+      const initialsText = new Text({
+        text: initials,
+        style: {
+          fontFamily: 'Impact, Haettenschweiler, Arial Narrow Bold, sans-serif',
+          fontSize: 18,
+          fontWeight: '900',
+          fill: 0xffffff,
+        },
+      });
+      initialsText.anchor.set(0.5);
+      avatar.addChild(initialsText);
     }
 
-    avatar.addChild(new Graphics().circle(0, 0, PLAYER_RADIUS).stroke({ color: 0x050505, width: 2, alpha: 0.8 }));
+    const ring = new Graphics()
+      .circle(0, 0, PLAYER_RADIUS + 2)
+      .stroke({ color: accentColor, width: 3, alpha: 0.95 })
+      .circle(0, 0, PLAYER_RADIUS + 5)
+      .stroke({ color: 0xffffff, width: 1, alpha: 0.25 });
+    avatar.addChild(ring);
+
     return avatar;
   }
 
@@ -159,21 +228,26 @@ export class ArenaRenderer {
     for (const view of this.players.values()) {
       view.container.x += (view.targetX - view.container.x) * 0.35;
       view.container.y += (view.targetY - view.container.y) * 0.35;
-      view.label.rotation = -view.container.rotation;
+      const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
+      if (label) {
+        label.rotation = -view.container.rotation;
+      }
     }
   }
 
   private resize = () => {
+    if (!this.app) return;
     const transform = fitWorldToViewport(this.world, this.app.screen.width, this.app.screen.height);
     this.root.scale.set(transform.scale);
     this.root.position.set(transform.offsetX, transform.offsetY);
-    this.drawGrid();
+    this.drawFloor();
   };
 
-  private drawGrid() {
-    this.grid.clear();
-    this.grid.rect(0, 0, this.world.width, this.world.height).stroke({ color: 0x333333, width: 3 });
+  private drawFloor() {
+    this.floorFill.clear();
+    this.floorFill.rect(0, 0, this.world.width, this.world.height).fill({ color: 0x0a0c16, alpha: 1 });
 
+    this.grid.clear();
     const spacing = 80;
     for (let x = 0; x <= this.world.width; x += spacing) {
       this.grid.moveTo(x, 0).lineTo(x, this.world.height);
@@ -181,7 +255,11 @@ export class ArenaRenderer {
     for (let y = 0; y <= this.world.height; y += spacing) {
       this.grid.moveTo(0, y).lineTo(this.world.width, y);
     }
-    this.grid.stroke({ color: 0x141414, width: 1 });
+    this.grid.stroke({ color: 0x1a2038, width: 1, alpha: 0.45 });
+
+    this.floorFill
+      .rect(0, 0, this.world.width, this.world.height)
+      .stroke({ color: 0x2a3358, width: 4, alpha: 0.7 });
   }
 
   private applyMap(map: MapSnapshot) {
@@ -193,28 +271,31 @@ export class ArenaRenderer {
       this.walls.rect(wall.x, wall.y, wall.w, wall.h);
     }
 
-    this.walls.fill({ color: 0x262631, alpha: 0.96 });
-    this.walls.stroke({ color: 0x55556a, width: 2, alpha: 0.9 });
+    this.walls.fill({ color: 0x1c1f32, alpha: 0.98 });
+    this.walls.stroke({ color: 0x4a5278, width: 2, alpha: 0.85 });
   }
 
   private async loadHeadTextures() {
-    const entries = await Promise.all(
+    await Promise.all(
       CHARACTERS.map(async (character) => {
-        try {
-          const texture = await Assets.load<Texture>(`/assets/${character.sprite}`);
-          return [character.sprite, texture] as const;
-        } catch {
-          return [character.sprite, null] as const;
+        const texture = await loadTextureFromUrl(assetUrl(character.sprite));
+        if (texture) {
+          this.headTextures.set(character.sprite, texture);
         }
       }),
     );
-
-    for (const [sprite, texture] of entries) {
-      if (texture) {
-        this.headTextures.set(sprite, texture);
-      }
-    }
   }
+
+}
+
+function loadTextureFromUrl(url: string): Promise<Texture | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(Texture.from(image));
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
 }
 
 function rgbToHex([r, g, b]: [number, number, number]): number {

@@ -865,30 +865,149 @@ h2 {
   right: 14px;
   z-index: 5;
   display: flex;
-  gap: 10px;
+  justify-content: space-between;
   align-items: flex-start;
+  gap: 12px;
   pointer-events: none;
 }
 
-.hud-pill,
-.tiny-button {
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.56);
-  color: var(--text);
-  font-size: 0.82rem;
+.game-overlay.paused {
+  opacity: 0.35;
+}
+
+.hud-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .hud-pill {
   display: grid;
   gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(6, 8, 16, 0.72);
+  backdrop-filter: blur(6px);
+  color: var(--text);
+  font-size: 0.82rem;
 }
 
-.tiny-button {
-  margin-left: auto;
-  cursor: pointer;
+.hud-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hud-avatar {
+  --accent: var(--cyan);
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 80%, white);
+  background: #0d1120;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+  font-weight: 900;
+  font-size: 0.75rem;
+}
+
+.hud-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hud-avatar img:not([style*='display: none']) + span {
+  opacity: 0;
+}
+
+.hud-player-text {
+  display: grid;
+  gap: 2px;
+}
+
+.hud-player-text strong {
+  font-family: Impact, Haettenschweiler, Arial Narrow Bold, sans-serif;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.hud-player-text span:last-child {
+  color: var(--cyan);
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.hud-stats {
+  align-content: center;
+  font-weight: 700;
+  color: var(--mute-strong);
+}
+
+.game-menu-button {
   pointer-events: auto;
+  min-height: 42px;
+  padding: 8px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(11, 14, 27, 0.88);
+  backdrop-filter: blur(6px);
+  color: var(--text);
+  font-weight: 900;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.game-menu-button:hover {
+  border-color: rgba(70, 233, 255, 0.45);
+}
+
+.game-pause-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 6, 14, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.game-pause-panel {
+  width: min(360px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: clamp(24px, 4vw, 32px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(11, 14, 27, 0.95);
+  box-shadow: 0 28px 80px var(--shadow);
+  text-align: center;
+}
+
+.game-pause-panel h2 {
+  margin: 0;
+}
+
+.game-pause-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.game-pause-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 /* Floating heads. Rings + photo, like the Python build. */

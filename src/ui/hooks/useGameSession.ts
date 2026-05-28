@@ -187,17 +187,25 @@ export function useGameSession() {
     }
   }
 
+  function teardownGameRuntime() {
+    if (inputTimerRef.current !== null) {
+      window.clearInterval(inputTimerRef.current);
+      inputTimerRef.current = null;
+    }
+    input.detach();
+    renderer.destroy();
+    if (gameContainerRef.current) {
+      gameContainerRef.current.replaceChildren();
+    }
+  }
+
   async function leaveLobby() {
     try {
       await client.stopSession();
     } catch {
       // Still navigate away if teardown fails.
     }
-    if (inputTimerRef.current !== null) {
-      window.clearInterval(inputTimerRef.current);
-      inputTimerRef.current = null;
-    }
-    input.detach();
+    teardownGameRuntime();
     setScreen('main-menu');
     setSessionInfo(null);
     sessionInfoRef.current = null;
@@ -211,14 +219,12 @@ export function useGameSession() {
   async function enterGame(initialState: StateSnapshot) {
     const container = gameContainerRef.current;
     if (!container) return;
-    if (inputTimerRef.current !== null) {
-      window.clearInterval(inputTimerRef.current);
-    }
+    teardownGameRuntime();
     const playerId = sessionInfoRef.current?.player_id ?? myIdRef.current;
     setScreen('game');
     await renderer.mount(container, initialState.world, playerId);
     renderer.applyState(initialState);
-    input.attach(renderer.app.canvas, initialState.world);
+    input.attach(renderer.canvas, initialState.world);
     inputTimerRef.current = window.setInterval(async () => {
       const player = latestStateRef.current?.players.find((candidate) => candidate.id === playerId) ?? null;
       try {
@@ -270,6 +276,7 @@ export function useGameSession() {
     updateLobbyConfig,
     startMatch,
     leaveLobby,
+    leaveGame: leaveLobby,
     goToServerSelect,
     setScreen,
   };

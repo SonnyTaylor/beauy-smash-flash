@@ -66,7 +66,7 @@ export function App() {
           state={session.latestState}
           myId={session.myId}
           selectedCharacter={session.selectedCharacter}
-          onMockLobby={() => session.setScreen('lobby')}
+          onLeaveToMenu={() => void session.leaveGame()}
         />
       )}
     </div>
