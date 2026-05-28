@@ -61,7 +61,7 @@ const JARATE: WeaponDefinition = {
 
 const FECES: WeaponDefinition = {
   id: 'feces',
-  name: 'Human Feces',
+  name: 'Tom Pearl\'s Shit',
   meta: FECES_WEAPON,
   tagline: 'Poisons · damage over time',
 };

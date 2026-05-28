@@ -230,7 +230,7 @@ const JARATE: WeaponDef = WeaponDef {
 
 const FECES: WeaponDef = WeaponDef {
     id: "feces",
-    name: "Human Feces",
+    name: "Tom Pearl's Shit",
     kind: WeaponKind::Bullet,
     damage: 5,
     fire_rate: 0.52,
