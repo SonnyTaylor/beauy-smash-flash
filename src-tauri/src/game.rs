@@ -1154,7 +1154,19 @@ mod tests {
         use crate::abilities::ABILITY_CHARGE_MAX;
 
         let mut world = test_world_with_two_players();
-        world.players.get_mut(&0).unwrap().ability_charge = ABILITY_CHARGE_MAX;
+        {
+            let caster = world.players.get_mut(&0).unwrap();
+            caster.ability_charge = ABILITY_CHARGE_MAX;
+            caster.x = 400.0;
+            caster.y = 400.0;
+            caster.spawn_protection = 0.0;
+        }
+        {
+            let victim = world.players.get_mut(&1).unwrap();
+            victim.x = 480.0;
+            victim.y = 400.0;
+            victim.spawn_protection = 0.0;
+        }
 
         world.set_input(
             0,
