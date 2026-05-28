@@ -66,7 +66,12 @@ After making code changes, create a git commit unless the user asked for no comm
 
 ## Weapons & VFX
 
-- Glock sprite: `public/assets/weapons/glock.png`, metadata in `src/content/weapons/glock.json`
-- Re-process asset: `bun run assets:glock` (runs `scripts/process-glock.py`)
-- Arena VFX live in `src/game/vfx/VfxManager.ts`; gun orbit in `ArenaRenderer.ts`
+- **Gameplay stats (authoritative):** add entries in `src-tauri/src/weapons/mod.rs` (`REGISTRY`).
+- **Visuals (frontend):** PNG in `public/assets/weapons/`, JSON metadata in `src/content/weapons/*.json`, register in `src/content/weapons/index.ts`.
+- **Full guide:** `docs/ADDING_WEAPONS.md`
+- Glock example: `public/assets/weapons/glock.png`, `src/content/weapons/glock.json`
+- Re-process glock asset: `bun run assets:glock` (runs `scripts/process-glock.py`)
+- Loadout: primary + secondary slots; **Q** swap, **G** drop active weapon, **F** pick up nearby ground weapon.
+- Arena rendering: per-player weapon sprite from registry; ground pickups in `ArenaRenderer.ts`.
+- Arena VFX live in `src/game/vfx/VfxManager.ts`
 - Ability sim: `src-tauri/src/abilities.rs` (charge, windup, world `effects` in snapshots)

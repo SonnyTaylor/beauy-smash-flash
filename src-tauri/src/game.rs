@@ -3,8 +3,11 @@ use std::collections::HashMap;
 use crate::abilities::{self, is_casting};
 use crate::protocol::{
     BulletSnapshot, EffectKind, InputSnapshot, KillFeedEntry, LobbyConfig, MapSnapshot,
-    MatchEndReason, PlayerSnapshot, RectSnapshot, StateSnapshot, WinCondition, WorldConfig,
-    PROTOCOL_VERSION,
+    MatchEndReason, PlayerSnapshot, RectSnapshot, StateSnapshot, WeaponPickupSnapshot,
+    WeaponSlotSnapshot, WinCondition, WorldConfig, PROTOCOL_VERSION,
+};
+use crate::weapons::{
+    self, ActiveSlot, WeaponSlotState, DEFAULT_WEAPON_ID, DROP_FORWARD_OFFSET, PICKUP_RADIUS,
 };
 
 pub const DEFAULT_WORLD_WIDTH: f32 = 1920.0;
@@ -13,12 +16,6 @@ pub const PLAYER_RADIUS: f32 = 24.0;
 pub const PLAYER_SPEED: f32 = 360.0;
 
 pub const PLAYER_MAX_HP: u16 = 100;
-pub const GLOCK_DAMAGE: u16 = 25;
-pub const GLOCK_FIRE_RATE: f32 = 0.18;
-pub const GLOCK_BULLET_SPEED: f32 = 720.0;
-pub const GLOCK_BULLET_LIFE: f32 = 2.0;
-pub const GLOCK_MAX_AMMO: u8 = 17;
-pub const GLOCK_RELOAD_TIME: f32 = 1.2;
 pub const BULLET_RADIUS: f32 = 4.0;
 pub const RESPAWN_TIME: f32 = 2.5;
 pub const SPAWN_PROTECTION_TIME: f32 = 1.5;
@@ -76,11 +73,24 @@ impl Rect {
 pub struct Bullet {
     pub id: u32,
     pub owner_id: u8,
+    pub weapon_id: String,
+    pub damage: u16,
+    pub radius: f32,
     pub x: f32,
     pub y: f32,
     pub vx: f32,
     pub vy: f32,
     pub life: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct WeaponPickup {
+    pub id: u32,
+    pub weapon_id: String,
+    pub x: f32,
+    pub y: f32,
+    pub ammo: u8,
+    pub max_ammo: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -101,6 +111,20 @@ impl Bullet {
             owner_id: self.owner_id,
             x: self.x,
             y: self.y,
+            weapon_id: self.weapon_id.clone(),
+        }
+    }
+}
+
+impl WeaponPickup {
+    fn snapshot(&self) -> WeaponPickupSnapshot {
+        WeaponPickupSnapshot {
+            id: self.id,
+            weapon_id: self.weapon_id.clone(),
+            x: self.x,
+            y: self.y,
+            ammo: self.ammo,
+            max_ammo: self.max_ammo,
         }
     }
 }
@@ -116,6 +140,9 @@ pub struct Player {
     pub character_id: String,
     pub hp: u16,
     pub max_hp: u16,
+    pub primary: Option<WeaponSlotState>,
+    pub secondary: Option<WeaponSlotState>,
+    pub active_slot: ActiveSlot,
     pub ammo: u8,
     pub max_ammo: u8,
     pub score: u16,
@@ -142,6 +169,8 @@ impl Player {
         spawn_index: usize,
         spawn: (f32, f32),
     ) -> Self {
+        let primary = weapons::default_primary_slot();
+        let weapon = weapons::get_or_default(&primary.weapon_id);
         Self {
             id,
             x: spawn.0,
@@ -152,8 +181,11 @@ impl Player {
             character_id,
             hp: PLAYER_MAX_HP,
             max_hp: PLAYER_MAX_HP,
-            ammo: GLOCK_MAX_AMMO,
-            max_ammo: GLOCK_MAX_AMMO,
+            primary: Some(primary),
+            secondary: None,
+            active_slot: ActiveSlot::Primary,
+            ammo: weapon.max_ammo,
+            max_ammo: weapon.max_ammo,
             score: 0,
             kills: 0,
             deaths: 0,
@@ -179,7 +211,58 @@ impl Player {
         self.spawn_protection > 0.0
     }
 
+    fn active_weapon_id(&self) -> &str {
+        self.slot_state(self.active_slot)
+            .map(|slot| slot.weapon_id.as_str())
+            .unwrap_or(DEFAULT_WEAPON_ID)
+    }
+
+    fn active_weapon(&self) -> &'static weapons::WeaponDef {
+        weapons::get_or_default(self.active_weapon_id())
+    }
+
+    fn slot_state(&self, slot: ActiveSlot) -> Option<&WeaponSlotState> {
+        match slot {
+            ActiveSlot::Primary => self.primary.as_ref(),
+            ActiveSlot::Secondary => self.secondary.as_ref(),
+        }
+    }
+
+    fn slot_state_mut(&mut self, slot: ActiveSlot) -> Option<&mut WeaponSlotState> {
+        match slot {
+            ActiveSlot::Primary => self.primary.as_mut(),
+            ActiveSlot::Secondary => self.secondary.as_mut(),
+        }
+    }
+
+    fn save_ammo_to_active_slot(&mut self) {
+        let ammo = self.ammo;
+        if let Some(slot) = self.slot_state_mut(self.active_slot) {
+            slot.ammo = ammo;
+        }
+    }
+
+    fn apply_active_slot_to_combat_state(&mut self) {
+        let weapon = self.active_weapon();
+        if let Some(slot) = self.slot_state(self.active_slot) {
+            self.ammo = slot.ammo;
+        } else {
+            self.ammo = 0;
+        }
+        self.max_ammo = weapon.max_ammo;
+    }
+
+    fn slot_snapshot(slot: &WeaponSlotState) -> WeaponSlotSnapshot {
+        let max_ammo = weapons::max_ammo_for(&slot.weapon_id);
+        WeaponSlotSnapshot {
+            weapon_id: slot.weapon_id.clone(),
+            ammo: slot.ammo,
+            max_ammo,
+        }
+    }
+
     fn snapshot(&self) -> PlayerSnapshot {
+        let weapon = self.active_weapon();
         PlayerSnapshot {
             id: self.id,
             x: self.x,
@@ -207,6 +290,11 @@ impl Player {
             ability_charge: self.ability_charge,
             ability_windup: self.ability_windup.max(0.0),
             hacked_remaining: self.controls_inverted_until.max(0.0),
+            active_weapon: weapon.id.to_string(),
+            active_slot: self.active_slot as u8,
+            reload_duration: weapon.reload_time,
+            primary_weapon: self.primary.as_ref().map(Self::slot_snapshot),
+            secondary_weapon: self.secondary.as_ref().map(Self::slot_snapshot),
         }
     }
 
@@ -228,10 +316,32 @@ impl Player {
         self.reload_timer = if snapshot.reload_remaining > 0.0 {
             snapshot.reload_remaining
         } else if snapshot.reloading {
-            GLOCK_RELOAD_TIME
+            snapshot
+                .reload_duration
+                .max(weapons::get_or_default(&snapshot.active_weapon).reload_time)
         } else {
             0.0
         };
+        self.active_slot = if snapshot.active_slot == 1 {
+            ActiveSlot::Secondary
+        } else {
+            ActiveSlot::Primary
+        };
+        self.primary = snapshot
+            .primary_weapon
+            .as_ref()
+            .map(|slot| WeaponSlotState {
+                weapon_id: slot.weapon_id.clone(),
+                ammo: slot.ammo,
+            });
+        self.secondary = snapshot
+            .secondary_weapon
+            .as_ref()
+            .map(|slot| WeaponSlotState {
+                weapon_id: slot.weapon_id.clone(),
+                ammo: slot.ammo,
+            });
+        self.apply_active_slot_to_combat_state();
         self.spawn_protection = if snapshot.spawn_protected {
             SPAWN_PROTECTION_TIME
         } else {
@@ -241,6 +351,27 @@ impl Player {
         self.ability_charge = snapshot.ability_charge;
         self.ability_windup = snapshot.ability_windup;
         self.controls_inverted_until = snapshot.hacked_remaining;
+    }
+
+    fn reorganize_loadout_after_drop(&mut self) {
+        if self.primary.is_none() {
+            if let Some(secondary) = self.secondary.take() {
+                self.primary = Some(secondary);
+                self.active_slot = ActiveSlot::Primary;
+            }
+        }
+        if self.primary.is_none() {
+            self.primary = Some(weapons::default_primary_slot());
+            self.active_slot = ActiveSlot::Primary;
+        }
+        if self.slot_state(self.active_slot).is_none() {
+            self.active_slot = if self.primary.is_some() {
+                ActiveSlot::Primary
+            } else {
+                ActiveSlot::Secondary
+            };
+        }
+        self.apply_active_slot_to_combat_state();
     }
 }
 
@@ -262,9 +393,13 @@ pub struct GameWorld {
     pub match_elapsed: f32,
     pub win_condition: WinCondition,
     pub friendly_fire: bool,
+    pub fog_of_war: bool,
     pub match_ended: bool,
     pub winner_id: Option<u8>,
     pub match_end_reason: Option<MatchEndReason>,
+    pub weapon_pickups: Vec<WeaponPickup>,
+    pub next_pickup_id: u32,
+    input_prev: HashMap<u8, InputSnapshot>,
 }
 
 pub fn validate_match_config(config: &LobbyConfig) -> Result<(), String> {
@@ -318,9 +453,13 @@ impl GameWorld {
             match_elapsed: 0.0,
             win_condition: WinCondition::Kills,
             friendly_fire: true,
+            fog_of_war: false,
             match_ended: false,
             winner_id: None,
             match_end_reason: None,
+            weapon_pickups: Vec::new(),
+            next_pickup_id: 1,
+            input_prev: HashMap::new(),
         }
     }
 
@@ -367,6 +506,7 @@ impl GameWorld {
         time_limit_secs: u16,
         win_condition: WinCondition,
         friendly_fire: bool,
+        fog_of_war: bool,
     ) {
         self.tick = 0;
         self.bullets.clear();
@@ -378,10 +518,14 @@ impl GameWorld {
         self.match_elapsed = 0.0;
         self.win_condition = win_condition;
         self.friendly_fire = friendly_fire;
+        self.fog_of_war = fog_of_war;
         self.match_ended = false;
         self.winner_id = None;
         self.match_end_reason = None;
         self.next_bullet_id = 1;
+        self.weapon_pickups.clear();
+        self.next_pickup_id = 1;
+        self.input_prev.clear();
 
         let ids: Vec<u8> = self.players.keys().copied().collect();
         for id in ids {
@@ -405,6 +549,9 @@ impl GameWorld {
         self.winner_id = None;
         self.match_end_reason = None;
         self.next_bullet_id = 1;
+        self.weapon_pickups.clear();
+        self.next_pickup_id = 1;
+        self.input_prev.clear();
 
         let ids: Vec<u8> = self.players.keys().copied().collect();
         for id in ids {
@@ -431,7 +578,10 @@ impl GameWorld {
             player.x = spawn.0;
             player.y = spawn.1;
             player.hp = PLAYER_MAX_HP;
-            player.ammo = GLOCK_MAX_AMMO;
+            player.primary = Some(weapons::default_primary_slot());
+            player.secondary = None;
+            player.active_slot = ActiveSlot::Primary;
+            player.apply_active_slot_to_combat_state();
             player.alive = true;
             player.fire_cooldown = 0.0;
             player.reload_timer = 0.0;
@@ -439,6 +589,161 @@ impl GameWorld {
             player.spawn_protection = spawn_protection;
             player.controls_inverted_until = 0.0;
             player.ability_windup = 0.0;
+        }
+    }
+
+    fn spawn_weapon_pickup(&mut self, x: f32, y: f32, slot: &WeaponSlotState) {
+        let id = self.next_pickup_id;
+        self.next_pickup_id += 1;
+        self.weapon_pickups.push(WeaponPickup {
+            id,
+            weapon_id: slot.weapon_id.clone(),
+            x,
+            y,
+            ammo: slot.ammo,
+            max_ammo: weapons::max_ammo_for(&slot.weapon_id),
+        });
+    }
+
+    fn nearest_pickup_index(&self, x: f32, y: f32) -> Option<usize> {
+        self.weapon_pickups
+            .iter()
+            .enumerate()
+            .filter(|(_, pickup)| {
+                let dx = pickup.x - x;
+                let dy = pickup.y - y;
+                dx * dx + dy * dy <= PICKUP_RADIUS * PICKUP_RADIUS
+            })
+            .min_by(|(_, left), (_, right)| {
+                let left_dist = (left.x - x).powi(2) + (left.y - y).powi(2);
+                let right_dist = (right.x - x).powi(2) + (right.y - y).powi(2);
+                left_dist
+                    .partial_cmp(&right_dist)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(index, _)| index)
+    }
+
+    fn try_switch_weapon(&mut self, id: u8) {
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        if !player.alive || is_casting(player) {
+            return;
+        }
+        let other = player.active_slot.toggle();
+        if player.slot_state(other).is_none() {
+            return;
+        }
+        player.save_ammo_to_active_slot();
+        player.reload_timer = 0.0;
+        player.fire_cooldown = 0.0;
+        player.active_slot = other;
+        player.apply_active_slot_to_combat_state();
+    }
+
+    fn try_drop_weapon(&mut self, id: u8) {
+        let Some((angle, x, y, dropped)) = self.players.get(&id).and_then(|player| {
+            if !player.alive || is_casting(player) {
+                return None;
+            }
+            let slot = player.slot_state(player.active_slot)?.clone();
+            Some((player.angle, player.x, player.y, slot))
+        }) else {
+            return;
+        };
+
+        let drop_x = x + angle.cos() * DROP_FORWARD_OFFSET;
+        let drop_y = y + angle.sin() * DROP_FORWARD_OFFSET;
+        self.spawn_weapon_pickup(drop_x, drop_y, &dropped);
+
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        match player.active_slot {
+            ActiveSlot::Primary => player.primary = None,
+            ActiveSlot::Secondary => player.secondary = None,
+        }
+        player.reload_timer = 0.0;
+        player.reorganize_loadout_after_drop();
+    }
+
+    fn try_pickup_weapon(&mut self, id: u8) {
+        let pickup_index = {
+            let Some(player) = self.players.get(&id) else {
+                return;
+            };
+            if !player.alive || is_casting(player) {
+                return;
+            }
+            self.nearest_pickup_index(player.x, player.y)
+        };
+        let Some(index) = pickup_index else {
+            return;
+        };
+        let pickup = self.weapon_pickups[index].clone();
+
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        player.save_ammo_to_active_slot();
+        player.reload_timer = 0.0;
+
+        if player.secondary.is_none() {
+            player.secondary = Some(WeaponSlotState {
+                weapon_id: pickup.weapon_id,
+                ammo: pickup.ammo,
+            });
+            player.active_slot = ActiveSlot::Secondary;
+            self.weapon_pickups.remove(index);
+            player.apply_active_slot_to_combat_state();
+            return;
+        }
+
+        let active = player.active_slot;
+        let replaced = player
+            .slot_state(active)
+            .cloned()
+            .unwrap_or_else(weapons::default_primary_slot);
+        if let Some(slot) = player.slot_state_mut(active) {
+            slot.weapon_id = pickup.weapon_id;
+            slot.ammo = pickup.ammo;
+        }
+        self.weapon_pickups[index] = WeaponPickup {
+            id: pickup.id,
+            weapon_id: replaced.weapon_id.clone(),
+            x: pickup.x,
+            y: pickup.y,
+            ammo: replaced.ammo,
+            max_ammo: weapons::max_ammo_for(&replaced.weapon_id),
+        };
+        player.apply_active_slot_to_combat_state();
+    }
+
+    fn process_weapon_interactions(&mut self) {
+        let player_ids: Vec<u8> = self.players.keys().copied().collect();
+        for id in player_ids {
+            let input = self.inputs.get(&id).cloned().unwrap_or_default();
+            let prev = self.input_prev.get(&id).cloned().unwrap_or_default();
+            let switch = input.switch_weapon && !prev.switch_weapon;
+            let drop = input.drop_weapon && !prev.drop_weapon;
+            let interact = input.interact && !prev.interact;
+
+            if switch {
+                self.try_switch_weapon(id);
+            }
+            if drop {
+                self.try_drop_weapon(id);
+            }
+            if interact {
+                self.try_pickup_weapon(id);
+            }
+        }
+
+        for id in self.players.keys().copied().collect::<Vec<_>>() {
+            if let Some(input) = self.inputs.get(&id).cloned() {
+                self.input_prev.insert(id, input);
+            }
         }
     }
 
@@ -452,18 +757,37 @@ impl GameWorld {
         self.match_elapsed = snapshot.match_elapsed_secs;
         self.win_condition = snapshot.win_condition;
         self.match_end_reason = snapshot.match_end_reason;
+        self.fog_of_war = snapshot.fog_of_war;
         self.kill_feed = snapshot.kill_feed.clone();
         self.bullets = snapshot
             .bullets
             .iter()
-            .map(|bullet| Bullet {
-                id: bullet.id,
-                owner_id: bullet.owner_id,
-                x: bullet.x,
-                y: bullet.y,
-                vx: 0.0,
-                vy: 0.0,
-                life: GLOCK_BULLET_LIFE,
+            .map(|bullet| {
+                let weapon = weapons::get_or_default(&bullet.weapon_id);
+                Bullet {
+                    id: bullet.id,
+                    owner_id: bullet.owner_id,
+                    weapon_id: bullet.weapon_id.clone(),
+                    damage: weapon.damage,
+                    radius: weapon.bullet_radius,
+                    x: bullet.x,
+                    y: bullet.y,
+                    vx: 0.0,
+                    vy: 0.0,
+                    life: weapon.bullet_life,
+                }
+            })
+            .collect();
+        self.weapon_pickups = snapshot
+            .weapon_pickups
+            .iter()
+            .map(|pickup| WeaponPickup {
+                id: pickup.id,
+                weapon_id: pickup.weapon_id.clone(),
+                x: pickup.x,
+                y: pickup.y,
+                ammo: pickup.ammo,
+                max_ammo: pickup.max_ammo,
             })
             .collect();
 
@@ -509,6 +833,7 @@ impl GameWorld {
         abilities::process_effects(self, dt);
         self.process_respawns(dt);
         self.process_movement(dt);
+        self.process_weapon_interactions();
         self.process_combat(dt);
         self.process_bullets(dt);
         self.check_match_end();
@@ -583,8 +908,8 @@ impl GameWorld {
     }
 
     fn process_combat(&mut self, dt: f32) {
-        let mut shots: Vec<(u8, f32, f32, f32, f32)> = Vec::new();
-        let mut reload_requests: Vec<u8> = Vec::new();
+        let mut shots: Vec<(u8, String, u16, f32, f32, f32, f32, f32, f32, f32)> = Vec::new();
+        let mut reload_requests: Vec<(u8, f32)> = Vec::new();
 
         for player in self.players.values_mut() {
             if !player.alive || is_casting(player) {
@@ -595,10 +920,12 @@ impl GameWorld {
                 player.fire_cooldown = (player.fire_cooldown - dt).max(0.0);
             }
 
+            let weapon = player.active_weapon();
             if player.reload_timer > 0.0 {
                 player.reload_timer = (player.reload_timer - dt).max(0.0);
                 if player.reload_timer <= 0.0 {
                     player.ammo = player.max_ammo;
+                    player.save_ammo_to_active_slot();
                 }
                 continue;
             }
@@ -606,7 +933,7 @@ impl GameWorld {
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
 
             if input.reload && player.ammo < player.max_ammo {
-                reload_requests.push(player.id);
+                reload_requests.push((player.id, weapon.reload_time));
                 continue;
             }
 
@@ -615,7 +942,7 @@ impl GameWorld {
             }
 
             if player.ammo == 0 {
-                reload_requests.push(player.id);
+                reload_requests.push((player.id, weapon.reload_time));
                 continue;
             }
 
@@ -625,38 +952,65 @@ impl GameWorld {
             }
 
             player.ammo -= 1;
-            player.fire_cooldown = GLOCK_FIRE_RATE;
+            player.save_ammo_to_active_slot();
+            player.fire_cooldown = weapon.fire_rate;
 
-            let spawn_x = player.x + aim_x * (PLAYER_RADIUS + 6.0);
-            let spawn_y = player.y + aim_y * (PLAYER_RADIUS + 6.0);
-            shots.push((player.id, spawn_x, spawn_y, aim_x, aim_y));
+            let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
+            let spawn_y = player.y + aim_y * (PLAYER_RADIUS + weapon.muzzle_offset);
+            shots.push((
+                player.id,
+                weapon.id.to_string(),
+                weapon.damage,
+                weapon.bullet_speed,
+                weapon.bullet_life,
+                weapon.bullet_radius,
+                spawn_x,
+                spawn_y,
+                aim_x,
+                aim_y,
+            ));
         }
 
-        for id in reload_requests {
+        for (id, reload_time) in reload_requests {
             if let Some(player) = self.players.get_mut(&id) {
                 if player.alive && player.reload_timer <= 0.0 && player.ammo < player.max_ammo {
-                    player.reload_timer = GLOCK_RELOAD_TIME;
+                    player.reload_timer = reload_time;
                 }
             }
         }
 
-        for (owner_id, x, y, aim_x, aim_y) in shots {
+        for (
+            owner_id,
+            weapon_id,
+            damage,
+            bullet_speed,
+            bullet_life,
+            bullet_radius,
+            x,
+            y,
+            aim_x,
+            aim_y,
+        ) in shots
+        {
             let id = self.next_bullet_id;
             self.next_bullet_id += 1;
             self.bullets.push(Bullet {
                 id,
                 owner_id,
+                weapon_id,
+                damage,
+                radius: bullet_radius,
                 x,
                 y,
-                vx: aim_x * GLOCK_BULLET_SPEED,
-                vy: aim_y * GLOCK_BULLET_SPEED,
-                life: GLOCK_BULLET_LIFE,
+                vx: aim_x * bullet_speed,
+                vy: aim_y * bullet_speed,
+                life: bullet_life,
             });
         }
     }
 
     fn process_bullets(&mut self, dt: f32) {
-        let mut hits: Vec<(u32, u8, u8)> = Vec::new();
+        let mut hits: Vec<(u32, u8, u8, u16)> = Vec::new();
 
         for bullet in &mut self.bullets {
             bullet.life -= dt;
@@ -670,7 +1024,7 @@ impl GameWorld {
                 && bullet.y >= 0.0
                 && bullet.x <= self.config.width
                 && bullet.y <= self.config.height
-                && !circle_hits_walls(bullet.x, bullet.y, BULLET_RADIUS, &self.map.walls)
+                && !circle_hits_walls(bullet.x, bullet.y, bullet.radius, &self.map.walls)
         });
 
         for bullet in &self.bullets {
@@ -685,12 +1039,12 @@ impl GameWorld {
                 if circle_hits_circle(
                     bullet.x,
                     bullet.y,
-                    BULLET_RADIUS,
+                    bullet.radius,
                     player.x,
                     player.y,
                     PLAYER_RADIUS,
                 ) {
-                    hits.push((bullet.id, bullet.owner_id, player.id));
+                    hits.push((bullet.id, bullet.owner_id, player.id, bullet.damage));
                     break;
                 }
             }
@@ -701,12 +1055,12 @@ impl GameWorld {
         }
 
         let hit_bullet_ids: std::collections::HashSet<u32> =
-            hits.iter().map(|(bullet_id, _, _)| *bullet_id).collect();
+            hits.iter().map(|(bullet_id, _, _, _)| *bullet_id).collect();
         self.bullets
             .retain(|bullet| !hit_bullet_ids.contains(&bullet.id));
 
-        for (_, killer_id, victim_id) in hits {
-            self.apply_damage(killer_id, victim_id, GLOCK_DAMAGE);
+        for (_, killer_id, victim_id, damage) in hits {
+            self.apply_damage(killer_id, victim_id, damage);
         }
     }
 
@@ -843,6 +1197,12 @@ impl GameWorld {
             match_elapsed_secs: self.match_elapsed,
             win_condition: self.win_condition,
             match_end_reason: self.match_end_reason,
+            fog_of_war: self.fog_of_war,
+            weapon_pickups: self
+                .weapon_pickups
+                .iter()
+                .map(WeaponPickup::snapshot)
+                .collect(),
         }
     }
 }
@@ -886,11 +1246,27 @@ mod tests {
         let mut world = GameWorld::default();
         world.add_player(0, "Host".to_string(), "sonny".to_string());
         world.add_player(1, "Guest".to_string(), "bailey".to_string());
-        world.reset_for_match(20, 0, WinCondition::Kills, true);
+        world.reset_for_match(20, 0, WinCondition::Kills, true, false);
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
         }
         world
+    }
+
+    fn test_glock_bullet(id: u32, owner_id: u8, x: f32, y: f32, vx: f32, vy: f32) -> Bullet {
+        let weapon = weapons::get_or_default("glock");
+        Bullet {
+            id,
+            owner_id,
+            weapon_id: weapon.id.to_string(),
+            damage: weapon.damage,
+            radius: weapon.bullet_radius,
+            x,
+            y,
+            vx,
+            vy,
+            life: weapon.bullet_life,
+        }
     }
 
     #[test]
@@ -966,15 +1342,14 @@ mod tests {
             .find(|wall| wall.w >= 80.0 && wall.h >= 80.0)
             .cloned()
             .expect("interior wall");
-        world.bullets.push(Bullet {
-            id: 1,
-            owner_id: 0,
-            x: wall.x - 8.0,
-            y: wall.y + wall.h / 2.0,
-            vx: 720.0,
-            vy: 0.0,
-            life: GLOCK_BULLET_LIFE,
-        });
+        world.bullets.push(test_glock_bullet(
+            1,
+            0,
+            wall.x - 8.0,
+            wall.y + wall.h / 2.0,
+            720.0,
+            0.0,
+        ));
 
         world.process_bullets(1.0 / 60.0);
 
@@ -989,20 +1364,22 @@ mod tests {
             (victim.x, victim.y)
         };
 
-        world.bullets.push(Bullet {
-            id: 1,
-            owner_id: 0,
-            x: victim_pos.0 - 20.0,
-            y: victim_pos.1,
-            vx: GLOCK_BULLET_SPEED,
-            vy: 0.0,
-            life: GLOCK_BULLET_LIFE,
-        });
+        world.bullets.push(test_glock_bullet(
+            1,
+            0,
+            victim_pos.0 - 20.0,
+            victim_pos.1,
+            720.0,
+            0.0,
+        ));
 
         world.process_bullets(1.0 / 60.0);
 
         let victim = world.players.get(&1).unwrap();
-        assert_eq!(victim.hp, PLAYER_MAX_HP - GLOCK_DAMAGE);
+        assert_eq!(
+            victim.hp,
+            PLAYER_MAX_HP - weapons::get_or_default("glock").damage
+        );
         assert!(victim.alive);
         assert!(world.bullets.is_empty());
     }
@@ -1013,7 +1390,7 @@ mod tests {
         {
             let player = world.players.get_mut(&0).unwrap();
             player.ammo = 0;
-            player.reload_timer = GLOCK_RELOAD_TIME;
+            player.reload_timer = weapons::get_or_default("glock").reload_time;
         }
 
         world.set_input(
@@ -1059,15 +1436,14 @@ mod tests {
             (victim.x, victim.y)
         };
 
-        world.bullets.push(Bullet {
-            id: 1,
-            owner_id: 0,
-            x: victim_pos.0 - 20.0,
-            y: victim_pos.1,
-            vx: GLOCK_BULLET_SPEED,
-            vy: 0.0,
-            life: GLOCK_BULLET_LIFE,
-        });
+        world.bullets.push(test_glock_bullet(
+            1,
+            0,
+            victim_pos.0 - 20.0,
+            victim_pos.1,
+            720.0,
+            0.0,
+        ));
 
         world.process_bullets(1.0 / 60.0);
 
@@ -1181,5 +1557,66 @@ mod tests {
         let victim = world.players.get(&1).unwrap();
         assert!(victim.controls_inverted_until > 0.0);
         assert_eq!(world.players.get(&0).unwrap().ability_charge, 0.0);
+    }
+
+    #[test]
+    fn drop_weapon_spawns_pickup_and_promotes_secondary() {
+        let mut world = test_world_with_two_players();
+        {
+            let player = world.players.get_mut(&0).unwrap();
+            player.secondary = Some(WeaponSlotState {
+                weapon_id: "glock".to_string(),
+                ammo: 5,
+            });
+            player.active_slot = ActiveSlot::Primary;
+        }
+
+        world.try_drop_weapon(0);
+
+        assert_eq!(world.weapon_pickups.len(), 1);
+        let player = world.players.get(&0).unwrap();
+        assert!(player.secondary.is_none());
+        assert_eq!(player.primary.as_ref().unwrap().ammo, 5);
+        assert_eq!(player.active_slot, ActiveSlot::Primary);
+    }
+
+    #[test]
+    fn pickup_weapon_fills_secondary_slot() {
+        let mut world = test_world_with_two_players();
+        world.weapon_pickups.push(WeaponPickup {
+            id: 1,
+            weapon_id: "glock".to_string(),
+            x: world.players.get(&0).unwrap().x,
+            y: world.players.get(&0).unwrap().y,
+            ammo: 8,
+            max_ammo: 17,
+        });
+
+        world.try_pickup_weapon(0);
+
+        let player = world.players.get(&0).unwrap();
+        assert!(world.weapon_pickups.is_empty());
+        assert_eq!(player.secondary.as_ref().unwrap().ammo, 8);
+        assert_eq!(player.active_slot, ActiveSlot::Secondary);
+    }
+
+    #[test]
+    fn switch_weapon_swaps_active_slot() {
+        let mut world = test_world_with_two_players();
+        {
+            let player = world.players.get_mut(&0).unwrap();
+            player.secondary = Some(WeaponSlotState {
+                weapon_id: "glock".to_string(),
+                ammo: 3,
+            });
+            player.ammo = 10;
+            player.save_ammo_to_active_slot();
+        }
+
+        world.try_switch_weapon(0);
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.active_slot, ActiveSlot::Secondary);
+        assert_eq!(player.ammo, 3);
     }
 }

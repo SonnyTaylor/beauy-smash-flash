@@ -55,6 +55,7 @@ export interface LobbyConfig {
   time_limit_secs: number;
   win_condition: WinCondition;
   friendly_fire: boolean;
+  fog_of_war: boolean;
 }
 
 export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
@@ -66,17 +67,20 @@ export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
   time_limit_secs: 300,
   win_condition: 'kills',
   friendly_fire: true,
+  fog_of_war: false,
 };
 
 export interface GameSettings {
   serverName: string;
   masterVolume: number;
+  musicEnabled: boolean;
   showControlsHint: boolean;
 }
 
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
   serverName: 'LAN Game',
   masterVolume: 0.85,
+  musicEnabled: true,
   showControlsHint: true,
 };
 
@@ -98,6 +102,24 @@ export interface InputSnapshot {
   reload: boolean;
   ability: boolean;
   dash: boolean;
+  switch_weapon?: boolean;
+  drop_weapon?: boolean;
+  interact?: boolean;
+}
+
+export interface WeaponSlotSnapshot {
+  weapon_id: string;
+  ammo: number;
+  max_ammo: number;
+}
+
+export interface WeaponPickupSnapshot {
+  id: number;
+  weapon_id: string;
+  x: number;
+  y: number;
+  ammo: number;
+  max_ammo: number;
 }
 
 export interface BulletSnapshot {
@@ -105,6 +127,7 @@ export interface BulletSnapshot {
   owner_id: number;
   x: number;
   y: number;
+  weapon_id?: string;
 }
 
 export type EffectKind = 'explosion' | 'aim_reticle';
@@ -149,6 +172,11 @@ export interface PlayerSnapshot {
   ability_charge: number;
   ability_windup: number;
   hacked_remaining: number;
+  active_weapon?: string;
+  active_slot?: number;
+  reload_duration?: number;
+  primary_weapon?: WeaponSlotSnapshot | null;
+  secondary_weapon?: WeaponSlotSnapshot | null;
 }
 
 export interface StateSnapshot {
@@ -167,6 +195,8 @@ export interface StateSnapshot {
   match_elapsed_secs: number;
   win_condition: WinCondition;
   match_end_reason: MatchEndReason | null;
+  fog_of_war?: boolean;
+  weapon_pickups?: WeaponPickupSnapshot[];
 }
 
 export interface CharacterDefinition {

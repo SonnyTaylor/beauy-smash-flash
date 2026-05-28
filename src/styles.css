@@ -919,6 +919,10 @@ h2 {
 .hud-zone-bottom-left {
   left: 22px;
   bottom: 22px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 12px;
 }
 
 .hud-zone-bottom-center {
@@ -1482,6 +1486,69 @@ h2 {
 }
 .hud-ammo.is-reloading .hud-ammo-label {
   color: #fde68a;
+}
+
+.hud-weapon-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 168px;
+}
+
+.hud-weapon-slot {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 11, 22, 0.55);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--mute-strong);
+}
+
+.hud-weapon-slot.is-active {
+  border-color: rgba(125, 211, 252, 0.45);
+  background: rgba(14, 165, 233, 0.12);
+  color: #e0f2fe;
+}
+
+.hud-weapon-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.65rem;
+}
+
+.hud-weapon-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-weapon-ammo {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.hud-weapon-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 2px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.hud-weapon-hint kbd {
+  font-size: 0.62rem;
 }
 
 /* --- Controls hint (auto-fades) --- */

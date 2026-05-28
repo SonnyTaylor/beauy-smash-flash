@@ -6,6 +6,7 @@ import { MatchScoreboard } from './MatchScoreboard';
 import { HudPlayerCard } from './HudPlayerCard';
 import { HudAbilityButton } from './HudAbilityButton';
 import { HudAmmoReadout } from './HudAmmoReadout';
+import { HudWeaponBar } from './HudWeaponBar';
 import { HudMatchStrip } from './HudMatchStrip';
 import { HudCrosshair } from './HudCrosshair';
 import { useArenaLayout } from '../hooks/useArenaLayout';
@@ -308,6 +309,12 @@ export function GameOverlay({
                 maxHp={me.max_hp}
                 character={character}
               />
+              <HudWeaponBar
+                activeWeapon={me.active_weapon ?? 'glock'}
+                activeSlot={me.active_slot ?? 0}
+                primary={me.primary_weapon}
+                secondary={me.secondary_weapon}
+              />
             </div>
 
             <div className="hud-zone hud-zone-bottom-center">
@@ -325,6 +332,7 @@ export function GameOverlay({
                 maxAmmo={me.max_ammo}
                 reloading={isReloading}
                 reloadRemaining={reloadRemaining}
+                reloadDuration={me.reload_duration ?? 1.2}
               />
             </div>
           </>
@@ -350,6 +358,12 @@ export function GameOverlay({
             <kbd>LMB</kbd> fire
             <span className="dot">·</span>
             <kbd>R</kbd> reload
+            <span className="dot">·</span>
+            <kbd>Q</kbd> swap
+            <span className="dot">·</span>
+            <kbd>G</kbd> drop
+            <span className="dot">·</span>
+            <kbd>F</kbd> pick up
             <span className="dot">·</span>
             <kbd>E</kbd> ability
             <span className="dot">·</span>

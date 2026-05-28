@@ -149,6 +149,22 @@ export function LobbySettingsPanel({
           </SettingRow>
         )}
 
+        <SettingRow label="Fog of War">
+          <button
+            type="button"
+            className={`toggle-pill ${config.fog_of_war ? 'on' : 'off'}`}
+            disabled={!isHost}
+            onClick={() => patch({ fog_of_war: !config.fog_of_war })}
+          >
+            {config.fog_of_war ? 'On' : 'Off'}
+          </button>
+        </SettingRow>
+        <p className="setting-hint">
+          {config.fog_of_war
+            ? 'Players only see enemies and shots within their vision radius.'
+            : 'Full arena visibility — everyone sees the whole map.'}
+        </p>
+
         <SettingRow label="Friendly Fire">
           <button
             type="button"

@@ -141,6 +141,8 @@ pub async fn join_game(
                     match_elapsed_secs: 0.0,
                     win_condition: lobby_config.win_condition,
                     match_end_reason: None,
+                    fog_of_war: lobby_config.fog_of_war,
+                    weapon_pickups: Vec::new(),
                 });
             (id, world)
         }
@@ -281,6 +283,7 @@ pub async fn start_match(
             config.time_limit_secs,
             config.win_condition,
             config.friendly_fire,
+            config.fog_of_war,
         );
         st.match_started = true;
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
@@ -408,6 +411,7 @@ pub async fn rematch(
             config.time_limit_secs,
             config.win_condition,
             config.friendly_fire,
+            config.fog_of_war,
         );
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
     };

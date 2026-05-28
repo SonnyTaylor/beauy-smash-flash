@@ -55,6 +55,10 @@ export function readGameSettings(): GameSettings {
         typeof parsed.masterVolume === 'number'
           ? Math.min(1, Math.max(0, parsed.masterVolume))
           : DEFAULT_GAME_SETTINGS.masterVolume,
+      musicEnabled:
+        typeof parsed.musicEnabled === 'boolean'
+          ? parsed.musicEnabled
+          : DEFAULT_GAME_SETTINGS.musicEnabled,
       showControlsHint:
         typeof parsed.showControlsHint === 'boolean'
           ? parsed.showControlsHint

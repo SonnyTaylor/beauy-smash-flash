@@ -3,6 +3,7 @@ import { fitWorldToViewport } from '../game/Viewport';
 import { GAME_SAFE_AREA_INSETS } from '../game/safeArea';
 
 const MOVEMENT_KEYS = new Set(['w', 'a', 's', 'd']);
+const ACTION_KEYS = new Set(['r', 'e', 'q', 'g', 'f']);
 
 export class InputController {
   private keys = new Set<string>();
@@ -61,6 +62,9 @@ export class InputController {
         reload: false,
         ability: false,
         dash: false,
+        switch_weapon: false,
+        drop_weapon: false,
+        interact: false,
       };
     }
 
@@ -78,12 +82,15 @@ export class InputController {
       reload: this.keys.has('r'),
       ability: this.keys.has('e'),
       dash: false,
+      switch_weapon: this.keys.has('q'),
+      drop_weapon: this.keys.has('g'),
+      interact: this.keys.has('f'),
     };
   }
 
   private handleKeyDown = (event: KeyboardEvent) => {
     const key = event.key.toLowerCase();
-    if (MOVEMENT_KEYS.has(key) || key === 'r' || key === 'e') {
+    if (MOVEMENT_KEYS.has(key) || ACTION_KEYS.has(key)) {
       event.preventDefault();
       this.keys.add(key);
     }

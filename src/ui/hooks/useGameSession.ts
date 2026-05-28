@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { AudioManager } from '../../audio/AudioManager';
+import { GameAudio } from '../../audio/GameAudio';
 import { ArenaRenderer } from '../../game/ArenaRenderer';
 import { InputController } from '../../input/InputController';
 import { TauriGameClient } from '../../net/TauriGameClient';
@@ -25,6 +27,8 @@ import { DEFAULT_LOBBY_CONFIG } from '../../shared/types';
 export function useGameSession() {
   const client = useMemo(() => new TauriGameClient(), []);
   const renderer = useMemo(() => new ArenaRenderer(), []);
+  const audio = useMemo(() => new AudioManager(), []);
+  const gameAudio = useMemo(() => new GameAudio(audio), [audio]);
   const input = useMemo(() => new InputController(), []);
   const gameContainerRef = useRef<HTMLDivElement | null>(null);
   const inputTimerRef = useRef<number | null>(null);
@@ -73,7 +77,40 @@ export function useGameSession() {
 
   useEffect(() => {
     gameSettingsRef.current = gameSettings;
-  }, [gameSettings]);
+    audio.setMasterVolume(gameSettings.masterVolume);
+    audio.setMusicEnabled(gameSettings.musicEnabled);
+  }, [audio, gameSettings]);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      void audio.ensureReady().then(() => audio.onUnlocked());
+    };
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+  }, [audio]);
+
+  useEffect(() => {
+    if (!gameSettings.musicEnabled) {
+      audio.setMusicMode('off');
+      return;
+    }
+    audio.setPaused(paused && screen === 'game');
+    if (screen === 'main-menu' || screen === 'settings') {
+      audio.setMusicMode('menu');
+      return;
+    }
+    if (screen === 'lobby' || screen === 'server-select') {
+      audio.setMusicMode('lobby');
+      return;
+    }
+    if (screen === 'game') {
+      audio.setMusicMode(matchEnded ? 'lobby' : 'match');
+    }
+  }, [audio, gameSettings.musicEnabled, matchEnded, paused, screen]);
 
   useEffect(() => {
     input.setEnabled(!paused && !matchEnded);
@@ -87,6 +124,7 @@ export function useGameSession() {
       input.setWorld(state.world);
       if (screenRef.current === 'game') {
         renderer.applyState(state);
+        gameAudio.applyState(state, myIdRef.current);
       }
     });
     client.listenForLobby((nextLobby) => {
@@ -101,6 +139,7 @@ export function useGameSession() {
       setMatchEnded(false);
       setPaused(false);
       if (screenRef.current === 'game' && renderer.isMounted) {
+        gameAudio.resetMatch();
         renderer.prepareRematch();
         renderer.applyState(state);
         return;
@@ -113,16 +152,19 @@ export function useGameSession() {
       setMatchEnded(true);
       setPaused(false);
       renderer.applyState(state);
+      gameAudio.applyState(state, myIdRef.current);
     });
 
     return () => {
       client.dispose();
       input.detach();
+      gameAudio.resetMatch();
+      audio.dispose();
       if (inputTimerRef.current !== null) {
         window.clearInterval(inputTimerRef.current);
       }
     };
-  }, [client, input, renderer]);
+  }, [audio, client, gameAudio, input, renderer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -260,6 +302,7 @@ export function useGameSession() {
     input.detach();
     input.setEnabled(true);
     renderer.destroy();
+    gameAudio.resetMatch();
     if (gameContainerRef.current) {
       gameContainerRef.current.replaceChildren();
     }
@@ -319,6 +362,7 @@ export function useGameSession() {
       setMatchEnded(false);
       setPaused(false);
       if (renderer.isMounted && latestStateRef.current) {
+        gameAudio.resetMatch();
         renderer.prepareRematch();
         renderer.applyState(latestStateRef.current);
       }
@@ -361,7 +405,10 @@ export function useGameSession() {
     }
 
     setScreen('game');
+    void audio.ensureReady();
+    gameAudio.resetMatch();
     renderer.applyState(state);
+    gameAudio.applyState(state, playerId);
   }
 
   function saveGameSettings(next: GameSettings) {

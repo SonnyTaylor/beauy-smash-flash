@@ -1,19 +1,19 @@
-import { GLOCK_RELOAD_SECS } from '../constants';
-
 export function HudAmmoReadout({
   ammo,
   maxAmmo,
   reloading,
   reloadRemaining,
+  reloadDuration = 1.2,
 }: {
   ammo: number;
   maxAmmo: number;
   reloading: boolean;
   reloadRemaining: number;
+  reloadDuration?: number;
 }) {
   const isReloading = reloading || reloadRemaining > 0;
   const reloadRatio = isReloading
-    ? Math.max(0, Math.min(1, 1 - reloadRemaining / GLOCK_RELOAD_SECS))
+    ? Math.max(0, Math.min(1, 1 - reloadRemaining / Math.max(0.001, reloadDuration)))
     : 0;
   const low = !isReloading && maxAmmo > 0 && ammo / maxAmmo <= 0.25;
   const empty = !isReloading && ammo <= 0;

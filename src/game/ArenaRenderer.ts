@@ -1,19 +1,28 @@
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { CHARACTERS, getCharacter } from '../content/characters';
 import { getMap, getMapTheme } from '../content/maps';
-import { GLOCK_WEAPON, weaponOrbitPosition } from '../content/weapons/glock';
+import { getWeapon, listWeapons, weaponOrbitPosition } from '../content/weapons';
 import type {
   BulletSnapshot,
   MapSnapshot,
   PlayerSnapshot,
   RectSnapshot,
   StateSnapshot,
+  WeaponPickupSnapshot,
   WorldConfig,
   WorldEffectSnapshot,
 } from '../shared/types';
 import { VfxManager } from './vfx/VfxManager';
 import { fitWorldToViewport } from './Viewport';
 import { GAME_SAFE_AREA_INSETS } from './safeArea';
+import {
+  computeVisibilityPolygon,
+  hasLineOfSight,
+  isSimpleVisibilityPolygon,
+  rectsToSegments,
+  type Point,
+  type Segment,
+} from './fog/visibility';
 
 const PLAYER_RADIUS = 26;
 const PLAYER_DIAMETER = PLAYER_RADIUS * 2;
@@ -24,6 +33,8 @@ const MOVE_DUST_INTERVAL_MS = 100;
 const BULLET_LERP_RATE = 32;
 const PLAYER_LERP_RATE = 24;
 const BULLET_TRAIL_LENGTH = 4;
+const RELOAD_GUN_TILT = Math.PI * 0.42;
+const FOG_VISION_RADIUS = 420;
 
 function assetUrl(relativePath: string): string {
   return `/assets/${relativePath}`;
@@ -33,16 +44,29 @@ interface PlayerView {
   container: Container;
   gun: Sprite | null;
   shield: Graphics;
+  weaponId: string;
   targetX: number;
   targetY: number;
   targetAngle: number;
   displayAngle: number;
+  targetGunAngle: number;
+  displayGunAngle: number;
+  isReloading: boolean;
   lastX: number;
   lastY: number;
   lastDustAt: number;
   wasSpawnProtected: boolean;
   characterId: string;
   accentColor: number;
+}
+
+interface PickupView {
+  container: Container;
+  sprite: Sprite;
+  glow: Graphics;
+  targetX: number;
+  targetY: number;
+  bobPhase: number;
 }
 
 export class ArenaRenderer {
@@ -53,17 +77,28 @@ export class ArenaRenderer {
   private wallLayer = new Container();
   private entityLayer = new Container();
   private vfxLayer = new Container();
+  private fogLayer = new Container();
+  private fogOverlay = new Graphics();
   private floorFill = new Graphics();
   private grid = new Graphics();
   private wallContainer = new Container();
   private bullets = new Graphics();
   private bulletStates = new Map<
     number,
-    { x: number; y: number; targetX: number; targetY: number; trail: Array<{ x: number; y: number }> }
+    {
+      x: number;
+      y: number;
+      targetX: number;
+      targetY: number;
+      ownerId: number;
+      trail: Array<{ x: number; y: number }>;
+    }
   >();
   private players = new Map<number, PlayerView>();
+  private pickups = new Map<number, PickupView>();
+  private pickupLayer = new Container();
   private headTextures = new Map<string, Texture>();
-  private glockTexture: Texture | null = null;
+  private weaponTextures = new Map<string, Texture>();
   private vfx = new VfxManager();
   private mounted = false;
   private myId = 0;
@@ -79,6 +114,14 @@ export class ArenaRenderer {
   private viewportMask = new Graphics();
   private viewportWidth = 0;
   private viewportHeight = 0;
+  private fogEnabled = false;
+  private fogOriginX = 0;
+  private fogOriginY = 0;
+  private localPlayerX = 0;
+  private localPlayerY = 0;
+  private wallRects: RectSnapshot[] = [];
+  private wallSegments: Segment[] = [];
+  private visibilityPolygon: Point[] = [];
 
   get canvas(): HTMLCanvasElement {
     if (!this.app?.canvas) {
@@ -96,6 +139,10 @@ export class ArenaRenderer {
     this.knownEffectIds.clear();
     this.bulletStates.clear();
     this.vfx.clear();
+    for (const view of this.pickups.values()) {
+      view.container.destroy({ children: true });
+    }
+    this.pickups.clear();
     for (const view of this.players.values()) {
       view.wasSpawnProtected = false;
     }
@@ -143,17 +190,24 @@ export class ArenaRenderer {
     this.grid = new Graphics();
     this.wallContainer = new Container();
     this.bullets = new Graphics();
+    this.pickupLayer = new Container();
 
     this.root.sortableChildren = true;
     this.floorLayer.zIndex = 0;
     this.wallLayer.zIndex = 1;
     this.entityLayer.zIndex = 2;
     this.vfxLayer.zIndex = 3;
+    this.fogLayer.zIndex = 4;
+
+    this.entityLayer.sortableChildren = true;
+    this.pickupLayer.zIndex = 0;
+    this.bullets.zIndex = 1;
 
     this.floorLayer.addChild(this.floorFill, this.grid);
     this.wallLayer.addChild(this.wallContainer);
-    this.entityLayer.addChild(this.bullets);
-    this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer, this.vfxLayer);
+    this.entityLayer.addChild(this.pickupLayer, this.bullets);
+    this.fogLayer.addChild(this.fogOverlay);
+    this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer, this.vfxLayer, this.fogLayer);
     this.root.sortChildren();
     this.viewportMask = new Graphics();
     this.root.mask = this.viewportMask;
@@ -179,8 +233,12 @@ export class ArenaRenderer {
     this.app.destroy(true, { children: true });
     this.app = null;
     this.players.clear();
+    for (const view of this.pickups.values()) {
+      view.container.destroy({ children: true });
+    }
+    this.pickups.clear();
     this.headTextures.clear();
-    this.glockTexture = null;
+    this.weaponTextures.clear();
     this.knownBulletIds.clear();
     this.knownEffectIds.clear();
     this.bulletStates.clear();
@@ -189,10 +247,22 @@ export class ArenaRenderer {
     this.mapId = null;
     this.mapSignature = '';
     this.mapTheme = getMapTheme(undefined);
+    this.wallRects = [];
+    this.wallSegments = [];
+    this.visibilityPolygon = [];
   }
 
   applyState(snapshot: StateSnapshot) {
     if (!this.mounted || !this.app) return;
+
+    this.fogEnabled = snapshot.fog_of_war ?? false;
+    const me = snapshot.players.find((player) => player.id === this.myId);
+    if (me) {
+      this.localPlayerX = me.x;
+      this.localPlayerY = me.y;
+      this.fogOriginX = me.x;
+      this.fogOriginY = me.y;
+    }
 
     const worldChanged =
       this.world.width !== snapshot.world.width || this.world.height !== snapshot.world.height;
@@ -202,8 +272,9 @@ export class ArenaRenderer {
       this.syncViewport(true);
     }
     this.syncBulletTargets(snapshot.bullets);
+    this.syncWeaponPickups(snapshot.weapon_pickups ?? []);
     this.syncWorldEffects(snapshot.effects ?? []);
-    this.detectMuzzleFlashes(snapshot.bullets, snapshot.players);
+    this.detectMuzzleFlashes(snapshot.bullets, snapshot.players, me);
 
     const aliveIds = new Set<number>();
     for (const player of snapshot.players) {
@@ -238,11 +309,17 @@ export class ArenaRenderer {
       view.wasSpawnProtected = player.spawn_protected;
 
       this.updatePlayerVisuals(view, player);
+      this.syncPlayerWeapon(view, player.active_weapon ?? 'glock');
 
       view.targetX = player.x;
       view.targetY = player.y;
       view.targetAngle = player.angle;
-      this.updateGun(view, player.angle);
+      view.isReloading = player.reloading || player.reload_remaining > 0;
+      view.targetGunAngle = view.isReloading ? player.angle + RELOAD_GUN_TILT : player.angle;
+
+      const inVision =
+        !this.fogEnabled || player.id === this.myId || this.isInVision(player.x, player.y);
+      view.container.visible = inVision;
     }
 
     for (const [id, view] of this.players) {
@@ -260,6 +337,10 @@ export class ArenaRenderer {
       if (this.knownEffectIds.has(effect.id)) {
         continue;
       }
+      if (this.fogEnabled && !this.isInVision(effect.x, effect.y)) {
+        this.knownEffectIds.add(effect.id);
+        continue;
+      }
       this.knownEffectIds.add(effect.id);
       if (effect.kind === 'explosion') {
         this.vfx.emitExplosion(effect.x, effect.y, effect.radius);
@@ -275,11 +356,24 @@ export class ArenaRenderer {
     }
   }
 
-  private detectMuzzleFlashes(bullets: BulletSnapshot[], players: PlayerSnapshot[]) {
+  private detectMuzzleFlashes(
+    bullets: BulletSnapshot[],
+    players: PlayerSnapshot[],
+    me: PlayerSnapshot | undefined,
+  ) {
     const playerById = new Map(players.map((player) => [player.id, player]));
 
     for (const bullet of bullets) {
       if (this.knownBulletIds.has(bullet.id)) {
+        continue;
+      }
+      if (
+        this.fogEnabled &&
+        me &&
+        bullet.owner_id !== this.myId &&
+        !this.isInVision(bullet.x, bullet.y)
+      ) {
+        this.knownBulletIds.add(bullet.id);
         continue;
       }
       this.knownBulletIds.add(bullet.id);
@@ -300,9 +394,107 @@ export class ArenaRenderer {
 
   private updateGun(view: PlayerView, angle: number) {
     if (!view.gun) return;
-    const orbit = weaponOrbitPosition(angle);
+    const meta = getWeapon(view.weaponId).meta;
+    const orbit = weaponOrbitPosition(meta, angle);
     view.gun.position.set(orbit.x, orbit.y);
     view.gun.rotation = angle;
+  }
+
+  private syncPlayerWeapon(view: PlayerView, weaponId: string) {
+    if (view.weaponId === weaponId) {
+      return;
+    }
+
+    view.weaponId = weaponId;
+    if (view.gun) {
+      view.container.removeChild(view.gun);
+      view.gun.destroy();
+      view.gun = null;
+    }
+
+    const texture = this.weaponTextures.get(weaponId);
+    if (!texture) {
+      return;
+    }
+
+    const def = getWeapon(weaponId);
+    const gun = new Sprite(texture);
+    gun.anchor.set(def.meta.pivot.x, def.meta.pivot.y);
+    gun.scale.set(def.meta.displayScale);
+    view.gun = gun;
+
+    const avatarIndex = view.container.getChildIndex(view.shield) + 1;
+    view.container.addChildAt(gun, Math.min(avatarIndex + 1, view.container.children.length));
+  }
+
+  private syncWeaponPickups(pickups: WeaponPickupSnapshot[]) {
+    const liveIds = new Set<number>();
+
+    for (const pickup of pickups) {
+      liveIds.add(pickup.id);
+      let view = this.pickups.get(pickup.id);
+      if (!view) {
+        view = this.createPickup(pickup);
+        this.pickups.set(pickup.id, view);
+        this.pickupLayer.addChild(view.container);
+      } else if (view.sprite.texture !== this.weaponTextures.get(pickup.weapon_id)) {
+        this.refreshPickupSprite(view, pickup.weapon_id);
+      }
+
+      view.targetX = pickup.x;
+      view.targetY = pickup.y;
+      const inVision =
+        !this.fogEnabled || this.isInVision(pickup.x, pickup.y);
+      view.container.visible = inVision;
+    }
+
+    for (const [id, view] of this.pickups) {
+      if (!liveIds.has(id)) {
+        view.container.destroy({ children: true });
+        this.pickups.delete(id);
+      }
+    }
+  }
+
+  private createPickup(pickup: WeaponPickupSnapshot): PickupView {
+    const container = new Container();
+    const glow = new Graphics()
+      .circle(0, 0, 22)
+      .fill({ color: 0x7dd3fc, alpha: 0.18 })
+      .circle(0, 0, 22)
+      .stroke({ color: 0x38bdf8, width: 2, alpha: 0.45 });
+    container.addChild(glow);
+
+    const def = getWeapon(pickup.weapon_id);
+    const texture = this.weaponTextures.get(pickup.weapon_id);
+    const sprite = texture ? new Sprite(texture) : new Sprite(Texture.WHITE);
+    sprite.anchor.set(def.meta.pivot.x, def.meta.pivot.y);
+    sprite.scale.set(def.meta.displayScale * 0.92);
+    sprite.rotation = Math.PI * 0.5;
+    sprite.alpha = 0.95;
+    container.addChild(sprite);
+
+    container.x = pickup.x;
+    container.y = pickup.y;
+
+    return {
+      container,
+      sprite,
+      glow,
+      targetX: pickup.x,
+      targetY: pickup.y,
+      bobPhase: Math.random() * Math.PI * 2,
+    };
+  }
+
+  private refreshPickupSprite(view: PickupView, weaponId: string) {
+    const def = getWeapon(weaponId);
+    const texture = this.weaponTextures.get(weaponId);
+    if (texture) {
+      view.sprite.texture = texture;
+    }
+    view.sprite.anchor.set(def.meta.pivot.x, def.meta.pivot.y);
+    view.sprite.scale.set(def.meta.displayScale * 0.92);
   }
 
   private updatePlayerVisuals(view: PlayerView, player: PlayerSnapshot) {
@@ -334,6 +526,7 @@ export class ArenaRenderer {
           y: bullet.y,
           targetX: bullet.x,
           targetY: bullet.y,
+          ownerId: bullet.owner_id,
           trail: [],
         };
         this.bulletStates.set(bullet.id, state);
@@ -344,6 +537,7 @@ export class ArenaRenderer {
         }
         state.targetX = bullet.x;
         state.targetY = bullet.y;
+        state.ownerId = bullet.owner_id;
       }
     }
 
@@ -358,6 +552,14 @@ export class ArenaRenderer {
     const blend = 1 - Math.exp(-BULLET_LERP_RATE * dt);
     this.bullets.clear();
     for (const state of this.bulletStates.values()) {
+      if (
+        this.fogEnabled &&
+        state.ownerId !== this.myId &&
+        !this.isInVision(state.x, state.y)
+      ) {
+        continue;
+      }
+
       state.x += (state.targetX - state.x) * blend;
       state.y += (state.targetY - state.y) * blend;
 
@@ -395,12 +597,15 @@ export class ArenaRenderer {
     container.addChild(avatar);
 
     let gun: Sprite | null = null;
-    if (this.glockTexture) {
-      gun = new Sprite(this.glockTexture);
-      gun.anchor.set(GLOCK_WEAPON.pivot.x, GLOCK_WEAPON.pivot.y);
-      gun.scale.set(GLOCK_WEAPON.displayScale);
+    const weaponId = player.active_weapon ?? 'glock';
+    const weaponDef = getWeapon(weaponId);
+    const weaponTexture = this.weaponTextures.get(weaponId);
+    if (weaponTexture) {
+      gun = new Sprite(weaponTexture);
+      gun.anchor.set(weaponDef.meta.pivot.x, weaponDef.meta.pivot.y);
+      gun.scale.set(weaponDef.meta.displayScale);
       gun.rotation = player.angle;
-      const orbit = weaponOrbitPosition(player.angle);
+      const orbit = weaponOrbitPosition(weaponDef.meta, player.angle);
       gun.position.set(orbit.x, orbit.y);
       container.addChild(gun);
     }
@@ -434,10 +639,14 @@ export class ArenaRenderer {
       container,
       gun,
       shield,
+      weaponId,
       targetX: player.x,
       targetY: player.y,
       targetAngle: player.angle,
       displayAngle: player.angle,
+      targetGunAngle: player.angle,
+      displayGunAngle: player.angle,
+      isReloading: false,
       lastX: player.x,
       lastY: player.y,
       lastDustAt: 0,
@@ -502,6 +711,18 @@ export class ArenaRenderer {
     this.lastFrameMs = now;
     this.vfx.tick(dt);
     this.drawBullets(dt);
+    this.animatePickups(now, dt);
+
+    const myView = this.players.get(this.myId);
+    if (myView) {
+      this.localPlayerX = myView.container.x;
+      this.localPlayerY = myView.container.y;
+      this.fogOriginX = myView.targetX;
+      this.fogOriginY = myView.targetY;
+    }
+    this.updateFogVisibility();
+    this.drawFogOverlay();
+    this.applyFogEntityVisibility();
 
     for (const view of this.players.values()) {
       const prevX = view.container.x;
@@ -515,8 +736,15 @@ export class ArenaRenderer {
       while (angleDelta > Math.PI) angleDelta -= Math.PI * 2;
       while (angleDelta < -Math.PI) angleDelta += Math.PI * 2;
       view.displayAngle += angleDelta * 0.45;
+
+      let gunDelta = view.targetGunAngle - view.displayGunAngle;
+      while (gunDelta > Math.PI) gunDelta -= Math.PI * 2;
+      while (gunDelta < -Math.PI) gunDelta += Math.PI * 2;
+      const gunBlend = view.isReloading ? 0.32 : 0.48;
+      view.displayGunAngle += gunDelta * gunBlend;
+
       if (view.gun) {
-        this.updateGun(view, view.displayAngle);
+        this.updateGun(view, view.displayGunAngle);
       }
 
       const dx = view.container.x - prevX;
@@ -533,6 +761,92 @@ export class ArenaRenderer {
       view.lastX = view.container.x;
       view.lastY = view.container.y;
     }
+  }
+
+  private animatePickups(now: number, dt: number) {
+    const blend = 1 - Math.exp(-PLAYER_LERP_RATE * dt);
+    for (const view of this.pickups.values()) {
+      view.container.x += (view.targetX - view.container.x) * blend;
+      view.container.y += (view.targetY - view.container.y) * blend;
+      const bob = Math.sin(now / 420 + view.bobPhase) * 3;
+      view.sprite.y = bob;
+      view.glow.alpha = 0.55 + Math.sin(now / 260 + view.bobPhase) * 0.25;
+    }
+  }
+
+  private isInVision(x: number, y: number): boolean {
+    if (!this.fogEnabled) {
+      return true;
+    }
+    return hasLineOfSight(
+      this.fogOriginX,
+      this.fogOriginY,
+      x,
+      y,
+      this.wallSegments,
+      FOG_VISION_RADIUS,
+    );
+  }
+
+  private updateFogVisibility() {
+    if (!this.fogEnabled) {
+      this.visibilityPolygon = [];
+      return;
+    }
+    this.visibilityPolygon = computeVisibilityPolygon(
+      this.fogOriginX,
+      this.fogOriginY,
+      this.wallSegments,
+      FOG_VISION_RADIUS,
+      this.world.width,
+      this.world.height,
+    );
+  }
+
+  private applyFogEntityVisibility() {
+    if (!this.fogEnabled) {
+      return;
+    }
+
+    for (const [id, view] of this.players) {
+      if (id === this.myId) {
+        view.container.visible = true;
+        continue;
+      }
+      view.container.visible = this.isInVision(view.container.x, view.container.y);
+    }
+
+    for (const view of this.pickups.values()) {
+      view.container.visible = this.isInVision(view.container.x, view.container.y);
+    }
+  }
+
+  private drawFogOverlay() {
+    if (!this.fogEnabled) {
+      this.fogLayer.visible = false;
+      return;
+    }
+
+    this.fogLayer.visible = true;
+    this.fogOverlay.clear();
+    this.fogOverlay.rect(0, 0, this.world.width, this.world.height);
+    this.fogOverlay.fill({ color: 0x020408, alpha: 0.97 });
+
+    const hits = this.visibilityPolygon;
+    const usePolygon = isSimpleVisibilityPolygon(this.fogOriginX, this.fogOriginY, hits);
+
+    if (usePolygon) {
+      const flat: number[] = [];
+      for (const point of hits) {
+        flat.push(point.x, point.y);
+      }
+      this.fogOverlay.poly(flat, true);
+      this.fogOverlay.cut();
+      return;
+    }
+
+    this.fogOverlay.circle(this.fogOriginX, this.fogOriginY, FOG_VISION_RADIUS);
+    this.fogOverlay.cut();
   }
 
   private syncViewport(redrawFloor: boolean) {
@@ -593,6 +907,8 @@ export class ArenaRenderer {
     if (!map?.id) return;
 
     const walls = getMap(map.id).walls;
+    this.wallRects = walls.filter((wall) => wall.w > 0 && wall.h > 0);
+    this.wallSegments = rectsToSegments(this.wallRects);
     const needsRebuild = map.id !== this.mapSignature || this.wallContainer.children.length === 0;
 
     if (!needsRebuild) return;
@@ -631,7 +947,14 @@ export class ArenaRenderer {
   }
 
   private async loadTextures() {
-    this.glockTexture = await loadTextureFromUrl(assetUrl(GLOCK_WEAPON.sprite));
+    await Promise.all(
+      listWeapons().map(async (weapon) => {
+        const texture = await loadTextureFromUrl(assetUrl(weapon.meta.sprite));
+        if (texture) {
+          this.weaponTextures.set(weapon.id, texture);
+        }
+      }),
+    );
     await Promise.all(
       CHARACTERS.map(async (character) => {
         const texture = await loadTextureFromUrl(assetUrl(character.sprite));

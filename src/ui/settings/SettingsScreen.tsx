@@ -30,7 +30,7 @@ export function SettingsScreen({
           </li>
           <li>
             <span className="join-tip-label">Audio</span>
-            <span>Volume slider is ready; sound effects are coming soon</span>
+            <span>Master volume controls combat sounds; toggle music separately below</span>
           </li>
           <li>
             <span className="join-tip-label">HUD</span>
@@ -62,6 +62,19 @@ export function SettingsScreen({
             </div>
 
             <div className="settings-group">
+              <SettingRow label="Music">
+                <button
+                  type="button"
+                  className={`toggle-pill ${draft.musicEnabled ? 'on' : 'off'}`}
+                  onClick={() => setDraft({ ...draft, musicEnabled: !draft.musicEnabled })}
+                >
+                  {draft.musicEnabled ? 'On' : 'Off'}
+                </button>
+              </SettingRow>
+              <p className="setting-hint">Menu, lobby, and match background music.</p>
+            </div>
+
+            <div className="settings-group">
               <div className="setting-row settings-volume-row">
                 <span className="setting-label">Master Volume</span>
                 <div className="setting-control settings-volume-control">
@@ -78,7 +91,7 @@ export function SettingsScreen({
                   <span className="settings-volume-value">{volumePercent}%</span>
                 </div>
               </div>
-              <p className="setting-hint">Audio coming soon — slider is saved for when it lands.</p>
+              <p className="setting-hint">Gunfire, hits, abilities, and UI sounds.</p>
             </div>
 
             <div className="settings-group">

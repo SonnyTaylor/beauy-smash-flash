@@ -11,6 +11,7 @@ mod maps;
 mod net;
 mod protocol;
 mod session;
+mod weapons;
 
 fn main() {
     tauri::Builder::default()

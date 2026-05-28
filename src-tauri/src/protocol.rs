@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 4;
+pub const PROTOCOL_VERSION: u16 = 6;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -55,6 +55,8 @@ pub struct LobbyConfig {
     pub time_limit_secs: u16,
     pub win_condition: WinCondition,
     pub friendly_fire: bool,
+    #[serde(default)]
+    pub fog_of_war: bool,
 }
 
 impl Default for LobbyConfig {
@@ -68,6 +70,7 @@ impl Default for LobbyConfig {
             time_limit_secs: 300,
             win_condition: WinCondition::Kills,
             friendly_fire: true,
+            fog_of_war: false,
         }
     }
 }
@@ -122,6 +125,12 @@ pub struct InputSnapshot {
     pub ability: bool,
     #[serde(default)]
     pub dash: bool,
+    #[serde(default)]
+    pub switch_weapon: bool,
+    #[serde(default)]
+    pub drop_weapon: bool,
+    #[serde(default)]
+    pub interact: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -143,11 +152,34 @@ pub struct WorldEffectSnapshot {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WeaponSlotSnapshot {
+    pub weapon_id: String,
+    pub ammo: u8,
+    pub max_ammo: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WeaponPickupSnapshot {
+    pub id: u32,
+    pub weapon_id: String,
+    pub x: f32,
+    pub y: f32,
+    pub ammo: u8,
+    pub max_ammo: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BulletSnapshot {
     pub id: u32,
     pub owner_id: u8,
     pub x: f32,
     pub y: f32,
+    #[serde(default = "default_weapon_id")]
+    pub weapon_id: String,
+}
+
+fn default_weapon_id() -> String {
+    "glock".to_string()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -186,6 +218,16 @@ pub struct PlayerSnapshot {
     pub ability_windup: f32,
     #[serde(default)]
     pub hacked_remaining: f32,
+    #[serde(default = "default_weapon_id")]
+    pub active_weapon: String,
+    #[serde(default)]
+    pub active_slot: u8,
+    #[serde(default)]
+    pub reload_duration: f32,
+    #[serde(default)]
+    pub primary_weapon: Option<WeaponSlotSnapshot>,
+    #[serde(default)]
+    pub secondary_weapon: Option<WeaponSlotSnapshot>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -213,6 +255,10 @@ pub struct StateSnapshot {
     #[serde(default)]
     pub win_condition: WinCondition,
     pub match_end_reason: Option<MatchEndReason>,
+    #[serde(default)]
+    pub fog_of_war: bool,
+    #[serde(default)]
+    pub weapon_pickups: Vec<WeaponPickupSnapshot>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
