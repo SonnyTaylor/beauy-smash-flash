@@ -49,6 +49,9 @@ export class ArenaRenderer {
       this.destroy();
     }
 
+    this.players.clear();
+    this.mapId = null;
+
     this.app = new Application();
     await this.app.init({
       backgroundColor: 0x060810,
@@ -77,6 +80,7 @@ export class ArenaRenderer {
     this.floorLayer.addChild(this.floorFill, this.grid);
     this.wallLayer.addChild(this.walls);
     this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer);
+    this.root.sortChildren();
     this.app.stage.addChild(this.root);
     this.resize();
 
@@ -99,6 +103,8 @@ export class ArenaRenderer {
   }
 
   applyState(snapshot: StateSnapshot) {
+    if (!this.mounted || !this.app) return;
+
     this.world = snapshot.world;
     this.resize();
     this.applyMap(snapshot.map);
@@ -116,6 +122,9 @@ export class ArenaRenderer {
       if (!view) {
         view = this.createPlayer(player);
         this.players.set(player.id, view);
+      }
+
+      if (view.container.parent !== this.entityLayer) {
         this.entityLayer.addChild(view.container);
       }
 

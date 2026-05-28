@@ -223,8 +223,9 @@ export function useGameSession() {
     const playerId = sessionInfoRef.current?.player_id ?? myIdRef.current;
     setScreen('game');
     await renderer.mount(container, initialState.world, playerId);
-    renderer.applyState(initialState);
-    input.attach(renderer.canvas, initialState.world);
+    const state = latestStateRef.current ?? initialState;
+    renderer.applyState(state);
+    input.attach(renderer.canvas, state.world);
     inputTimerRef.current = window.setInterval(async () => {
       const player = latestStateRef.current?.players.find((candidate) => candidate.id === playerId) ?? null;
       try {
