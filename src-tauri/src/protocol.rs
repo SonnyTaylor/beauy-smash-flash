@@ -41,7 +41,7 @@ pub struct LobbyConfig {
 impl Default for LobbyConfig {
     fn default() -> Self {
         Self {
-            map_id: "warehouse".to_string(),
+            map_id: "split".to_string(),
             gamemode: Gamemode::Deathmatch,
             max_players: 8,
             score_limit: 20,

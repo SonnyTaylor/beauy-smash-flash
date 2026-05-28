@@ -140,9 +140,7 @@ pub async fn join_game(
         ServerMessage::State(_)
         | ServerMessage::Lobby(_)
         | ServerMessage::MatchStarted(_)
-        | ServerMessage::MatchEnded(_) => {
-            return Err("Expected assignment from host".to_string())
-        }
+        | ServerMessage::MatchEnded(_) => return Err("Expected assignment from host".to_string()),
     };
 
     let state_clone = state.inner().clone();
@@ -267,6 +265,8 @@ pub async fn start_match(
         }
         st.match_end_emitted = false;
         let score_limit = st.lobby_config.score_limit;
+        let map_id = st.lobby_config.map_id.clone();
+        st.world.set_map(&map_id);
         st.world.reset_for_match(score_limit);
         st.match_started = true;
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
@@ -326,7 +326,11 @@ pub async fn update_lobby_config(
     if st.mode != SessionMode::Host {
         return Err("Only the host can change lobby settings".to_string());
     }
-    st.lobby_config = config;
+    st.lobby_config = config.clone();
+    if !st.match_started {
+        st.world.set_map(&config.map_id);
+        st.world.reposition_players_to_spawns();
+    }
     Ok(())
 }
 

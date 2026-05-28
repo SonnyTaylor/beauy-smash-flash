@@ -4,8 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "bunx vite",
-    "build": "bunx vite build",
+    "build": "bun run maps:preview && bunx vite build",
     "preview": "bunx vite preview",
+    "maps:generate": "bun scripts/generate-maps.ts",
+    "maps:validate": "bun scripts/maps-cli.ts validate",
+    "maps:preview": "bun scripts/maps-cli.ts preview",
+    "maps:list": "bun scripts/maps-cli.ts list",
     "tauri": "bunx tauri",
     "test-mp": "pwsh -ExecutionPolicy Bypass -File scripts/test-multiplayer.ps1"
   },

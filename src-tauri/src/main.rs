@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 mod commands;
 mod discovery;
 mod game;
+mod maps;
 mod net;
 mod protocol;
 mod session;

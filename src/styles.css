@@ -81,7 +81,8 @@ input {
   grid-template-rows: 1fr;
   align-items: stretch;
   justify-items: stretch;
-  padding: clamp(16px, 2.4vw, 36px);
+  padding: clamp(12px, 2vw, 28px);
+  overflow: hidden;
 }
 
 /* Main menu sits on the backdrop — no card. A soft vignette behind it
@@ -1285,13 +1286,16 @@ h2 {
   width: min(1180px, 100%);
   margin: 0 auto;
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: clamp(14px, 1.8vw, 24px);
   padding: clamp(20px, 2.4vw, 32px);
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(11, 14, 27, 0.88);
   box-shadow: 0 28px 80px var(--shadow);
+  min-height: 0;
+  max-height: 100%;
+  align-self: stretch;
 }
 
 .lobby-header {
@@ -1345,17 +1349,36 @@ h2 {
   grid-template-columns: minmax(280px, 0.7fr) minmax(360px, 1fr);
   gap: clamp(14px, 1.8vw, 22px);
   align-items: stretch;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .lobby-settings,
 .lobby-slots {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   padding: clamp(16px, 2vw, 22px);
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(8, 11, 22, 0.6);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lobby-settings-scroll {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.map-setting-block {
+  display: grid;
+  gap: 10px;
 }
 
 .panel-heading {
@@ -1402,6 +1425,66 @@ h2 {
 .setting-control {
   display: flex;
   justify-content: flex-end;
+}
+
+.map-preview {
+  --map-accent: var(--cyan);
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--map-accent) 35%, var(--line));
+  border-radius: 12px;
+  background: rgba(8, 11, 22, 0.72);
+}
+
+.map-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #060810;
+}
+
+.map-preview-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 0.82rem;
+}
+
+.map-preview-caption strong {
+  color: var(--text);
+  font-family: Impact, Haettenschweiler, Arial Narrow Bold, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.map-preview-caption span {
+  color: var(--muted);
+  text-align: right;
+}
+
+.map-preview-compact {
+  gap: 6px;
+  padding: 8px;
+}
+
+.map-preview-compact img {
+  max-height: 108px;
+  object-fit: contain;
+}
+
+.map-preview-compact .map-preview-caption {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: 0.72rem;
+}
+
+.map-preview-compact .map-preview-caption span {
+  text-align: left;
 }
 
 .cycle {
@@ -1481,6 +1564,10 @@ h2 {
   display: grid;
   gap: 10px;
   align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .slot {

@@ -1,6 +1,7 @@
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { CHARACTERS, getCharacter } from '../content/characters';
-import type { BulletSnapshot, MapSnapshot, PlayerSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
+import { getMap, getMapTheme } from '../content/maps';
+import type { BulletSnapshot, MapSnapshot, PlayerSnapshot, RectSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
 import { fitWorldToViewport } from './Viewport';
 
 const PLAYER_RADIUS = 26;
@@ -27,13 +28,15 @@ export class ArenaRenderer {
   private entityLayer = new Container();
   private floorFill = new Graphics();
   private grid = new Graphics();
-  private walls = new Graphics();
+  private wallContainer = new Container();
   private bullets = new Graphics();
   private players = new Map<number, PlayerView>();
   private headTextures = new Map<string, Texture>();
   private mounted = false;
   private myId = 0;
   private mapId: string | null = null;
+  private mapSignature = '';
+  private mapTheme = getMapTheme(undefined);
   private world: WorldConfig = { width: 1920, height: 1080 };
 
   get canvas(): HTMLCanvasElement {
@@ -53,6 +56,8 @@ export class ArenaRenderer {
 
     this.players.clear();
     this.mapId = null;
+    this.mapSignature = '';
+    this.mapTheme = getMapTheme(undefined);
 
     this.app = new Application();
     await this.app.init({
@@ -72,7 +77,7 @@ export class ArenaRenderer {
     this.entityLayer = new Container();
     this.floorFill = new Graphics();
     this.grid = new Graphics();
-    this.walls = new Graphics();
+    this.wallContainer = new Container();
     this.bullets = new Graphics();
 
     this.root.sortableChildren = true;
@@ -81,7 +86,7 @@ export class ArenaRenderer {
     this.entityLayer.zIndex = 2;
 
     this.floorLayer.addChild(this.floorFill, this.grid);
-    this.wallLayer.addChild(this.walls);
+    this.wallLayer.addChild(this.wallContainer);
     this.entityLayer.addChild(this.bullets);
     this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer);
     this.root.sortChildren();
@@ -104,14 +109,16 @@ export class ArenaRenderer {
     this.headTextures.clear();
     this.mounted = false;
     this.mapId = null;
+    this.mapSignature = '';
+    this.mapTheme = getMapTheme(undefined);
   }
 
   applyState(snapshot: StateSnapshot) {
     if (!this.mounted || !this.app) return;
 
     this.world = snapshot.world;
-    this.resize();
     this.applyMap(snapshot.map);
+    this.resize();
     this.applyBullets(snapshot.bullets);
 
     const aliveIds = new Set<number>();
@@ -276,8 +283,15 @@ export class ArenaRenderer {
   };
 
   private drawFloor() {
+    const floor = hexToNumber(this.mapTheme.floor);
+    const gridColor = hexToNumber(this.mapTheme.grid);
+    const border = hexToNumber(this.mapTheme.wallStroke);
+
     this.floorFill.clear();
-    this.floorFill.rect(0, 0, this.world.width, this.world.height).fill({ color: 0x0a0c16, alpha: 1 });
+    this.floorFill
+      .rect(0, 0, this.world.width, this.world.height)
+      .fill({ color: floor, alpha: 1 })
+      .stroke({ color: border, width: 4, alpha: 0.7 });
 
     this.grid.clear();
     const spacing = 80;
@@ -287,24 +301,48 @@ export class ArenaRenderer {
     for (let y = 0; y <= this.world.height; y += spacing) {
       this.grid.moveTo(0, y).lineTo(this.world.width, y);
     }
-    this.grid.stroke({ color: 0x1a2038, width: 1, alpha: 0.45 });
-
-    this.floorFill
-      .rect(0, 0, this.world.width, this.world.height)
-      .stroke({ color: 0x2a3358, width: 4, alpha: 0.7 });
+    this.grid.stroke({ color: gridColor, width: 1, alpha: 0.45 });
   }
 
   private applyMap(map: MapSnapshot) {
-    if (this.mapId === map.id) return;
+    if (!map?.id) return;
+
+    const walls = getMap(map.id).walls;
+    const needsRebuild = map.id !== this.mapSignature || this.wallContainer.children.length === 0;
+
+    if (!needsRebuild) return;
+
     this.mapId = map.id;
-    this.walls.clear();
+    this.mapSignature = map.id;
+    this.mapTheme = getMapTheme(map.id);
+    this.rebuildWalls(walls);
+  }
 
-    for (const wall of map.walls) {
-      this.walls.rect(wall.x, wall.y, wall.w, wall.h);
+  private rebuildWalls(walls: RectSnapshot[]) {
+    this.wallContainer.removeChildren().forEach((child) => child.destroy(true));
+
+    const fillColor = hexToNumber(this.mapTheme.walls);
+    const strokeColor = hexToNumber(this.mapTheme.wallStroke);
+
+    for (const wall of walls) {
+      if (wall.w <= 0 || wall.h <= 0) continue;
+
+      const outline = new Sprite(Texture.WHITE);
+      outline.position.set(wall.x - 2, wall.y - 2);
+      outline.width = wall.w + 4;
+      outline.height = wall.h + 4;
+      outline.tint = strokeColor;
+      outline.alpha = 0.95;
+
+      const block = new Sprite(Texture.WHITE);
+      block.position.set(wall.x, wall.y);
+      block.width = wall.w;
+      block.height = wall.h;
+      block.tint = fillColor;
+      block.alpha = 1;
+
+      this.wallContainer.addChild(outline, block);
     }
-
-    this.walls.fill({ color: 0x1c1f32, alpha: 0.98 });
-    this.walls.stroke({ color: 0x4a5278, width: 2, alpha: 0.85 });
   }
 
   private async loadHeadTextures() {
@@ -331,4 +369,8 @@ function loadTextureFromUrl(url: string): Promise<Texture | null> {
 
 function rgbToHex([r, g, b]: [number, number, number]): number {
   return (r << 16) | (g << 8) | b;
+}
+
+function hexToNumber(hex: string): number {
+  return Number.parseInt(hex.replace('#', ''), 16);
 }

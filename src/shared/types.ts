@@ -51,7 +51,7 @@ export interface LobbyConfig {
 }
 
 export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
-  map_id: 'warehouse',
+  map_id: 'split',
   gamemode: 'deathmatch',
   max_players: 8,
   score_limit: 20,

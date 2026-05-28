@@ -286,8 +286,8 @@ export function useGameSession() {
     if (!container) return;
     teardownGameRuntime();
     const playerId = sessionInfoRef.current?.player_id ?? myIdRef.current;
-    setScreen('game');
     await renderer.mount(container, initialState.world, playerId);
+    setScreen('game');
     const state = latestStateRef.current ?? initialState;
     renderer.applyState(state);
     input.attach(renderer.canvas, state.world);

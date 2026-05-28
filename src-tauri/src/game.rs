@@ -239,7 +239,7 @@ impl Default for GameWorld {
 impl GameWorld {
     pub fn new(config: WorldConfig) -> Self {
         Self {
-            map: warehouse_map(),
+            map: crate::maps::load_map(crate::maps::DEFAULT_MAP_ID, config.width, config.height),
             config,
             tick: 0,
             players: HashMap::new(),
@@ -250,6 +250,20 @@ impl GameWorld {
             score_limit: 20,
             match_ended: false,
             winner_id: None,
+        }
+    }
+
+    pub fn set_map(&mut self, map_id: &str) {
+        self.map = crate::maps::load_map(map_id, self.config.width, self.config.height);
+    }
+
+    pub fn reposition_players_to_spawns(&mut self) {
+        let ids: Vec<u8> = self.players.keys().copied().collect();
+        for id in ids {
+            if let Some(player) = self.players.get_mut(&id) {
+                player.spawn_index = id as usize % self.map.spawns.len();
+            }
+            self.reset_player_for_spawn(id, 0.0);
         }
     }
 
@@ -689,48 +703,6 @@ pub fn circle_hits_circle(x1: f32, y1: f32, r1: f32, x2: f32, y2: f32, r2: f32) 
     let radius = r1 + r2;
     dx * dx + dy * dy < radius * radius
 }
-
-fn warehouse_map() -> GameMap {
-    let walls = [
-        (-100.0, -100.0, 1480.0, 100.0),
-        (-100.0, 720.0, 1480.0, 100.0),
-        (-100.0, 0.0, 100.0, 720.0),
-        (1280.0, 0.0, 100.0, 720.0),
-        (160.0, 80.0, 160.0, 120.0),
-        (960.0, 80.0, 160.0, 120.0),
-        (160.0, 520.0, 160.0, 120.0),
-        (960.0, 520.0, 160.0, 120.0),
-        (440.0, 240.0, 400.0, 40.0),
-        (440.0, 440.0, 400.0, 40.0),
-        (80.0, 280.0, 40.0, 160.0),
-        (1160.0, 280.0, 40.0, 160.0),
-    ];
-    GameMap {
-        id: "warehouse".to_string(),
-        name: "Warehouse".to_string(),
-        walls: walls.into_iter().map(scale_rect_from_python).collect(),
-        spawns: vec![
-            (240.0, 540.0),
-            (1680.0, 540.0),
-            (960.0, 180.0),
-            (960.0, 900.0),
-            (540.0, 180.0),
-            (1380.0, 900.0),
-        ],
-    }
-}
-
-fn scale_rect_from_python((x, y, w, h): (f32, f32, f32, f32)) -> Rect {
-    let sx = DEFAULT_WORLD_WIDTH / 1280.0;
-    let sy = DEFAULT_WORLD_HEIGHT / 720.0;
-    Rect {
-        x: x * sx,
-        y: y * sy,
-        w: w * sx,
-        h: h * sy,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -771,15 +743,23 @@ mod tests {
         }
 
         let player = world.players.get(&0).unwrap();
-        assert_eq!(player.x, PLAYER_RADIUS);
-        assert_eq!(player.y, PLAYER_RADIUS);
+        assert!(player.x >= PLAYER_RADIUS);
+        assert!(player.y >= PLAYER_RADIUS);
+        assert!(player.x <= world.config.width - PLAYER_RADIUS);
+        assert!(player.y <= world.config.height - PLAYER_RADIUS);
     }
 
     #[test]
     fn player_collides_with_map_walls() {
         let mut world = GameWorld::default();
         world.add_player(0, "Host".to_string(), "sonny".to_string());
-        let wall = world.map.walls[4].clone();
+        let wall = world
+            .map
+            .walls
+            .iter()
+            .find(|wall| wall.w >= 80.0 && wall.h >= 80.0)
+            .cloned()
+            .expect("interior wall");
         let player = world.players.get_mut(&0).unwrap();
         player.x = wall.x - PLAYER_RADIUS - 1.0;
         player.y = wall.y + wall.h / 2.0;
@@ -804,7 +784,13 @@ mod tests {
     #[test]
     fn bullet_is_removed_when_it_hits_a_wall() {
         let mut world = GameWorld::default();
-        let wall = world.map.walls[4].clone();
+        let wall = world
+            .map
+            .walls
+            .iter()
+            .find(|wall| wall.w >= 80.0 && wall.h >= 80.0)
+            .cloned()
+            .expect("interior wall");
         world.bullets.push(Bullet {
             id: 1,
             owner_id: 0,

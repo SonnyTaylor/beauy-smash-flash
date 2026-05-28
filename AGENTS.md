@@ -48,6 +48,7 @@ After making code changes, create a git commit unless the user asked for no comm
 - Prefer simple, inspectable JSON protocol while the game is changing quickly. Optimize to binary later only when schemas stabilize.
 - Do not hardcode final UI art direction yet. Basic mockups are fine, but keep the component structure easy to replace.
 - Use content files for names, character data, maps, tuning, and UI copy where practical.
+- Map authoring lives in `content/maps/*.map.json`. Read `maps/MAPS.md` before creating or editing maps; run `bun run maps:validate` and `bun run maps:preview`.
 - When adding mechanics, add small Rust tests for deterministic rules such as movement, collision, bullet hits, reload timing, and scoring.
 
 ## Product Notes
