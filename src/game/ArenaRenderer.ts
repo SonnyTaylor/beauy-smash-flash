@@ -1,12 +1,18 @@
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { CHARACTERS, getCharacter } from '../content/characters';
 import { getMap, getMapTheme } from '../content/maps';
+import { GLOCK_WEAPON, weaponOrbitPosition } from '../content/weapons/glock';
 import type { BulletSnapshot, MapSnapshot, PlayerSnapshot, RectSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
+import { VfxManager } from './vfx/VfxManager';
 import { fitWorldToViewport } from './Viewport';
 
 const PLAYER_RADIUS = 26;
 const PLAYER_DIAMETER = PLAYER_RADIUS * 2;
 const BULLET_RADIUS = 4;
+const FOOT_OFFSET_Y = 22;
+const MOVE_DUST_SPEED = 100;
+const MOVE_DUST_INTERVAL_MS = 100;
+const BULLET_LERP_RATE = 32;
 
 function assetUrl(relativePath: string): string {
   return `/assets/${relativePath}`;
@@ -14,9 +20,18 @@ function assetUrl(relativePath: string): string {
 
 interface PlayerView {
   container: Container;
+  gun: Sprite | null;
+  shield: Graphics;
   targetX: number;
   targetY: number;
+  targetAngle: number;
+  displayAngle: number;
+  lastX: number;
+  lastY: number;
+  lastDustAt: number;
+  wasSpawnProtected: boolean;
   characterId: string;
+  accentColor: number;
 }
 
 export class ArenaRenderer {
@@ -26,18 +41,24 @@ export class ArenaRenderer {
   private floorLayer = new Container();
   private wallLayer = new Container();
   private entityLayer = new Container();
+  private vfxLayer = new Container();
   private floorFill = new Graphics();
   private grid = new Graphics();
   private wallContainer = new Container();
   private bullets = new Graphics();
+  private bulletStates = new Map<number, { x: number; y: number; targetX: number; targetY: number }>();
   private players = new Map<number, PlayerView>();
   private headTextures = new Map<string, Texture>();
+  private glockTexture: Texture | null = null;
+  private vfx = new VfxManager();
   private mounted = false;
   private myId = 0;
   private mapId: string | null = null;
   private mapSignature = '';
   private mapTheme = getMapTheme(undefined);
   private world: WorldConfig = { width: 1920, height: 1080 };
+  private knownBulletIds = new Set<number>();
+  private lastFrameMs = 0;
 
   get canvas(): HTMLCanvasElement {
     if (!this.app?.canvas) {
@@ -55,9 +76,12 @@ export class ArenaRenderer {
     }
 
     this.players.clear();
+    this.knownBulletIds.clear();
+    this.bulletStates.clear();
     this.mapId = null;
     this.mapSignature = '';
     this.mapTheme = getMapTheme(undefined);
+    this.vfx.clear();
 
     this.app = new Application();
     await this.app.init({
@@ -67,7 +91,7 @@ export class ArenaRenderer {
       resolution: window.devicePixelRatio || 1,
       resizeTo: window,
     });
-    await this.loadHeadTextures();
+    await this.loadTextures();
 
     container.appendChild(this.app.canvas);
 
@@ -75,6 +99,7 @@ export class ArenaRenderer {
     this.floorLayer = new Container();
     this.wallLayer = new Container();
     this.entityLayer = new Container();
+    this.vfxLayer = this.vfx.container;
     this.floorFill = new Graphics();
     this.grid = new Graphics();
     this.wallContainer = new Container();
@@ -84,16 +109,18 @@ export class ArenaRenderer {
     this.floorLayer.zIndex = 0;
     this.wallLayer.zIndex = 1;
     this.entityLayer.zIndex = 2;
+    this.vfxLayer.zIndex = 3;
 
     this.floorLayer.addChild(this.floorFill, this.grid);
     this.wallLayer.addChild(this.wallContainer);
     this.entityLayer.addChild(this.bullets);
-    this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer);
+    this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer, this.vfxLayer);
     this.root.sortChildren();
     this.app.stage.addChild(this.root);
     this.resize();
 
     window.addEventListener('resize', this.resize);
+    this.lastFrameMs = performance.now();
     this.app.ticker.add(() => this.renderFrame());
     this.mounted = true;
   }
@@ -107,6 +134,10 @@ export class ArenaRenderer {
     this.app = null;
     this.players.clear();
     this.headTextures.clear();
+    this.glockTexture = null;
+    this.knownBulletIds.clear();
+    this.bulletStates.clear();
+    this.vfx.clear();
     this.mounted = false;
     this.mapId = null;
     this.mapSignature = '';
@@ -119,7 +150,8 @@ export class ArenaRenderer {
     this.world = snapshot.world;
     this.applyMap(snapshot.map);
     this.resize();
-    this.applyBullets(snapshot.bullets);
+    this.syncBulletTargets(snapshot.bullets);
+    this.detectMuzzleFlashes(snapshot.bullets, snapshot.players);
 
     const aliveIds = new Set<number>();
     for (const player of snapshot.players) {
@@ -138,17 +170,27 @@ export class ArenaRenderer {
       if (!view) {
         view = this.createPlayer(player);
         this.players.set(player.id, view);
+        if (player.spawn_protected) {
+          this.vfx.emitSpawnBurst(player.x, player.y, view.accentColor);
+          view.wasSpawnProtected = true;
+        }
       }
 
       if (view.container.parent !== this.entityLayer) {
         this.entityLayer.addChild(view.container);
       }
 
+      if (player.spawn_protected && !view.wasSpawnProtected) {
+        this.vfx.emitSpawnBurst(player.x, player.y, view.accentColor);
+      }
+      view.wasSpawnProtected = player.spawn_protected;
+
       this.updatePlayerVisuals(view, player);
 
       view.targetX = player.x;
       view.targetY = player.y;
-      view.container.rotation = player.angle;
+      view.targetAngle = player.angle;
+      this.updateGun(view, player.angle);
     }
 
     for (const [id, view] of this.players) {
@@ -159,19 +201,83 @@ export class ArenaRenderer {
     }
   }
 
+  private detectMuzzleFlashes(bullets: BulletSnapshot[], players: PlayerSnapshot[]) {
+    const playerById = new Map(players.map((player) => [player.id, player]));
+
+    for (const bullet of bullets) {
+      if (this.knownBulletIds.has(bullet.id)) {
+        continue;
+      }
+      this.knownBulletIds.add(bullet.id);
+
+      const owner = playerById.get(bullet.owner_id);
+      const angle = owner?.angle ?? Math.atan2(bullet.y, bullet.x);
+      // Bullet spawn position from server is at the muzzle — use it directly.
+      this.vfx.emitMuzzleFlash(bullet.x, bullet.y, angle);
+    }
+
+    const liveIds = new Set(bullets.map((bullet) => bullet.id));
+    for (const id of this.knownBulletIds) {
+      if (!liveIds.has(id)) {
+        this.knownBulletIds.delete(id);
+      }
+    }
+  }
+
+  private updateGun(view: PlayerView, angle: number) {
+    if (!view.gun) return;
+    const orbit = weaponOrbitPosition(angle);
+    view.gun.position.set(orbit.x, orbit.y);
+    view.gun.rotation = angle;
+  }
+
   private updatePlayerVisuals(view: PlayerView, player: PlayerSnapshot) {
     const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
     if (label) {
       label.text = player.name || getCharacter(player.character_id).initials;
     }
 
-    view.container.alpha = player.spawn_protected ? 0.75 : 1;
+    view.container.alpha = player.spawn_protected ? 0.85 : 1;
+    view.shield.visible = player.spawn_protected;
+    if (player.spawn_protected) {
+      const pulse = 0.65 + 0.35 * Math.abs(Math.sin(performance.now() / 150));
+      view.shield.alpha = pulse;
+    }
   }
 
-  private applyBullets(bullets: BulletSnapshot[]) {
-    this.bullets.clear();
+  private syncBulletTargets(bullets: BulletSnapshot[]) {
+    const seen = new Set<number>();
     for (const bullet of bullets) {
-      this.bullets.circle(bullet.x, bullet.y, BULLET_RADIUS);
+      seen.add(bullet.id);
+      let state = this.bulletStates.get(bullet.id);
+      if (!state) {
+        state = {
+          x: bullet.x,
+          y: bullet.y,
+          targetX: bullet.x,
+          targetY: bullet.y,
+        };
+        this.bulletStates.set(bullet.id, state);
+      } else {
+        state.targetX = bullet.x;
+        state.targetY = bullet.y;
+      }
+    }
+
+    for (const id of this.bulletStates.keys()) {
+      if (!seen.has(id)) {
+        this.bulletStates.delete(id);
+      }
+    }
+  }
+
+  private drawBullets(dt: number) {
+    const blend = 1 - Math.exp(-BULLET_LERP_RATE * dt);
+    this.bullets.clear();
+    for (const state of this.bulletStates.values()) {
+      state.x += (state.targetX - state.x) * blend;
+      state.y += (state.targetY - state.y) * blend;
+      this.bullets.circle(state.x, state.y, BULLET_RADIUS);
     }
     this.bullets.fill({ color: 0xffff32, alpha: 0.95 });
   }
@@ -187,14 +293,32 @@ export class ArenaRenderer {
       .fill({ color: 0x000000, alpha: 0.35 });
     container.addChild(shadow);
 
+    const shield = new Graphics()
+      .circle(0, 0, PLAYER_RADIUS + 10)
+      .stroke({ color: 0x7ef9ff, width: 3, alpha: 0.8 });
+    shield.visible = false;
+    container.addChild(shield);
+
     const avatar = this.createAvatar(character.sprite, character.initials, color);
     container.addChild(avatar);
 
-    const aim = new Graphics()
-      .moveTo(PLAYER_RADIUS - 2, 0)
-      .lineTo(PLAYER_RADIUS + 16, 0)
-      .stroke({ color: isMe ? 0xffffff : color, width: isMe ? 4 : 3, alpha: 0.9 });
-    container.addChild(aim);
+    let gun: Sprite | null = null;
+    if (this.glockTexture) {
+      gun = new Sprite(this.glockTexture);
+      gun.anchor.set(GLOCK_WEAPON.pivot.x, GLOCK_WEAPON.pivot.y);
+      gun.scale.set(GLOCK_WEAPON.displayScale);
+      gun.rotation = player.angle;
+      const orbit = weaponOrbitPosition(player.angle);
+      gun.position.set(orbit.x, orbit.y);
+      container.addChild(gun);
+    }
+
+    if (isMe) {
+      const selfRing = new Graphics()
+        .circle(0, 0, PLAYER_RADIUS + 8)
+        .stroke({ color: 0xffffff, width: 2, alpha: 0.35 });
+      container.addChild(selfRing);
+    }
 
     const label = new Text({
       text: player.name || character.initials,
@@ -216,9 +340,18 @@ export class ArenaRenderer {
 
     return {
       container,
-      characterId: player.character_id,
+      gun,
+      shield,
       targetX: player.x,
       targetY: player.y,
+      targetAngle: player.angle,
+      displayAngle: player.angle,
+      lastX: player.x,
+      lastY: player.y,
+      lastDustAt: 0,
+      wasSpawnProtected: player.spawn_protected,
+      characterId: player.character_id,
+      accentColor: color,
     };
   }
 
@@ -264,13 +397,40 @@ export class ArenaRenderer {
   }
 
   private renderFrame() {
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - this.lastFrameMs) / 1000);
+    this.lastFrameMs = now;
+    this.vfx.tick(dt);
+    this.drawBullets(dt);
+
     for (const view of this.players.values()) {
+      const prevX = view.container.x;
+      const prevY = view.container.y;
+
       view.container.x += (view.targetX - view.container.x) * 0.35;
       view.container.y += (view.targetY - view.container.y) * 0.35;
-      const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
-      if (label) {
-        label.rotation = -view.container.rotation;
+
+      let angleDelta = view.targetAngle - view.displayAngle;
+      while (angleDelta > Math.PI) angleDelta -= Math.PI * 2;
+      while (angleDelta < -Math.PI) angleDelta += Math.PI * 2;
+      view.displayAngle += angleDelta * 0.45;
+      if (view.gun) {
+        this.updateGun(view, view.displayAngle);
       }
+
+      const dx = view.container.x - prevX;
+      const dy = view.container.y - prevY;
+      const speed = Math.hypot(dx, dy) / Math.max(dt, 0.001);
+      if (speed > MOVE_DUST_SPEED && now - view.lastDustAt > MOVE_DUST_INTERVAL_MS) {
+        const moveAngle = Math.atan2(dy, dx);
+        const feetX = view.container.x - Math.cos(moveAngle) * 6;
+        const feetY = view.container.y + FOOT_OFFSET_Y;
+        this.vfx.emitMoveDust(feetX, feetY, moveAngle, view.accentColor);
+        view.lastDustAt = now;
+      }
+
+      view.lastX = view.container.x;
+      view.lastY = view.container.y;
     }
   }
 
@@ -345,7 +505,8 @@ export class ArenaRenderer {
     }
   }
 
-  private async loadHeadTextures() {
+  private async loadTextures() {
+    this.glockTexture = await loadTextureFromUrl(assetUrl(GLOCK_WEAPON.sprite));
     await Promise.all(
       CHARACTERS.map(async (character) => {
         const texture = await loadTextureFromUrl(assetUrl(character.sprite));

@@ -1,0 +1,17 @@
+{
+  "id": "glock",
+  "sprite": "weapons/glock.png",
+  "width": 1500,
+  "height": 1500,
+  "displayScale": 0.028,
+  "orbitRadius": 30,
+  "pivot": {
+    "x": 0.2009,
+    "y": 0.5318
+  },
+  "muzzle": {
+    "x": 0.9468,
+    "y": 0.2978
+  },
+  "defaultRotation": 0
+}
