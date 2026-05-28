@@ -23,6 +23,10 @@ Bump **app version** for every release. Bump **protocol version** only when wire
    ```
 3. GitHub Actions builds the NSIS installer and publishes `latest.json` for the updater.
 
+First tag build after a dependency change is slow (~8 min); later tags reuse the Rust cache via `shared-key` and usually finish in ~3–4 min. Bumping only the app version still changes `Cargo.lock` slightly, so the shared fallback matters.
+
+For a fast installer without waiting on CI, build locally (`bun run tauri:build`) and upload the NSIS artifact to the GitHub release manually.
+
 ## Signing key (one-time)
 
 The updater public key is in `src-tauri/tauri.conf.json`. The private key lives outside the repo.

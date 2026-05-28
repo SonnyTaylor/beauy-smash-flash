@@ -5,10 +5,15 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     permissions:
       contents: write
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -20,13 +25,29 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Pin so setup-bun's internal cache key stays stable across runs.
+          bun-version: "1.3.14"
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Primary key includes Cargo.lock hash — bumps invalidate the exact key.
+      # shared-key keeps a fallback cache across releases so tag builds stay fast.
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          shared-key: release-windows
+          cache-workspace-crates: true
+          cache-bin: true
+
+      - name: Cache frontend dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
