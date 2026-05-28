@@ -1757,7 +1757,12 @@ impl GameWorld {
             } else {
                 1.0
             };
-            let adjusted = ((damage as f32) * multiplier)
+            let hack_mult = if victim.controls_inverted_until > 0.0 {
+                abilities::SONNY_HACK_DAMAGE_MULT
+            } else {
+                1.0
+            };
+            let adjusted = ((damage as f32) * multiplier * hack_mult)
                 .round()
                 .clamp(1.0, f32::from(u16::MAX)) as u16;
             victim.hp = victim.hp.saturating_sub(adjusted);
@@ -1807,6 +1812,7 @@ impl GameWorld {
             if killer.character_id == "bailey" {
                 abilities::add_charge(killer, abilities::BAILEY_CHARGE_ON_KILL);
             }
+            abilities::on_ability_kill(killer);
         }
 
         self.kill_feed.push(KillFeedEntry {
@@ -2552,7 +2558,7 @@ mod tests {
 
         let victim = world.players.get(&1).unwrap();
         assert_eq!(victim.controls_inverted_until, SONNY_HACK_DURATION);
-        assert_eq!(world.players.get(&0).unwrap().ability_charge, 0.0);
+        assert_eq!(world.players.get(&0).unwrap().ability_charge, 18.0);
         assert!(world
             .effects
             .iter()

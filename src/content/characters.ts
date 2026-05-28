@@ -9,7 +9,8 @@ export const CHARACTERS: CharacterDefinition[] = [
     initials: 'SN',
     abilityId: 'reverse_shell',
     abilityName: 'Reverse Shell',
-    abilityDescription: "Hack the nearest enemy for 4s — their movement and aim flip.",
+    abilityDescription:
+      "Hack the nearest enemy for 4s — inverted controls and they take 30% extra damage.",
   },
   {
     id: 'bailey',
@@ -19,7 +20,8 @@ export const CHARACTERS: CharacterDefinition[] = [
     initials: 'BL',
     abilityId: 'truth_nuke',
     abilityName: 'Truth Nuke',
-    abilityDescription: '60 blast damage (150 radius). Sweep the reticle, lob the nuke, flashbang everyone else.',
+    abilityDescription:
+      '60 blast damage (150 radius) plus brief slow. Sweep the reticle, lob the nuke.',
   },
   {
     id: 'jacob',
@@ -30,7 +32,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     abilityId: 'directors_cut',
     abilityName: "Director's Cut",
     abilityDescription:
-      "30s cinematic mode — 1.67× speed, 24 fast popcorn shots (tight aim) that mark targets for 3s.",
+      "30s movie mode — 1.67× speed, 24 popcorn shots that mark targets. Kills refund 3 shots.",
   },
   {
     id: 'isaak',
@@ -41,7 +43,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     abilityId: 'chi_blast',
     abilityName: 'Chi Blast',
     abilityDescription:
-      'Stand still to build stillness (●●●). At 3 stacks, Chi Blast also slows enemies it hits.',
+      'Stand still for stillness stacks — each stack powers up Chi Blast (up to 85 dmg + slow).',
   },
   {
     id: 'taj',
@@ -52,7 +54,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     abilityId: 'doomscroll',
     abilityName: 'Story Shield',
     abilityDescription:
-      'E deploys a playing reel shield for 5.5s (blocks shots). Press E again to post it forward.',
+      'E deploys a reel shield for 5.5s (blocks shots). Press E again to post it — refunds charge.',
   },
   {
     id: 'finn',
@@ -63,7 +65,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     abilityId: 'cheeky_dinghy',
     abilityName: 'Cheeky Dinghy',
     abilityDescription:
-      'Summon a speedboat — ram enemies, but you cannot shoot. Hangover slows you briefly after.',
+      'Speedboat for 4s — ram for 40 dmg (refunds charge). Cannot shoot; shorter hangover after.',
   },
 ];
 

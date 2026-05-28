@@ -22,10 +22,14 @@ const BAILEY_NUKE_RANGE: f32 = 350.0;
 pub const BAILEY_NUKE_RADIUS: f32 = 150.0;
 pub const BAILEY_NUKE_DAMAGE: u16 = 60;
 const BAILEY_NUKE_MIN_FALLOFF: f32 = 0.35;
+const BAILEY_NUKE_SLOW_DURATION: f32 = 0.45;
+const BAILEY_NUKE_SLOW_MULT: f32 = 0.78;
 const TRUTH_EXPLOSION_VFX_LIFE: f32 = 0.65;
 
 pub const SONNY_HACK_RANGE: f32 = 280.0;
 pub const SONNY_HACK_DURATION: f32 = 4.0;
+pub const SONNY_HACK_DAMAGE_MULT: f32 = 1.3;
+const SONNY_HACK_CHARGE_BONUS: f32 = 18.0;
 const SONNY_HACK_VFX_LIFE: f32 = 0.55;
 const SONNY_MISS_REFUND: f32 = 50.0;
 
@@ -44,11 +48,13 @@ pub const POPCORN_MARK_DAMAGE_MULT: f32 = 1.4;
 const POPCORN_INITIAL_SPREAD_DEG: f32 = 6.0;
 const POPCORN_BOUNCE_SPREAD_DEG: f32 = 40.0;
 const DIRECTORS_CUT_VFX_LIFE: f32 = 0.45;
+const DIRECTORS_CUT_KILL_SHOT_REFUND: u8 = 3;
 
 pub const ISAAC_STILLNESS_STACK_TIME: f32 = 1.5;
 pub const ISAAC_MAX_STILLNESS_STACKS: u8 = 3;
 pub const ISAAC_CHI_WINDUP: f32 = 1.4;
-pub const ISAAC_CHI_DAMAGE: u16 = 75;
+pub const ISAAC_CHI_BASE_DAMAGE: u16 = 55;
+pub const ISAAC_CHI_DAMAGE_PER_STACK: u16 = 10;
 const ISAAC_CHI_BEAM_HALF_WIDTH: f32 = 14.0;
 const ISAAC_CHI_RANGE: f32 = 900.0;
 const ISAAC_CHI_SLOW_DURATION: f32 = 1.0;
@@ -68,13 +74,15 @@ const REEL_POST_DAMAGE: u16 = 32;
 const REEL_POST_KNOCKBACK: f32 = 280.0;
 const REEL_POST_SLOW_DURATION: f32 = 1.25;
 const REEL_POST_SLOW_MULT: f32 = 0.72;
+const REEL_POST_CHARGE_REFUND: f32 = 22.0;
 
 pub const FINN_BOAT_DURATION: f32 = 4.0;
 pub const FINN_BOAT_SPEED_MULT: f32 = 1.8;
-const FINN_RAM_DAMAGE: u16 = 35;
+const FINN_RAM_DAMAGE: u16 = 40;
 const FINN_RAM_KNOCKBACK: f32 = 320.0;
-pub const FINN_HANGOVER_DURATION: f32 = 0.8;
-pub const FINN_HANGOVER_SPEED_MULT: f32 = 0.5;
+const FINN_RAM_CHARGE_REFUND: f32 = 22.0;
+pub const FINN_HANGOVER_DURATION: f32 = 0.55;
+pub const FINN_HANGOVER_SPEED_MULT: f32 = 0.62;
 const BOAT_SPLASH_VFX_LIFE: f32 = 0.45;
 
 pub fn add_charge(player: &mut Player, amount: f32) {
@@ -82,6 +90,20 @@ pub fn add_charge(player: &mut Player, amount: f32) {
         return;
     }
     player.ability_charge = (player.ability_charge + amount).min(ABILITY_CHARGE_MAX);
+}
+
+pub fn isaak_chi_damage(stacks: u8) -> u16 {
+    ISAAC_CHI_BASE_DAMAGE
+        + u16::from(stacks.min(ISAAC_MAX_STILLNESS_STACKS)) * ISAAC_CHI_DAMAGE_PER_STACK
+}
+
+pub fn on_ability_kill(killer: &mut Player) {
+    if killer.character_id == "jacob" && in_directors_cut(killer) {
+        killer.directors_cut_shots = killer
+            .directors_cut_shots
+            .saturating_add(DIRECTORS_CUT_KILL_SHOT_REFUND)
+            .min(JACOB_DIRECTORS_CUT_SHOTS);
+    }
 }
 
 pub fn notify_shot(player: &mut Player) {
@@ -415,6 +437,10 @@ pub fn process_boat_rams(world: &mut GameWorld) {
 
             world.apply_damage(boater_id, target_id, FINN_RAM_DAMAGE);
             apply_knockback(world, target_id, dir_x, dir_y, FINN_RAM_KNOCKBACK);
+            add_charge(
+                world.players.get_mut(&boater_id).expect("boater exists"),
+                FINN_RAM_CHARGE_REFUND,
+            );
 
             let (tx, ty) = world
                 .players
@@ -595,6 +621,7 @@ fn post_taj_reel_shield(world: &mut GameWorld, player_id: u8) {
     if let Some(player) = world.players.get_mut(&player_id) {
         player.reel_shield_remaining = 0.0;
         player.reel_shield_hp = 0.0;
+        add_charge(player, REEL_POST_CHARGE_REFUND);
     }
 
     let id = world.next_effect_id;
@@ -686,11 +713,15 @@ fn fire_isaak_chi_blast(world: &mut GameWorld, player_id: u8, dir_x: f32, dir_y:
     });
 
     if let Some((victim_id, hit_x, hit_y, _)) = hit {
-        world.apply_damage(player_id, victim_id, ISAAC_CHI_DAMAGE);
-        if stacks >= ISAAC_MAX_STILLNESS_STACKS {
+        let damage = isaak_chi_damage(stacks);
+        world.apply_damage(player_id, victim_id, damage);
+        if stacks > 0 {
             if let Some(victim) = world.players.get_mut(&victim_id) {
-                victim.slowed_until = victim.slowed_until.max(ISAAC_CHI_SLOW_DURATION);
-                victim.slow_multiplier = ISAAC_CHI_SLOW_MULT;
+                let stack_ratio = stacks as f32 / ISAAC_MAX_STILLNESS_STACKS as f32;
+                let slow_duration = ISAAC_CHI_SLOW_DURATION * stack_ratio;
+                let slow_mult = 1.0 - (1.0 - ISAAC_CHI_SLOW_MULT) * stack_ratio;
+                victim.slowed_until = victim.slowed_until.max(slow_duration);
+                victim.slow_multiplier = victim.slow_multiplier.min(slow_mult);
             }
         }
         let mark_id = world.next_effect_id;
@@ -1108,6 +1139,7 @@ fn activate_sonny_reverse_shell(world: &mut GameWorld, caster_id: u8, x: f32, y:
     }
     if let Some(caster) = world.players.get_mut(&caster_id) {
         caster.ability_charge = 0.0;
+        add_charge(caster, SONNY_HACK_CHARGE_BONUS);
     }
 
     let (tx, ty) = world
@@ -1190,6 +1222,10 @@ fn apply_explosion_damage(
 
     for (victim_id, damage) in victims {
         world.apply_damage(owner_id, victim_id, damage);
+        if let Some(victim) = world.players.get_mut(&victim_id) {
+            victim.slowed_until = victim.slowed_until.max(BAILEY_NUKE_SLOW_DURATION);
+            victim.slow_multiplier = victim.slow_multiplier.min(BAILEY_NUKE_SLOW_MULT);
+        }
     }
 }
 
@@ -1349,6 +1385,13 @@ mod tests {
             player.reel_shield_angle = 0.0;
         }
         world
+    }
+
+    #[test]
+    fn isaak_chi_damage_scales_with_stacks() {
+        assert_eq!(isaak_chi_damage(0), 55);
+        assert_eq!(isaak_chi_damage(1), 65);
+        assert_eq!(isaak_chi_damage(3), 85);
     }
 
     #[test]

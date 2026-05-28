@@ -59,6 +59,15 @@ export function HudAbilityButton({
   else if (hasShield) statusLabel = 'E to post';
   else if (casting) statusLabel = character.id === 'isaak' ? 'Channeling…' : 'Arming…';
 
+  const isaakStackLabel =
+    (stillnessStacks ?? 0) >= 3
+      ? '85 dmg + slow'
+      : (stillnessStacks ?? 0) === 2
+        ? '75 dmg + slow'
+        : (stillnessStacks ?? 0) === 1
+          ? '65 dmg'
+          : 'Stillness';
+
   return (
     <div
       className={`hud-ability ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''}`}
@@ -89,7 +98,7 @@ export function HudAbilityButton({
       {character.id === 'isaak' && !casting && !inBoat && (
         <div
           className={`hud-ability-stacks ${(stillnessStacks ?? 0) >= 3 ? 'is-full' : ''}`}
-          aria-label={`${stillnessStacks ?? 0} of 3 stillness stacks${(stillnessStacks ?? 0) >= 3 ? ', slow on hit' : ''}`}
+          aria-label={`${stillnessStacks ?? 0} of 3 stillness stacks — ${isaakStackLabel}`}
         >
           {[0, 1, 2].map((index) => (
             <span
@@ -98,9 +107,7 @@ export function HudAbilityButton({
               aria-hidden
             />
           ))}
-          <span className="hud-ability-stack-label">
-            {(stillnessStacks ?? 0) >= 3 ? 'Slow on hit' : 'Stillness'}
-          </span>
+          <span className="hud-ability-stack-label">{isaakStackLabel}</span>
         </div>
       )}
     </div>
