@@ -24,6 +24,7 @@ fn main() {
             commands::local_ip,
             commands::set_ready,
             commands::select_character,
+            commands::update_loadout,
             commands::set_name,
             commands::update_lobby_config,
             commands::start_match,

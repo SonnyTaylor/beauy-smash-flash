@@ -1,4 +1,5 @@
 import { type CSSProperties } from 'react';
+import { getWeapon } from '../../content/weapons';
 import { getCharacter, rgbCss } from '../character';
 import { EditableName } from '../components/EditableName';
 import type { LobbyPlayerView } from './types';
@@ -6,17 +7,16 @@ import type { LobbyPlayerView } from './types';
 export function PlayerSlot({
   player,
   isMe,
-  onCharacterClick,
   onNameSubmit,
   onReadyToggle,
 }: {
   player: LobbyPlayerView;
   isMe: boolean;
-  onCharacterClick: () => void;
   onNameSubmit: (name: string) => void;
   onReadyToggle: () => void;
 }) {
   const character = getCharacter(player.character_id);
+  const weapon = getWeapon(player.primary_weapon_id);
   const accent = rgbCss(character.color);
 
   return (
@@ -24,13 +24,7 @@ export function PlayerSlot({
       className={`slot ${isMe ? 'slot-me' : ''} ${player.ready ? 'slot-ready' : ''}`}
       style={{ '--accent': accent } as CSSProperties & Record<'--accent', string>}
     >
-      <button
-        type="button"
-        className="slot-avatar"
-        onClick={onCharacterClick}
-        disabled={!isMe}
-        aria-label={isMe ? 'Change character' : `${player.name}'s character`}
-      >
+      <div className="slot-avatar" aria-hidden>
         <img
           src={`/assets/${character.sprite}`}
           alt=""
@@ -39,8 +33,7 @@ export function PlayerSlot({
           }}
         />
         <span>{character.initials}</span>
-        {isMe && <span className="slot-avatar-hint">Change</span>}
-      </button>
+      </div>
 
       <div className="slot-text">
         <strong className="slot-name">
@@ -52,6 +45,7 @@ export function PlayerSlot({
           {player.is_host ? <span className="host-tag">Host</span> : null}
         </strong>
         <span className="slot-ability">{character.abilityName}</span>
+        <span className="slot-weapon">{weapon.name}</span>
       </div>
 
       {isMe ? (

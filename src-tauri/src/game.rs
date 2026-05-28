@@ -138,6 +138,7 @@ pub struct Player {
     pub color: [u8; 3],
     pub name: String,
     pub character_id: String,
+    pub loadout_primary_weapon_id: String,
     pub hp: u16,
     pub max_hp: u16,
     pub primary: Option<WeaponSlotState>,
@@ -166,10 +167,11 @@ impl Player {
         id: u8,
         name: String,
         character_id: String,
+        primary_weapon_id: String,
         spawn_index: usize,
         spawn: (f32, f32),
     ) -> Self {
-        let primary = weapons::default_primary_slot();
+        let primary = weapons::primary_slot_for(&primary_weapon_id);
         let weapon = weapons::get_or_default(&primary.weapon_id);
         Self {
             id,
@@ -179,6 +181,7 @@ impl Player {
             color: PALETTE[id as usize % PALETTE.len()],
             name,
             character_id,
+            loadout_primary_weapon_id: primary.weapon_id.clone(),
             hp: PLAYER_MAX_HP,
             max_hp: PLAYER_MAX_HP,
             primary: Some(primary),
@@ -364,6 +367,30 @@ impl Player {
         self.controls_inverted_until = snapshot.hacked_remaining;
     }
 
+    pub fn apply_loadout(&mut self, character_id: String, primary_weapon_id: String) {
+        let character_changed = self.character_id != character_id;
+        self.character_id = character_id;
+        self.loadout_primary_weapon_id = primary_weapon_id;
+
+        if character_changed {
+            self.ability_charge = 0.0;
+        }
+        if crate::abilities::is_casting(self) {
+            self.ability_windup = 0.0;
+        }
+
+        if !self.alive {
+            return;
+        }
+
+        let new_primary = weapons::primary_slot_for(&self.loadout_primary_weapon_id);
+        self.primary = Some(new_primary);
+        self.active_slot = ActiveSlot::Primary;
+        self.reload_timer = 0.0;
+        self.fire_cooldown = 0.0;
+        self.apply_active_slot_to_combat_state();
+    }
+
     fn reorganize_loadout_after_drop(&mut self) {
         if self.primary.is_none() {
             if let Some(secondary) = self.secondary.take() {
@@ -484,10 +511,23 @@ impl GameWorld {
         }
     }
 
-    pub fn add_player(&mut self, id: u8, name: String, character_id: String) {
+    pub fn add_player(
+        &mut self,
+        id: u8,
+        name: String,
+        character_id: String,
+        primary_weapon_id: String,
+    ) {
         let spawn_index = id as usize % self.map.spawns.len();
         let spawn = self.map.spawns[spawn_index];
-        let mut player = Player::new(id, name, character_id, spawn_index, spawn);
+        let mut player = Player::new(
+            id,
+            name,
+            character_id,
+            primary_weapon_id,
+            spawn_index,
+            spawn,
+        );
         player.x = spawn
             .0
             .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
@@ -585,7 +625,7 @@ impl GameWorld {
             player.x = spawn.0;
             player.y = spawn.1;
             player.hp = PLAYER_MAX_HP;
-            player.primary = Some(weapons::default_primary_slot());
+            player.primary = Some(weapons::primary_slot_for(&player.loadout_primary_weapon_id));
             player.secondary = None;
             player.active_slot = ActiveSlot::Primary;
             player.apply_active_slot_to_combat_state();
@@ -805,10 +845,16 @@ impl GameWorld {
             if let Some(player) = self.players.get_mut(&player_snap.id) {
                 player.apply_snapshot(player_snap);
             } else {
+                let primary_weapon_id = player_snap
+                    .primary_weapon
+                    .as_ref()
+                    .map(|slot| slot.weapon_id.clone())
+                    .unwrap_or_else(|| weapons::DEFAULT_WEAPON_ID.to_string());
                 self.add_player(
                     player_snap.id,
                     player_snap.name.clone(),
                     player_snap.character_id.clone(),
+                    primary_weapon_id,
                 );
                 if let Some(player) = self.players.get_mut(&player_snap.id) {
                     player.apply_snapshot(player_snap);
@@ -1251,8 +1297,18 @@ mod tests {
 
     fn test_world_with_two_players() -> GameWorld {
         let mut world = GameWorld::default();
-        world.add_player(0, "Host".to_string(), "sonny".to_string());
-        world.add_player(1, "Guest".to_string(), "bailey".to_string());
+        world.add_player(
+            0,
+            "Host".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
+        world.add_player(
+            1,
+            "Guest".to_string(),
+            "bailey".to_string(),
+            "glock".to_string(),
+        );
         world.reset_for_match(20, 0, WinCondition::Kills, true, false);
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
@@ -1286,7 +1342,12 @@ mod tests {
     #[test]
     fn player_stays_inside_world_bounds() {
         let mut world = GameWorld::default();
-        world.add_player(0, "Host".to_string(), "sonny".to_string());
+        world.add_player(
+            0,
+            "Host".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
         world.set_input(
             0,
             InputSnapshot {
@@ -1310,7 +1371,12 @@ mod tests {
     #[test]
     fn player_collides_with_map_walls() {
         let mut world = GameWorld::default();
-        world.add_player(0, "Host".to_string(), "sonny".to_string());
+        world.add_player(
+            0,
+            "Host".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
         let wall = world
             .map
             .walls
@@ -1564,6 +1630,36 @@ mod tests {
         let victim = world.players.get(&1).unwrap();
         assert!(victim.controls_inverted_until > 0.0);
         assert_eq!(world.players.get(&0).unwrap().ability_charge, 0.0);
+    }
+
+    #[test]
+    fn apply_loadout_swaps_alive_primary_weapon() {
+        let mut world = test_world_with_two_players();
+        {
+            let player = world.players.get_mut(&0).unwrap();
+            player.secondary = Some(WeaponSlotState {
+                weapon_id: "glock".to_string(),
+                ammo: 5,
+            });
+            player.ammo = 10;
+            player.save_ammo_to_active_slot();
+        }
+
+        world
+            .players
+            .get_mut(&0)
+            .unwrap()
+            .apply_loadout("bailey".to_string(), "glock".to_string());
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.character_id, "bailey");
+        assert_eq!(player.loadout_primary_weapon_id, "glock");
+        assert_eq!(player.active_slot, ActiveSlot::Primary);
+        assert_eq!(
+            player.primary.as_ref().unwrap().ammo,
+            weapons::get_or_default("glock").max_ammo
+        );
+        assert_eq!(player.secondary.as_ref().unwrap().ammo, 5);
     }
 
     #[test]

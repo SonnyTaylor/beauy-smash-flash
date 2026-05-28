@@ -1,6 +1,7 @@
 import { GameOverlay } from './game/GameOverlay';
 import { useGameSession } from './hooks/useGameSession';
 import { Lobby } from './lobby/Lobby';
+import { LoadoutScreen } from './loadout/LoadoutScreen';
 import { MainMenuScreen } from './main-menu/MainMenuScreen';
 import { ServerSelectScreen } from './server-select/ServerSelectScreen';
 import { SettingsScreen } from './settings/SettingsScreen';
@@ -19,7 +20,7 @@ export function App() {
               localIp={session.localIp}
               isBusy={session.isBusy}
               error={session.error}
-              onHost={() => void session.createLobbySession('host')}
+              onHost={() => session.goToLoadout('host')}
               onJoin={session.goToServerSelect}
               onSettings={session.openSettings}
             />
@@ -47,7 +48,24 @@ export function App() {
               onJoinIpChange={session.setJoinIp}
               onScan={() => void session.scanForServers()}
               onBack={() => void session.leaveLobby()}
-              onContinue={(ip) => void session.createLobbySession('join', ip)}
+              onContinue={(ip) => session.goToLoadout('join', ip)}
+            />
+          )}
+
+          {session.screen === 'loadout' && (
+            <LoadoutScreen
+              mode={session.loadoutMode}
+              sessionKind={session.sessionKind}
+              playerName={session.playerName}
+              selectedCharacterId={session.selectedCharacterId}
+              selectedWeaponId={session.selectedPrimaryWeaponId}
+              isBusy={session.isBusy}
+              error={session.error}
+              onNameChange={(name) => void session.updateName(name)}
+              onCharacterChange={session.setSelectedCharacterId}
+              onWeaponChange={session.setSelectedPrimaryWeaponId}
+              onBack={session.leaveLoadout}
+              onContinue={() => void session.applyLoadout()}
             />
           )}
 
@@ -62,12 +80,11 @@ export function App() {
               myId={session.myId}
               localIp={session.localIp}
               playerName={session.playerName}
-              selectedCharacterId={session.selectedCharacterId}
               onReadyChange={(ready) => void session.updateReady(ready)}
               onNameChange={(name) => void session.updateName(name)}
-              onCharacterChange={(id) => void session.updateCharacter(id)}
               onConfigChange={(config) => void session.updateLobbyConfig(config)}
               onLeave={session.leaveLobby}
+              onChangeLoadout={session.openLoadoutFromSession}
               onStart={() => void session.startMatch()}
             />
           )}
@@ -86,6 +103,7 @@ export function App() {
           onLeaveToMenu={() => void session.leaveGame()}
           onReturnToLobby={() => void session.returnToLobby()}
           onRematch={() => void session.rematch()}
+          onChangeLoadout={session.openLoadoutFromSession}
           showControlsHint={session.gameSettings.showControlsHint}
         />
       )}

@@ -24,6 +24,7 @@ pub async fn stop_session(state: tauri::State<'_, SharedState>) -> Result<(), St
 pub async fn start_host(
     player_name: Option<String>,
     character_id: Option<String>,
+    primary_weapon_id: Option<String>,
     server_name: Option<String>,
     window: tauri::Window,
     state: tauri::State<'_, SharedState>,
@@ -54,6 +55,7 @@ pub async fn start_host(
             0,
             clean_player_name(player_name).unwrap_or_else(|| "Host".to_string()),
             clean_character_id(character_id),
+            clean_primary_weapon_id(primary_weapon_id),
         );
         st.session_info()
     };
@@ -81,6 +83,7 @@ pub async fn join_game(
     ip: String,
     player_name: Option<String>,
     character_id: Option<String>,
+    primary_weapon_id: Option<String>,
     window: tauri::Window,
     state: tauri::State<'_, SharedState>,
 ) -> Result<SessionInfo, String> {
@@ -96,6 +99,7 @@ pub async fn join_game(
     let join = ClientMessage::Join {
         name: clean_player_name(player_name).unwrap_or_else(|| "Player".to_string()),
         character_id: clean_character_id(character_id),
+        primary_weapon_id: clean_primary_weapon_id(primary_weapon_id),
     };
     let bytes = encode_client(&join)?;
     socket
@@ -230,21 +234,35 @@ pub async fn select_character(
     character_id: String,
     state: tauri::State<'_, SharedState>,
 ) -> Result<(), String> {
+    update_loadout(character_id, None, state).await
+}
+
+#[tauri::command]
+pub async fn update_loadout(
+    character_id: String,
+    primary_weapon_id: Option<String>,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
     let character_id = clean_character_id(Some(character_id));
+    let primary_weapon_id = clean_primary_weapon_id(primary_weapon_id);
     let (socket, host_addr, mode, my_id) = {
         let mut st = state.lock().await;
         if st.mode == SessionMode::Host {
             let my_id = st.my_id;
             if let Some(player) = st.world.players.get_mut(&my_id) {
-                player.character_id = character_id.clone();
+                player.apply_loadout(character_id.clone(), primary_weapon_id.clone());
             }
+            st.ready_players.remove(&my_id);
         }
         (st.socket.clone(), st.host_addr, st.mode.clone(), st.my_id)
     };
 
     if mode == SessionMode::Client {
         if let (Some(socket), Some(host_addr)) = (socket, host_addr) {
-            let bytes = encode_client(&ClientMessage::SelectCharacter { character_id })?;
+            let bytes = encode_client(&ClientMessage::UpdateLoadout {
+                character_id,
+                primary_weapon_id,
+            })?;
             socket
                 .send_to(&bytes, host_addr)
                 .await
@@ -500,4 +518,16 @@ fn clean_character_id(character_id: Option<String>) -> String {
         _ => "sonny",
     }
     .to_string()
+}
+
+fn clean_primary_weapon_id(primary_weapon_id: Option<String>) -> String {
+    let id = primary_weapon_id
+        .unwrap_or_else(|| "glock".to_string())
+        .trim()
+        .to_ascii_lowercase();
+    if crate::weapons::get(&id).is_some() {
+        id
+    } else {
+        "glock".to_string()
+    }
 }

@@ -108,6 +108,7 @@ export function GameOverlay({
   onLeaveToMenu,
   onReturnToLobby,
   onRematch,
+  onChangeLoadout,
   showControlsHint = true,
 }: {
   state: StateSnapshot | null;
@@ -121,6 +122,7 @@ export function GameOverlay({
   onLeaveToMenu: () => void;
   onReturnToLobby: () => void;
   onRematch: () => void;
+  onChangeLoadout: () => void;
 }) {
   const me = state?.players.find((player) => player.id === myId) ?? null;
   const character = getCharacter(me?.character_id ?? selectedCharacter.id);
@@ -414,6 +416,9 @@ export function GameOverlay({
             <div className="game-pause-actions">
               <button type="button" className="primary-action" onClick={() => onPauseChange(false)}>
                 Resume
+              </button>
+              <button type="button" className="secondary-button" onClick={onChangeLoadout}>
+                Change Loadout
               </button>
               <button
                 type="button"

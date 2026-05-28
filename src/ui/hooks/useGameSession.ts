@@ -18,9 +18,11 @@ import {
   readGameSettings,
   readStoredCharacterId,
   readStoredName,
+  readStoredPrimaryWeaponId,
   writeGameSettings,
   writeStoredCharacterId,
   writeStoredName,
+  writeStoredPrimaryWeaponId,
 } from '../storage';
 import { DEFAULT_LOBBY_CONFIG } from '../../shared/types';
 
@@ -42,6 +44,9 @@ export function useGameSession() {
   const [playerName, setPlayerName] = useState(readStoredName);
   const [joinIp, setJoinIp] = useState('127.0.0.1');
   const [selectedCharacterId, setSelectedCharacterId] = useState(readStoredCharacterId);
+  const [selectedPrimaryWeaponId, setSelectedPrimaryWeaponId] = useState(readStoredPrimaryWeaponId);
+  const pendingJoinIpRef = useRef<string | null>(null);
+  const loadoutReturnScreenRef = useRef<Screen | null>(null);
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [servers, setServers] = useState<ServerInfo[]>([]);
@@ -103,7 +108,7 @@ export function useGameSession() {
       audio.setMusicMode('menu');
       return;
     }
-    if (screen === 'lobby' || screen === 'server-select') {
+    if (screen === 'lobby' || screen === 'server-select' || screen === 'loadout') {
       audio.setMusicMode('lobby');
       return;
     }
@@ -189,6 +194,10 @@ export function useGameSession() {
     writeStoredCharacterId(selectedCharacterId);
   }, [selectedCharacterId]);
 
+  useEffect(() => {
+    writeStoredPrimaryWeaponId(selectedPrimaryWeaponId);
+  }, [selectedPrimaryWeaponId]);
+
   async function scanForServers() {
     setIsScanning(true);
     setScanMessage('Scanning LAN broadcast on UDP 5554...');
@@ -212,14 +221,22 @@ export function useGameSession() {
     setError(null);
     setSessionKind(kind);
     try {
+      const joinAddress = (ip ?? pendingJoinIpRef.current ?? joinIp).trim() || '127.0.0.1';
       const session =
         kind === 'host'
           ? await client.host(
               playerName,
               selectedCharacterId,
+              selectedPrimaryWeaponId,
               gameSettingsRef.current.serverName,
             )
-          : await client.join((ip ?? joinIp).trim() || '127.0.0.1', playerName, selectedCharacterId);
+          : await client.join(
+              joinAddress,
+              playerName,
+              selectedCharacterId,
+              selectedPrimaryWeaponId,
+            );
+      pendingJoinIpRef.current = null;
       setSessionInfo(session);
       sessionInfoRef.current = session;
       setMyId(session.player_id);
@@ -247,13 +264,6 @@ export function useGameSession() {
       await client.setReady(nextReady);
     } catch (caught) {
       setError(String(caught));
-    }
-  }
-
-  async function updateCharacter(characterId: string) {
-    setSelectedCharacterId(characterId);
-    if (sessionInfo) {
-      await client.selectCharacter(characterId);
     }
   }
 
@@ -425,9 +435,93 @@ export function useGameSession() {
     setScreen('server-select');
   }
 
+  function goToLoadout(kind: SessionKind, joinIpAddress?: string) {
+    loadoutReturnScreenRef.current = null;
+    setSessionKind(kind);
+    if (joinIpAddress) {
+      pendingJoinIpRef.current = joinIpAddress;
+      setJoinIp(joinIpAddress);
+    }
+    setError(null);
+    setScreen('loadout');
+  }
+
+  function openLoadoutFromSession() {
+    const current = screenRef.current;
+    loadoutReturnScreenRef.current = current === 'game' ? 'game' : 'lobby';
+    if (current === 'game') {
+      setPaused(true);
+      const me = latestStateRef.current?.players.find(
+        (player) => player.id === myIdRef.current,
+      );
+      if (me) {
+        setSelectedCharacterId(me.character_id);
+        const weaponId =
+          me.primary_weapon?.weapon_id ?? me.active_weapon ?? readStoredPrimaryWeaponId();
+        if (weaponId) {
+          setSelectedPrimaryWeaponId(weaponId);
+        }
+      }
+    } else {
+      const me = lobby?.players.find((player) => player.id === myIdRef.current);
+      if (me) {
+        setSelectedCharacterId(me.character_id);
+        setSelectedPrimaryWeaponId(me.primary_weapon_id ?? readStoredPrimaryWeaponId());
+      }
+    }
+    setError(null);
+    setScreen('loadout');
+  }
+
+  function leaveLoadout() {
+    const returnTo = loadoutReturnScreenRef.current;
+    loadoutReturnScreenRef.current = null;
+    setError(null);
+    if (returnTo) {
+      setScreen(returnTo);
+      if (returnTo === 'game') {
+        setPaused(false);
+      }
+      return;
+    }
+    if (sessionKind === 'join' && !sessionInfoRef.current) {
+      setScreen('server-select');
+      return;
+    }
+    setScreen('main-menu');
+  }
+
+  async function applyLoadout() {
+    if (!sessionInfoRef.current) {
+      await createLobbySession(sessionKind);
+      return;
+    }
+
+    setIsBusy(true);
+    setError(null);
+    try {
+      await client.updateLoadout(selectedCharacterId, selectedPrimaryWeaponId);
+      const returnTo = loadoutReturnScreenRef.current ?? 'lobby';
+      loadoutReturnScreenRef.current = null;
+      if (returnTo === 'lobby' && isReady) {
+        setIsReady(false);
+        await client.setReady(false);
+      }
+      setScreen(returnTo);
+      if (returnTo === 'game') {
+        setPaused(false);
+      }
+    } catch (caught) {
+      setError(String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   function backdropClass(): string {
     if (screen === 'main-menu') return 'landing-screen';
     if (screen === 'lobby') return 'lobby-screen';
+    if (screen === 'loadout') return 'loadout-screen';
     if (screen === 'server-select') return 'flow-screen join-screen';
     if (screen === 'settings') return 'flow-screen settings-flow';
     return 'flow-screen';
@@ -442,6 +536,9 @@ export function useGameSession() {
     setJoinIp,
     selectedCharacter,
     selectedCharacterId,
+    selectedPrimaryWeaponId,
+    setSelectedCharacterId,
+    setSelectedPrimaryWeaponId,
     isReady,
     servers,
     isScanning,
@@ -459,7 +556,6 @@ export function useGameSession() {
     scanForServers,
     createLobbySession,
     updateReady,
-    updateCharacter,
     updateName,
     updateLobbyConfig,
     startMatch,
@@ -468,6 +564,11 @@ export function useGameSession() {
     returnToLobby,
     rematch,
     goToServerSelect,
+    goToLoadout,
+    openLoadoutFromSession,
+    leaveLoadout,
+    applyLoadout,
+    loadoutMode: sessionInfo ? ('session' as const) : ('pregame' as const),
     openSettings,
     gameSettings,
     saveGameSettings,

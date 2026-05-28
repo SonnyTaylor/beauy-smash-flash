@@ -67,7 +67,11 @@ pub fn get_or_default(id: &str) -> &'static WeaponDef {
 }
 
 pub fn default_primary_slot() -> WeaponSlotState {
-    let weapon = get_or_default(DEFAULT_WEAPON_ID);
+    primary_slot_for(DEFAULT_WEAPON_ID)
+}
+
+pub fn primary_slot_for(weapon_id: &str) -> WeaponSlotState {
+    let weapon = get_or_default(weapon_id);
     WeaponSlotState {
         weapon_id: weapon.id.to_string(),
         ammo: weapon.max_ammo,

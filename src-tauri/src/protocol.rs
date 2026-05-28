@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 6;
+pub const PROTOCOL_VERSION: u16 = 7;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -17,8 +17,14 @@ pub struct LobbyPlayerSnapshot {
     pub id: u8,
     pub name: String,
     pub character_id: String,
+    #[serde(default = "default_primary_weapon_id")]
+    pub primary_weapon_id: String,
     pub ready: bool,
     pub is_host: bool,
+}
+
+fn default_primary_weapon_id() -> String {
+    "glock".to_string()
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -264,11 +270,29 @@ pub struct StateSnapshot {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum ClientMessage {
-    Join { name: String, character_id: String },
-    SetReady { ready: bool },
-    SelectCharacter { character_id: String },
-    SetName { name: String },
-    UpdateConfig { config: LobbyConfig },
+    Join {
+        name: String,
+        character_id: String,
+        #[serde(default = "default_primary_weapon_id")]
+        primary_weapon_id: String,
+    },
+    SetReady {
+        ready: bool,
+    },
+    SelectCharacter {
+        character_id: String,
+    },
+    UpdateLoadout {
+        character_id: String,
+        #[serde(default = "default_primary_weapon_id")]
+        primary_weapon_id: String,
+    },
+    SetName {
+        name: String,
+    },
+    UpdateConfig {
+        config: LobbyConfig,
+    },
     Input(InputSnapshot),
     Leave,
 }

@@ -1,8 +1,10 @@
 import { CHARACTERS } from '../content/characters';
+import { DEFAULT_WEAPON_ID } from '../content/weapons';
 import { DEFAULT_GAME_SETTINGS, type GameSettings } from '../shared/types';
 
 const STORAGE_KEY_NAME = 'beauy:name';
 const STORAGE_KEY_CHARACTER = 'beauy:character';
+const STORAGE_KEY_WEAPON = 'beauy:weapon';
 const STORAGE_KEY_SETTINGS = 'beauy:settings';
 
 export function readStoredName(): string {
@@ -36,6 +38,26 @@ export function readStoredCharacterId(): string {
 export function writeStoredCharacterId(value: string): void {
   try {
     window.localStorage.setItem(STORAGE_KEY_CHARACTER, value);
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
+export function readStoredPrimaryWeaponId(): string {
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY_WEAPON);
+    if (stored?.trim()) {
+      return stored.trim().toLowerCase();
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return DEFAULT_WEAPON_ID;
+}
+
+export function writeStoredPrimaryWeaponId(value: string): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY_WEAPON, value);
   } catch {
     /* localStorage unavailable */
   }

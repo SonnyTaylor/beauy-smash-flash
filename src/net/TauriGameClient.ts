@@ -30,13 +30,29 @@ export class TauriGameClient {
   async host(
     playerName: string,
     characterId: string,
+    primaryWeaponId: string,
     serverName?: string,
   ): Promise<SessionInfo> {
-    return invoke<SessionInfo>('start_host', { playerName, characterId, serverName });
+    return invoke<SessionInfo>('start_host', {
+      playerName,
+      characterId,
+      primaryWeaponId,
+      serverName,
+    });
   }
 
-  async join(ip: string, playerName: string, characterId: string): Promise<SessionInfo> {
-    return invoke<SessionInfo>('join_game', { ip, playerName, characterId });
+  async join(
+    ip: string,
+    playerName: string,
+    characterId: string,
+    primaryWeaponId: string,
+  ): Promise<SessionInfo> {
+    return invoke<SessionInfo>('join_game', {
+      ip,
+      playerName,
+      characterId,
+      primaryWeaponId,
+    });
   }
 
   async sendInput(input: InputSnapshot): Promise<void> {
@@ -78,6 +94,10 @@ export class TauriGameClient {
 
   async selectCharacter(characterId: string): Promise<void> {
     await invoke('select_character', { characterId });
+  }
+
+  async updateLoadout(characterId: string, primaryWeaponId: string): Promise<void> {
+    await invoke('update_loadout', { characterId, primaryWeaponId });
   }
 
   async setName(name: string): Promise<void> {

@@ -109,6 +109,7 @@ impl AppState {
                 id: player.id,
                 name: player.name.clone(),
                 character_id: player.character_id.clone(),
+                primary_weapon_id: player.loadout_primary_weapon_id.clone(),
                 ready: self.ready_players.contains(&player.id),
                 is_host: player.id == 0,
             })
@@ -213,7 +214,11 @@ async fn handle_host_message(
     };
 
     match message {
-        ClientMessage::Join { name, character_id } => {
+        ClientMessage::Join {
+            name,
+            character_id,
+            primary_weapon_id,
+        } => {
             let response = {
                 let mut st = state.lock().await;
                 if let Some(peer) = st.peers.iter_mut().find(|peer| peer.addr == addr) {
@@ -235,7 +240,8 @@ async fn handle_host_message(
                         addr,
                         last_seen: Instant::now(),
                     });
-                    st.world.add_player(id, name, character_id);
+                    st.world
+                        .add_player(id, name, character_id, primary_weapon_id);
                     st.ready_players.remove(&id);
                     ServerMessage::Assigned {
                         id,
@@ -280,7 +286,28 @@ async fn handle_host_message(
                 });
             if let Some(player_id) = player_id {
                 if let Some(player) = st.world.players.get_mut(&player_id) {
-                    player.character_id = character_id;
+                    let weapon_id = player.loadout_primary_weapon_id.clone();
+                    player.apply_loadout(character_id, weapon_id);
+                }
+            }
+        }
+        ClientMessage::UpdateLoadout {
+            character_id,
+            primary_weapon_id,
+        } => {
+            let mut st = state.lock().await;
+            let player_id = st
+                .peers
+                .iter_mut()
+                .find(|peer| peer.addr == addr)
+                .map(|peer| {
+                    peer.last_seen = Instant::now();
+                    peer.id
+                });
+            if let Some(player_id) = player_id {
+                if let Some(player) = st.world.players.get_mut(&player_id) {
+                    player.apply_loadout(character_id, primary_weapon_id);
+                    st.ready_players.remove(&player_id);
                 }
             }
         }
