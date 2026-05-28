@@ -1,6 +1,6 @@
 {
   "name": "beauy-smash-flash",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "scripts": {
     "dev": "bunx vite",
@@ -17,7 +17,8 @@
     "tauri": "bunx tauri",
     "tauri:build": "bunx tauri build",
     "assets:icon": "python scripts/generate-app-icon.py && bunx tauri icon branding/app-icon.png",
-    "test-mp": "pwsh -ExecutionPolicy Bypass -File scripts/test-multiplayer.ps1"
+    "test-mp": "pwsh -ExecutionPolicy Bypass -File scripts/test-multiplayer.ps1",
+    "fw:fix": "pwsh -ExecutionPolicy Bypass -File scripts/fix-lan-firewall.ps1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

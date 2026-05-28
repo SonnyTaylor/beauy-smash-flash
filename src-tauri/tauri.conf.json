@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
   "productName": "Beauy Smash Flash",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "identifier": "com.beauy.smashflash",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -34,7 +34,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    }
   },
   "plugins": {
     "updater": {
