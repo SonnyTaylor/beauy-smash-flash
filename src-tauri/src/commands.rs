@@ -250,8 +250,8 @@ pub async fn start_match(
         if st.mode != SessionMode::Host {
             return Err("Only the host can start the match".to_string());
         }
-        if st.world.players.len() < 2 {
-            return Err("Need at least 2 players to start".to_string());
+        if st.world.players.is_empty() {
+            return Err("No players in lobby".to_string());
         }
         if !st.all_players_ready() {
             return Err("All players must be ready".to_string());

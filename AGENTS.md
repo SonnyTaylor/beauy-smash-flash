@@ -37,6 +37,10 @@ cd src-tauri; cargo check; cargo test
 
 Use `cargo fmt` after Rust edits.
 
+## Git
+
+After making code changes, create a git commit unless the user asked for no commit. Use a short message focused on why.
+
 ## Coding Guidelines
 
 - Keep modules small and purpose-driven. Avoid returning to one giant frontend or Rust file.

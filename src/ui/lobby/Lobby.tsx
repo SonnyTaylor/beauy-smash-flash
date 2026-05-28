@@ -72,14 +72,17 @@ export function Lobby({
   const me = lobbyPlayers.find((player) => player.id === myId);
   const myCharacterId = me?.character_id ?? selectedCharacterId;
   const notReadyCount = lobbyPlayers.filter((player) => !player.ready).length;
-  const allReady = lobbyPlayers.length >= 2 && notReadyCount === 0;
+  const allReady = lobbyPlayers.length >= 1 && notReadyCount === 0;
   const emptySlotCount = Math.max(0, config.max_players - lobbyPlayers.length);
 
   let startLabel: string;
   if (isHost) {
     if (isBusy) startLabel = 'Starting…';
-    else if (lobbyPlayers.length < 2) startLabel = 'Need 2+ mates';
-    else if (!allReady) startLabel = `Waiting on ${notReadyCount} mate${notReadyCount === 1 ? '' : 's'}`;
+    else if (!allReady)
+      startLabel =
+        lobbyPlayers.length === 1
+          ? 'Ready up to start'
+          : `Waiting on ${notReadyCount} mate${notReadyCount === 1 ? '' : 's'}`;
     else startLabel = 'Start Match';
   } else {
     startLabel = allReady ? 'Waiting for host…' : 'Ready up to start';
@@ -153,7 +156,7 @@ export function Lobby({
             <button
               className="primary-action"
               onClick={onStart}
-              disabled={isBusy || !allReady || lobbyPlayers.length < 2}
+              disabled={isBusy || !allReady}
             >
               {startLabel}
             </button>
