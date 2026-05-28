@@ -322,7 +322,7 @@ All major modes clear on death/respawn.
 | Jacob | `heads/jacob.png` | Director's Cut burst, popcorn bullets |
 | Isaak | `heads/isaak.png` | Chi channel + beam VFX, stillness pips on arena |
 | Taj | `heads/taj.png` | Reel MP4s + phone frame (`TajReelVisuals.ts`) |
-| Finn | `heads/finn.png` | Boat splash VFX |
+| Finn | `heads/finn.png` | Dinghy sprite (`boat.png`), boat splash VFX |
 
 ---
 

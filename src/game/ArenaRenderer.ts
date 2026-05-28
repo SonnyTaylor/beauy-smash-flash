@@ -1,5 +1,6 @@
 import { Application, ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { CHARACTERS, getCharacter } from '../content/characters';
+import { FINN_BOAT, finnBoatAssetUrl } from '../content/finn-boat';
 import { getMap, getMapTheme } from '../content/maps';
 import { getWeapon, listWeapons, weaponOrbitPosition } from '../content/weapons';
 import type {
@@ -81,7 +82,9 @@ const MARK_GOLD = 0xffcc00;
 
 interface PlayerView {
   container: Container;
+  avatar: Container;
   gun: Sprite | null;
+  boatSprite: Sprite;
   shield: Graphics;
   hackAura: Graphics;
   markAura: Graphics;
@@ -115,7 +118,6 @@ interface PlayerView {
   reelShieldLoading: boolean;
   tajReelShield: TajReelShieldView | null;
   chiAura: Graphics;
-  boatAura: Graphics;
 }
 
 interface ReelPostRuntime {
@@ -175,6 +177,7 @@ export class ArenaRenderer {
   private pickupLayer = new Container();
   private headTextures = new Map<string, Texture>();
   private weaponTextures = new Map<string, Texture>();
+  private boatTexture: Texture | null = null;
   private vfx = new VfxManager();
   private tajReels = new TajReelVisuals();
   private reelPosts = new Map<number, ReelPostRuntime>();
@@ -329,6 +332,7 @@ export class ArenaRenderer {
     this.pickups.clear();
     this.headTextures.clear();
     this.weaponTextures.clear();
+    this.boatTexture = null;
     this.knownBulletIds.clear();
     this.knownEffectIds.clear();
     this.bulletStates.clear();
@@ -892,9 +896,11 @@ export class ArenaRenderer {
     chiAura.visible = false;
     container.addChild(chiAura);
 
-    const boatAura = new Graphics();
-    boatAura.visible = false;
-    container.addChild(boatAura);
+    const boatSprite = new Sprite(Texture.EMPTY);
+    boatSprite.anchor.set(FINN_BOAT.pivot.x, FINN_BOAT.pivot.y);
+    boatSprite.scale.set(FINN_BOAT.displayScale);
+    boatSprite.visible = false;
+    container.addChild(boatSprite);
 
     const truthReticle = new Graphics();
     truthReticle.visible = false;
@@ -944,12 +950,13 @@ export class ArenaRenderer {
 
     return {
       container,
+      avatar,
       gun,
+      boatSprite,
       shield,
       hackAura,
       markAura,
       chiAura,
-      boatAura,
       truthReticle,
       weaponId,
       targetX: player.x,
@@ -1146,15 +1153,34 @@ export class ArenaRenderer {
     }
   }
 
-  private drawBoatAura(view: PlayerView, now: number) {
-    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 120));
-    const aura = view.boatAura;
-    aura.clear();
-    aura.visible = true;
-    aura.ellipse(0, 6, PLAYER_RADIUS + 20, PLAYER_RADIUS + 10)
-      .fill({ color: 0x5ec8ff, alpha: 0.22 + pulse * 0.12 })
-      .ellipse(0, 6, PLAYER_RADIUS + 20, PLAYER_RADIUS + 10)
-      .stroke({ color: 0xb8ecff, width: 2, alpha: 0.55 });
+  private updateBoatVisual(view: PlayerView, now: number) {
+    const inBoat = view.boatModeRemaining > 0;
+    const sprite = view.boatSprite;
+
+    if (!inBoat) {
+      sprite.visible = false;
+      view.avatar.visible = true;
+      view.avatar.alpha = 1;
+      if (view.gun) {
+        view.gun.visible = true;
+      }
+      return;
+    }
+
+    if (this.boatTexture) {
+      sprite.texture = this.boatTexture;
+    }
+    sprite.visible = true;
+    view.avatar.visible = false;
+    if (view.gun) {
+      view.gun.visible = false;
+    }
+
+    const bob = Math.sin(now / 160) * 2.5;
+    const pulse = 0.92 + 0.08 * Math.abs(Math.sin(now / 120));
+    sprite.rotation = view.displayAngle;
+    sprite.position.set(0, bob);
+    sprite.alpha = pulse;
   }
 
   private renderFrame() {
@@ -1251,12 +1277,7 @@ export class ArenaRenderer {
         view.chiAura.visible = false;
       }
 
-      if (view.boatModeRemaining > 0) {
-        this.drawBoatAura(view, now);
-      } else {
-        view.boatAura.clear();
-        view.boatAura.visible = false;
-      }
+      this.updateBoatVisual(view, now);
 
       this.updateTajReelShield(view);
 
@@ -1462,6 +1483,7 @@ export class ArenaRenderer {
   private async loadTextures() {
     await this.vfx.loadAssets();
     await this.tajReels.preload();
+    this.boatTexture = await loadTextureFromUrl(finnBoatAssetUrl());
     await Promise.all(
       listWeapons().map(async (weapon) => {
         const texture = await loadTextureFromUrl(assetUrl(weapon.meta.sprite));
