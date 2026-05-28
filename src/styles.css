@@ -1980,19 +1980,6 @@ h2 {
   height: 92px;
 }
 
-.hud-ability-desc {
-  margin: 0;
-  padding: 7px 12px;
-  border-radius: 10px;
-  background: rgba(8, 11, 22, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.35;
-  text-align: center;
-}
-
 .hud-ability-wrap .hud-ability-stacks {
   position: relative;
   top: auto;
@@ -2194,11 +2181,6 @@ h2 {
   filter: saturate(1.35) drop-shadow(0 0 10px rgba(0, 255, 65, 0.55));
 }
 
-.hud-ability-wrap.is-hacked .hud-ability-desc {
-  border-color: rgba(0, 255, 65, 0.35);
-  color: #c8ffd4;
-}
-
 @keyframes hud-ability-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
@@ -2306,6 +2288,13 @@ h2 {
 
 .hud-weapon-bar {
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.hud-weapon-slots {
+  display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 168px;
@@ -2355,12 +2344,15 @@ h2 {
 
 .hud-weapon-hint {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-left: 2px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 0;
   font-size: 0.65rem;
   font-weight: 600;
+  line-height: 1.2;
   color: rgba(148, 163, 184, 0.85);
+  white-space: nowrap;
 }
 
 .hud-weapon-hint kbd {

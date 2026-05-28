@@ -112,7 +112,6 @@ export function HudAbilityButton({
         <div className="hud-ability-key" aria-hidden>E</div>
         <div className="hud-ability-name">{statusLabel}</div>
       </div>
-      <p className="hud-ability-desc">{character.abilityDescription}</p>
     </div>
   );
 }
