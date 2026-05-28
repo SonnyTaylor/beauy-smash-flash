@@ -42,6 +42,7 @@ pub async fn start_host(
         st.peers.clear();
         st.ready_players.clear();
         st.match_started = false;
+        st.match_end_emitted = false;
         st.host_addr = None;
         st.my_id = 0;
         st.world = GameWorld::default();
@@ -106,7 +107,7 @@ pub async fn join_game(
         ServerMessage::Assigned {
             id,
             world,
-            map: _,
+            map,
             players,
         } => {
             let mut st = state.lock().await;
@@ -115,23 +116,31 @@ pub async fn join_game(
             st.peers.clear();
             st.ready_players.clear();
             st.match_started = false;
+            st.match_end_emitted = false;
             st.host_addr = Some(host_addr);
             st.my_id = id;
             st.world = GameWorld::new(world.clone());
-            for player in players {
-                st.world
-                    .add_player(player.id, player.name.clone(), player.character_id.clone());
-                if let Some(stored) = st.world.players.get_mut(&player.id) {
-                    stored.x = player.x;
-                    stored.y = player.y;
-                    stored.angle = player.angle;
-                    stored.color = player.color;
-                }
-            }
+            let score_limit = st.lobby_config.score_limit;
+            st.world
+                .sync_from_snapshot(&crate::protocol::StateSnapshot {
+                    version: crate::protocol::PROTOCOL_VERSION,
+                    tick: 0,
+                    world: world.clone(),
+                    map,
+                    players,
+                    bullets: Vec::new(),
+                    kill_feed: Vec::new(),
+                    match_ended: false,
+                    winner_id: None,
+                    score_limit,
+                });
             (id, world)
         }
         ServerMessage::Error { message } => return Err(message),
-        ServerMessage::State(_) | ServerMessage::Lobby(_) | ServerMessage::MatchStarted(_) => {
+        ServerMessage::State(_)
+        | ServerMessage::Lobby(_)
+        | ServerMessage::MatchStarted(_)
+        | ServerMessage::MatchEnded(_) => {
             return Err("Expected assignment from host".to_string())
         }
     };
@@ -256,6 +265,9 @@ pub async fn start_match(
         if !st.all_players_ready() {
             return Err("All players must be ready".to_string());
         }
+        st.match_end_emitted = false;
+        let score_limit = st.lobby_config.score_limit;
+        st.world.reset_for_match(score_limit);
         st.match_started = true;
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
     };
@@ -315,6 +327,37 @@ pub async fn update_lobby_config(
         return Err("Only the host can change lobby settings".to_string());
     }
     st.lobby_config = config;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn return_to_lobby(
+    window: tauri::Window,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let (socket, peers, lobby) = {
+        let mut st = state.lock().await;
+        if st.mode != SessionMode::Host {
+            return Err("Only the host can return to the lobby".to_string());
+        }
+        if !st.match_started {
+            return Err("No match is in progress".to_string());
+        }
+        st.match_started = false;
+        st.match_end_emitted = false;
+        st.ready_players.clear();
+        st.world.reset_for_lobby();
+        (st.socket.clone(), st.peers.clone(), st.lobby_snapshot())
+    };
+
+    if let Some(socket) = socket {
+        let bytes = encode_server(&ServerMessage::Lobby(lobby.clone()))?;
+        for peer in peers {
+            let _ = socket.send_to(&bytes, peer.addr).await;
+        }
+    }
+
+    let _ = window.emit("lobby", lobby);
     Ok(())
 }
 

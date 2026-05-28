@@ -10,6 +10,8 @@ export class InputController {
   private canvas: HTMLCanvasElement | null = null;
   private world: WorldConfig = { width: 1920, height: 1080 };
 
+  private enabled = true;
+
   attach(canvas: HTMLCanvasElement, world: WorldConfig) {
     this.canvas = canvas;
     this.world = world;
@@ -34,7 +36,28 @@ export class InputController {
     this.world = world;
   }
 
+  setEnabled(enabled: boolean) {
+    this.enabled = enabled;
+    if (!enabled) {
+      this.keys.clear();
+    }
+  }
+
   sample(origin: { x: number; y: number } | null): InputSnapshot {
+    if (!this.enabled) {
+      return {
+        seq: ++this.seq,
+        dx: 0,
+        dy: 0,
+        aim_x: 0,
+        aim_y: 0,
+        fire: false,
+        reload: false,
+        ability: false,
+        dash: false,
+      };
+    }
+
     const dx = Number(this.keys.has('d')) - Number(this.keys.has('a'));
     const dy = Number(this.keys.has('s')) - Number(this.keys.has('w'));
     const aimOrigin = origin ?? { x: this.world.width / 2, y: this.world.height / 2 };

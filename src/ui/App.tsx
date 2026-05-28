@@ -65,8 +65,12 @@ export function App() {
         <GameOverlay
           state={session.latestState}
           myId={session.myId}
+          sessionKind={session.sessionKind}
           selectedCharacter={session.selectedCharacter}
+          paused={session.paused}
+          onPauseChange={session.setPaused}
           onLeaveToMenu={() => void session.leaveGame()}
+          onReturnToLobby={() => void session.returnToLobby()}
         />
       )}
     </div>

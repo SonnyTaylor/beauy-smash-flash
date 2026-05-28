@@ -78,6 +78,20 @@ export interface InputSnapshot {
   dash: boolean;
 }
 
+export interface BulletSnapshot {
+  id: number;
+  owner_id: number;
+  x: number;
+  y: number;
+}
+
+export interface KillFeedEntry {
+  killer_id: number;
+  killer_name: string;
+  victim_id: number;
+  victim_name: string;
+}
+
 export interface PlayerSnapshot {
   id: number;
   x: number;
@@ -86,6 +100,17 @@ export interface PlayerSnapshot {
   color: Rgb;
   name: string;
   character_id: string;
+  hp: number;
+  max_hp: number;
+  ammo: number;
+  max_ammo: number;
+  score: number;
+  kills: number;
+  deaths: number;
+  alive: boolean;
+  reloading: boolean;
+  spawn_protected: boolean;
+  respawn_in: number;
 }
 
 export interface StateSnapshot {
@@ -94,6 +119,11 @@ export interface StateSnapshot {
   world: WorldConfig;
   map: MapSnapshot;
   players: PlayerSnapshot[];
+  bullets: BulletSnapshot[];
+  kill_feed: KillFeedEntry[];
+  match_ended: boolean;
+  winner_id: number | null;
+  score_limit: number;
 }
 
 export interface CharacterDefinition {

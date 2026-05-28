@@ -39,6 +39,7 @@ pub struct AppState {
     pub peers: Vec<Peer>,
     pub ready_players: HashSet<u8>,
     pub match_started: bool,
+    pub match_end_emitted: bool,
     pub my_id: u8,
     pub host_addr: Option<SocketAddr>,
     pub lobby_config: LobbyConfig,
@@ -56,6 +57,7 @@ impl Default for AppState {
             peers: Vec::new(),
             ready_players: HashSet::new(),
             match_started: false,
+            match_end_emitted: false,
             my_id: 0,
             host_addr: None,
             lobby_config: LobbyConfig::default(),
@@ -83,6 +85,7 @@ pub async fn shutdown_session(state: &SharedState) {
     st.peers.clear();
     st.ready_players.clear();
     st.match_started = false;
+    st.match_end_emitted = false;
     st.host_addr = None;
     st.my_id = 0;
     st.world = GameWorld::default();
@@ -143,20 +146,32 @@ pub async fn host_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri
         tokio::select! {
             _ = sim_tick.tick() => {
                 let mut st = state.lock().await;
-                if st.match_started {
+                if st.match_started && !st.world.match_ended {
                     st.world.tick(1.0 / SIM_HZ);
                 }
             }
             _ = broadcast_tick.tick() => {
-                let (message, peers, host_lobby) = {
+                let (message, peers, host_lobby, match_just_ended) = {
                     let st = state.lock().await;
+                    let match_just_ended = st.match_started
+                        && st.world.match_ended
+                        && !st.match_end_emitted;
                     let message = if st.match_started {
-                        ServerMessage::State(st.world.snapshot())
+                        if st.world.match_ended {
+                            ServerMessage::MatchEnded(st.world.snapshot())
+                        } else {
+                            ServerMessage::State(st.world.snapshot())
+                        }
                     } else {
                         ServerMessage::Lobby(st.lobby_snapshot())
                     };
-                    (message, st.peers.clone(), st.lobby_snapshot())
+                    (message, st.peers.clone(), st.lobby_snapshot(), match_just_ended)
                 };
+
+                if match_just_ended {
+                    let mut st = state.lock().await;
+                    st.match_end_emitted = true;
+                }
 
                 if let Ok(bytes) = encode_server(&message) {
                     for peer in peers {
@@ -164,9 +179,13 @@ pub async fn host_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri
                     }
                 }
 
-                match message {
+                match &message {
                     ServerMessage::State(snapshot) => {
-                        let _ = window.emit("state", snapshot);
+                        let _ = window.emit("state", snapshot.clone());
+                    }
+                    ServerMessage::MatchEnded(snapshot) => {
+                        let _ = window.emit("match_ended", snapshot.clone());
+                        let _ = window.emit("state", snapshot.clone());
                     }
                     ServerMessage::Lobby(_) => {
                         let _ = window.emit("lobby", host_lobby);
@@ -343,30 +362,28 @@ pub async fn client_loop(socket: Arc<UdpSocket>, state: SharedState, window: tau
             ServerMessage::State(snapshot) => {
                 {
                     let mut st = state.lock().await;
-                    st.world.config = snapshot.world.clone();
-                    st.world.tick = snapshot.tick;
-                    st.world.players.clear();
-                    for player in &snapshot.players {
-                        st.world.add_player(
-                            player.id,
-                            player.name.clone(),
-                            player.character_id.clone(),
-                        );
-                        if let Some(stored) = st.world.players.get_mut(&player.id) {
-                            stored.x = player.x;
-                            stored.y = player.y;
-                            stored.angle = player.angle;
-                            stored.color = player.color;
-                        }
-                    }
+                    st.world.sync_from_snapshot(&snapshot);
                 }
-
+                let _ = window.emit("state", snapshot);
+            }
+            ServerMessage::MatchEnded(snapshot) => {
+                {
+                    let mut st = state.lock().await;
+                    st.world.sync_from_snapshot(&snapshot);
+                    st.match_end_emitted = true;
+                }
+                let _ = window.emit("match_ended", snapshot.clone());
                 let _ = window.emit("state", snapshot);
             }
             ServerMessage::Lobby(lobby) => {
                 let _ = window.emit("lobby", lobby);
             }
             ServerMessage::MatchStarted(snapshot) => {
+                {
+                    let mut st = state.lock().await;
+                    st.world.sync_from_snapshot(&snapshot);
+                    st.match_end_emitted = false;
+                }
                 let _ = window.emit("match_started", snapshot.clone());
                 let _ = window.emit("state", snapshot);
             }

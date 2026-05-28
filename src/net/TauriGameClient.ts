@@ -12,11 +12,13 @@ import type {
 type StateHandler = (state: StateSnapshot) => void;
 type LobbyHandler = (lobby: LobbySnapshot) => void;
 type MatchStartedHandler = (state: StateSnapshot) => void;
+type MatchEndedHandler = (state: StateSnapshot) => void;
 
 export class TauriGameClient {
   private unlistenState: UnlistenFn | null = null;
   private unlistenLobby: UnlistenFn | null = null;
   private unlistenMatchStarted: UnlistenFn | null = null;
+  private unlistenMatchEnded: UnlistenFn | null = null;
 
   async listenForState(handler: StateHandler) {
     this.unlistenState?.();
@@ -51,6 +53,13 @@ export class TauriGameClient {
     });
   }
 
+  async listenForMatchEnded(handler: MatchEndedHandler) {
+    this.unlistenMatchEnded?.();
+    this.unlistenMatchEnded = await listen<StateSnapshot>('match_ended', (event) => {
+      handler(event.payload);
+    });
+  }
+
   async scanServers(timeoutMs = 900): Promise<ServerInfo[]> {
     return invoke<ServerInfo[]>('scan_servers', { timeoutMs });
   }
@@ -79,6 +88,10 @@ export class TauriGameClient {
     await invoke('start_match');
   }
 
+  async returnToLobby(): Promise<void> {
+    await invoke('return_to_lobby');
+  }
+
   async stopSession(): Promise<void> {
     await invoke('stop_session');
   }
@@ -87,8 +100,10 @@ export class TauriGameClient {
     this.unlistenState?.();
     this.unlistenLobby?.();
     this.unlistenMatchStarted?.();
+    this.unlistenMatchEnded?.();
     this.unlistenState = null;
     this.unlistenLobby = null;
     this.unlistenMatchStarted = null;
+    this.unlistenMatchEnded = null;
   }
 }

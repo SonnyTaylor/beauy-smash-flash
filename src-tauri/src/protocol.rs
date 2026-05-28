@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -103,6 +103,22 @@ pub struct InputSnapshot {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BulletSnapshot {
+    pub id: u32,
+    pub owner_id: u8,
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct KillFeedEntry {
+    pub killer_id: u8,
+    pub killer_name: String,
+    pub victim_id: u8,
+    pub victim_name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PlayerSnapshot {
     pub id: u8,
     pub x: f32,
@@ -111,6 +127,17 @@ pub struct PlayerSnapshot {
     pub color: [u8; 3],
     pub name: String,
     pub character_id: String,
+    pub hp: u16,
+    pub max_hp: u16,
+    pub ammo: u8,
+    pub max_ammo: u8,
+    pub score: u16,
+    pub kills: u16,
+    pub deaths: u16,
+    pub alive: bool,
+    pub reloading: bool,
+    pub spawn_protected: bool,
+    pub respawn_in: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -120,6 +147,15 @@ pub struct StateSnapshot {
     pub world: WorldConfig,
     pub map: MapSnapshot,
     pub players: Vec<PlayerSnapshot>,
+    #[serde(default)]
+    pub bullets: Vec<BulletSnapshot>,
+    #[serde(default)]
+    pub kill_feed: Vec<KillFeedEntry>,
+    #[serde(default)]
+    pub match_ended: bool,
+    pub winner_id: Option<u8>,
+    #[serde(default)]
+    pub score_limit: u16,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -146,6 +182,7 @@ pub enum ServerMessage {
     State(StateSnapshot),
     Lobby(LobbySnapshot),
     MatchStarted(StateSnapshot),
+    MatchEnded(StateSnapshot),
     Error {
         message: String,
     },

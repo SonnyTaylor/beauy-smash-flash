@@ -27,6 +27,7 @@ export function useGameSession() {
   const latestStateRef = useRef<StateSnapshot | null>(null);
   const sessionInfoRef = useRef<SessionInfo | null>(null);
   const myIdRef = useRef(0);
+  const screenRef = useRef<Screen>('main-menu');
 
   const [screen, setScreen] = useState<Screen>('main-menu');
   const [sessionKind, setSessionKind] = useState<SessionKind>('host');
@@ -44,24 +45,59 @@ export function useGameSession() {
   const [myId, setMyId] = useState(0);
   const [latestState, setLatestState] = useState<StateSnapshot | null>(null);
   const [localIp, setLocalIp] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
+  const [matchEnded, setMatchEnded] = useState(false);
+  const pausedRef = useRef(false);
+  const matchEndedRef = useRef(false);
 
   const selectedCharacter = getCharacter(selectedCharacterId);
   const players = latestState?.players ?? [];
 
   useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+
+  useEffect(() => {
+    matchEndedRef.current = matchEnded;
+  }, [matchEnded]);
+
+  useEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
+
+  useEffect(() => {
+    input.setEnabled(!paused && !matchEnded);
+  }, [input, matchEnded, paused]);
+
+  useEffect(() => {
     client.listenForState((state) => {
       latestStateRef.current = state;
       setLatestState(state);
+      setMatchEnded(state.match_ended);
       input.setWorld(state.world);
-      renderer.applyState(state);
+      if (screenRef.current === 'game') {
+        renderer.applyState(state);
+      }
     });
     client.listenForLobby((nextLobby) => {
       setLobby(nextLobby);
+      if (!nextLobby.match_started && screenRef.current === 'game') {
+        void leaveLobbyToLobbyScreen();
+      }
     });
     client.listenForMatchStarted((state) => {
       latestStateRef.current = state;
       setLatestState(state);
+      setMatchEnded(false);
+      setPaused(false);
       void enterGame(state);
+    });
+    client.listenForMatchEnded((state) => {
+      latestStateRef.current = state;
+      setLatestState(state);
+      setMatchEnded(true);
+      setPaused(false);
+      renderer.applyState(state);
     });
 
     return () => {
@@ -128,6 +164,7 @@ export function useGameSession() {
       setMyId(session.player_id);
       myIdRef.current = session.player_id;
       setIsReady(false);
+      setMatchEnded(false);
       setScreen('lobby');
       await client.setReady(false);
     } catch (caught) {
@@ -193,10 +230,13 @@ export function useGameSession() {
       inputTimerRef.current = null;
     }
     input.detach();
+    input.setEnabled(true);
     renderer.destroy();
     if (gameContainerRef.current) {
       gameContainerRef.current.replaceChildren();
     }
+    setPaused(false);
+    setMatchEnded(false);
   }
 
   async function leaveLobby() {
@@ -216,6 +256,31 @@ export function useGameSession() {
     latestStateRef.current = null;
   }
 
+  async function leaveLobbyToLobbyScreen() {
+    teardownGameRuntime();
+    setScreen('lobby');
+    setIsReady(false);
+    setMatchEnded(false);
+    setLatestState(null);
+    latestStateRef.current = null;
+    setError(null);
+  }
+
+  async function returnToLobby() {
+    setIsBusy(true);
+    setError(null);
+    try {
+      if (sessionKind === 'host') {
+        await client.returnToLobby();
+      }
+      await leaveLobbyToLobbyScreen();
+    } catch (caught) {
+      setError(String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function enterGame(initialState: StateSnapshot) {
     const container = gameContainerRef.current;
     if (!container) return;
@@ -227,6 +292,9 @@ export function useGameSession() {
     renderer.applyState(state);
     input.attach(renderer.canvas, state.world);
     inputTimerRef.current = window.setInterval(async () => {
+      if (pausedRef.current || matchEndedRef.current || latestStateRef.current?.match_ended) {
+        return;
+      }
       const player = latestStateRef.current?.players.find((candidate) => candidate.id === playerId) ?? null;
       try {
         await client.sendInput(input.sample(player));
@@ -268,6 +336,8 @@ export function useGameSession() {
     latestState,
     localIp,
     players,
+    paused,
+    setPaused,
     backdropClass,
     scanForServers,
     createLobbySession,
@@ -278,6 +348,7 @@ export function useGameSession() {
     startMatch,
     leaveLobby,
     leaveGame: leaveLobby,
+    returnToLobby,
     goToServerSelect,
     setScreen,
   };

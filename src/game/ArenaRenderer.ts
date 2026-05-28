@@ -1,10 +1,11 @@
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { CHARACTERS, getCharacter } from '../content/characters';
-import type { MapSnapshot, PlayerSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
+import type { BulletSnapshot, MapSnapshot, PlayerSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
 import { fitWorldToViewport } from './Viewport';
 
 const PLAYER_RADIUS = 26;
 const PLAYER_DIAMETER = PLAYER_RADIUS * 2;
+const BULLET_RADIUS = 4;
 
 function assetUrl(relativePath: string): string {
   return `/assets/${relativePath}`;
@@ -27,6 +28,7 @@ export class ArenaRenderer {
   private floorFill = new Graphics();
   private grid = new Graphics();
   private walls = new Graphics();
+  private bullets = new Graphics();
   private players = new Map<number, PlayerView>();
   private headTextures = new Map<string, Texture>();
   private mounted = false;
@@ -71,6 +73,7 @@ export class ArenaRenderer {
     this.floorFill = new Graphics();
     this.grid = new Graphics();
     this.walls = new Graphics();
+    this.bullets = new Graphics();
 
     this.root.sortableChildren = true;
     this.floorLayer.zIndex = 0;
@@ -79,6 +82,7 @@ export class ArenaRenderer {
 
     this.floorLayer.addChild(this.floorFill, this.grid);
     this.wallLayer.addChild(this.walls);
+    this.entityLayer.addChild(this.bullets);
     this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer);
     this.root.sortChildren();
     this.app.stage.addChild(this.root);
@@ -108,9 +112,14 @@ export class ArenaRenderer {
     this.world = snapshot.world;
     this.resize();
     this.applyMap(snapshot.map);
+    this.applyBullets(snapshot.bullets);
 
     const aliveIds = new Set<number>();
     for (const player of snapshot.players) {
+      if (!player.alive) {
+        continue;
+      }
+
       aliveIds.add(player.id);
       let view = this.players.get(player.id);
       if (view && view.characterId !== player.character_id) {
@@ -128,10 +137,7 @@ export class ArenaRenderer {
         this.entityLayer.addChild(view.container);
       }
 
-      const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
-      if (label) {
-        label.text = player.name || getCharacter(player.character_id).initials;
-      }
+      this.updatePlayerVisuals(view, player);
 
       view.targetX = player.x;
       view.targetY = player.y;
@@ -144,6 +150,23 @@ export class ArenaRenderer {
         this.players.delete(id);
       }
     }
+  }
+
+  private updatePlayerVisuals(view: PlayerView, player: PlayerSnapshot) {
+    const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
+    if (label) {
+      label.text = player.name || getCharacter(player.character_id).initials;
+    }
+
+    view.container.alpha = player.spawn_protected ? 0.75 : 1;
+  }
+
+  private applyBullets(bullets: BulletSnapshot[]) {
+    this.bullets.clear();
+    for (const bullet of bullets) {
+      this.bullets.circle(bullet.x, bullet.y, BULLET_RADIUS);
+    }
+    this.bullets.fill({ color: 0xffff32, alpha: 0.95 });
   }
 
   private createPlayer(player: PlayerSnapshot): PlayerView {
@@ -294,7 +317,6 @@ export class ArenaRenderer {
       }),
     );
   }
-
 }
 
 function loadTextureFromUrl(url: string): Promise<Texture | null> {

@@ -1,14 +1,26 @@
 use std::collections::HashMap;
 
 use crate::protocol::{
-    InputSnapshot, MapSnapshot, PlayerSnapshot, RectSnapshot, StateSnapshot, WorldConfig,
-    PROTOCOL_VERSION,
+    BulletSnapshot, InputSnapshot, KillFeedEntry, MapSnapshot, PlayerSnapshot, RectSnapshot,
+    StateSnapshot, WorldConfig, PROTOCOL_VERSION,
 };
 
 pub const DEFAULT_WORLD_WIDTH: f32 = 1920.0;
 pub const DEFAULT_WORLD_HEIGHT: f32 = 1080.0;
 pub const PLAYER_RADIUS: f32 = 24.0;
 pub const PLAYER_SPEED: f32 = 360.0;
+
+pub const PLAYER_MAX_HP: u16 = 100;
+pub const GLOCK_DAMAGE: u16 = 25;
+pub const GLOCK_FIRE_RATE: f32 = 0.18;
+pub const GLOCK_BULLET_SPEED: f32 = 720.0;
+pub const GLOCK_BULLET_LIFE: f32 = 2.0;
+pub const GLOCK_MAX_AMMO: u8 = 17;
+pub const GLOCK_RELOAD_TIME: f32 = 1.2;
+pub const BULLET_RADIUS: f32 = 4.0;
+pub const RESPAWN_TIME: f32 = 2.5;
+pub const SPAWN_PROTECTION_TIME: f32 = 1.5;
+pub const KILL_FEED_LIMIT: usize = 5;
 
 const PALETTE: [[u8; 3]; 8] = [
     [0, 255, 255],
@@ -59,6 +71,28 @@ impl Rect {
 }
 
 #[derive(Clone, Debug)]
+pub struct Bullet {
+    pub id: u32,
+    pub owner_id: u8,
+    pub x: f32,
+    pub y: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub life: f32,
+}
+
+impl Bullet {
+    fn snapshot(&self) -> BulletSnapshot {
+        BulletSnapshot {
+            id: self.id,
+            owner_id: self.owner_id,
+            x: self.x,
+            y: self.y,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Player {
     pub id: u8,
     pub x: f32,
@@ -67,9 +101,61 @@ pub struct Player {
     pub color: [u8; 3],
     pub name: String,
     pub character_id: String,
+    pub hp: u16,
+    pub max_hp: u16,
+    pub ammo: u8,
+    pub max_ammo: u8,
+    pub score: u16,
+    pub kills: u16,
+    pub deaths: u16,
+    pub alive: bool,
+    pub fire_cooldown: f32,
+    pub reload_timer: f32,
+    pub respawn_timer: f32,
+    pub spawn_protection: f32,
+    pub spawn_index: usize,
 }
 
 impl Player {
+    fn new(
+        id: u8,
+        name: String,
+        character_id: String,
+        spawn_index: usize,
+        spawn: (f32, f32),
+    ) -> Self {
+        Self {
+            id,
+            x: spawn.0,
+            y: spawn.1,
+            angle: 0.0,
+            color: PALETTE[id as usize % PALETTE.len()],
+            name,
+            character_id,
+            hp: PLAYER_MAX_HP,
+            max_hp: PLAYER_MAX_HP,
+            ammo: GLOCK_MAX_AMMO,
+            max_ammo: GLOCK_MAX_AMMO,
+            score: 0,
+            kills: 0,
+            deaths: 0,
+            alive: true,
+            fire_cooldown: 0.0,
+            reload_timer: 0.0,
+            respawn_timer: 0.0,
+            spawn_protection: 0.0,
+            spawn_index,
+        }
+    }
+
+    fn reloading(&self) -> bool {
+        self.reload_timer > 0.0
+    }
+
+    fn spawn_protected(&self) -> bool {
+        self.spawn_protection > 0.0
+    }
+
     fn snapshot(&self) -> PlayerSnapshot {
         PlayerSnapshot {
             id: self.id,
@@ -79,7 +165,50 @@ impl Player {
             color: self.color,
             name: self.name.clone(),
             character_id: self.character_id.clone(),
+            hp: self.hp,
+            max_hp: self.max_hp,
+            ammo: self.ammo,
+            max_ammo: self.max_ammo,
+            score: self.score,
+            kills: self.kills,
+            deaths: self.deaths,
+            alive: self.alive,
+            reloading: self.reloading(),
+            spawn_protected: self.spawn_protected(),
+            respawn_in: if self.alive {
+                0.0
+            } else {
+                self.respawn_timer.max(0.0)
+            },
         }
+    }
+
+    fn apply_snapshot(&mut self, snapshot: &PlayerSnapshot) {
+        self.x = snapshot.x;
+        self.y = snapshot.y;
+        self.angle = snapshot.angle;
+        self.color = snapshot.color;
+        self.name = snapshot.name.clone();
+        self.character_id = snapshot.character_id.clone();
+        self.hp = snapshot.hp;
+        self.max_hp = snapshot.max_hp;
+        self.ammo = snapshot.ammo;
+        self.max_ammo = snapshot.max_ammo;
+        self.score = snapshot.score;
+        self.kills = snapshot.kills;
+        self.deaths = snapshot.deaths;
+        self.alive = snapshot.alive;
+        self.reload_timer = if snapshot.reloading {
+            GLOCK_RELOAD_TIME
+        } else {
+            0.0
+        };
+        self.spawn_protection = if snapshot.spawn_protected {
+            SPAWN_PROTECTION_TIME
+        } else {
+            0.0
+        };
+        self.respawn_timer = snapshot.respawn_in;
     }
 }
 
@@ -90,6 +219,12 @@ pub struct GameWorld {
     pub tick: u64,
     pub players: HashMap<u8, Player>,
     pub inputs: HashMap<u8, InputSnapshot>,
+    pub bullets: Vec<Bullet>,
+    pub next_bullet_id: u32,
+    pub kill_feed: Vec<KillFeedEntry>,
+    pub score_limit: u16,
+    pub match_ended: bool,
+    pub winner_id: Option<u8>,
 }
 
 impl Default for GameWorld {
@@ -109,27 +244,26 @@ impl GameWorld {
             tick: 0,
             players: HashMap::new(),
             inputs: HashMap::new(),
+            bullets: Vec::new(),
+            next_bullet_id: 1,
+            kill_feed: Vec::new(),
+            score_limit: 20,
+            match_ended: false,
+            winner_id: None,
         }
     }
 
     pub fn add_player(&mut self, id: u8, name: String, character_id: String) {
-        let spawn = self.map.spawns[id as usize % self.map.spawns.len()];
-        self.players.insert(
-            id,
-            Player {
-                id,
-                x: spawn
-                    .0
-                    .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS),
-                y: spawn
-                    .1
-                    .clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS),
-                angle: 0.0,
-                color: PALETTE[id as usize % PALETTE.len()],
-                name,
-                character_id,
-            },
-        );
+        let spawn_index = id as usize % self.map.spawns.len();
+        let spawn = self.map.spawns[spawn_index];
+        let mut player = Player::new(id, name, character_id, spawn_index, spawn);
+        player.x = spawn
+            .0
+            .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
+        player.y = spawn
+            .1
+            .clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
+        self.players.insert(id, player);
         self.inputs.entry(id).or_default();
     }
 
@@ -142,10 +276,152 @@ impl GameWorld {
         self.inputs.insert(id, input);
     }
 
+    pub fn reset_for_match(&mut self, score_limit: u16) {
+        self.tick = 0;
+        self.bullets.clear();
+        self.kill_feed.clear();
+        self.score_limit = score_limit;
+        self.match_ended = false;
+        self.winner_id = None;
+        self.next_bullet_id = 1;
+
+        let ids: Vec<u8> = self.players.keys().copied().collect();
+        for id in ids {
+            self.reset_player_for_spawn(id, SPAWN_PROTECTION_TIME);
+        }
+    }
+
+    pub fn reset_for_lobby(&mut self) {
+        self.tick = 0;
+        self.bullets.clear();
+        self.kill_feed.clear();
+        self.match_ended = false;
+        self.winner_id = None;
+        self.next_bullet_id = 1;
+
+        let ids: Vec<u8> = self.players.keys().copied().collect();
+        for id in ids {
+            self.reset_player_for_spawn(id, 0.0);
+        }
+    }
+
+    fn reset_player_for_spawn(&mut self, id: u8, spawn_protection: f32) {
+        let Some(spawn) = self.players.get(&id).map(|player| {
+            let spawn = self.map.spawns[player.spawn_index];
+            (
+                spawn
+                    .0
+                    .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS),
+                spawn
+                    .1
+                    .clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS),
+            )
+        }) else {
+            return;
+        };
+
+        if let Some(player) = self.players.get_mut(&id) {
+            player.x = spawn.0;
+            player.y = spawn.1;
+            player.hp = PLAYER_MAX_HP;
+            player.ammo = GLOCK_MAX_AMMO;
+            player.alive = true;
+            player.fire_cooldown = 0.0;
+            player.reload_timer = 0.0;
+            player.respawn_timer = 0.0;
+            player.spawn_protection = spawn_protection;
+        }
+    }
+
+    pub fn sync_from_snapshot(&mut self, snapshot: &StateSnapshot) {
+        self.tick = snapshot.tick;
+        self.config = snapshot.world.clone();
+        self.match_ended = snapshot.match_ended;
+        self.winner_id = snapshot.winner_id;
+        self.score_limit = snapshot.score_limit;
+        self.kill_feed = snapshot.kill_feed.clone();
+        self.bullets = snapshot
+            .bullets
+            .iter()
+            .map(|bullet| Bullet {
+                id: bullet.id,
+                owner_id: bullet.owner_id,
+                x: bullet.x,
+                y: bullet.y,
+                vx: 0.0,
+                vy: 0.0,
+                life: GLOCK_BULLET_LIFE,
+            })
+            .collect();
+
+        let snapshot_ids: std::collections::HashSet<u8> =
+            snapshot.players.iter().map(|player| player.id).collect();
+
+        for player_snap in &snapshot.players {
+            if let Some(player) = self.players.get_mut(&player_snap.id) {
+                player.apply_snapshot(player_snap);
+            } else {
+                self.add_player(
+                    player_snap.id,
+                    player_snap.name.clone(),
+                    player_snap.character_id.clone(),
+                );
+                if let Some(player) = self.players.get_mut(&player_snap.id) {
+                    player.apply_snapshot(player_snap);
+                }
+            }
+        }
+
+        self.players.retain(|id, _| snapshot_ids.contains(id));
+    }
+
     pub fn tick(&mut self, dt: f32) {
+        if self.match_ended {
+            return;
+        }
+
         self.tick += 1;
 
         for player in self.players.values_mut() {
+            if player.spawn_protection > 0.0 {
+                player.spawn_protection = (player.spawn_protection - dt).max(0.0);
+            }
+        }
+
+        self.process_respawns(dt);
+        self.process_movement(dt);
+        self.process_combat(dt);
+        self.process_bullets(dt);
+        self.check_match_end();
+    }
+
+    fn process_respawns(&mut self, dt: f32) {
+        let respawning: Vec<u8> = self
+            .players
+            .values()
+            .filter(|player| !player.alive)
+            .map(|player| player.id)
+            .collect();
+
+        for id in respawning {
+            let should_respawn = {
+                let player = self.players.get_mut(&id).expect("player exists");
+                player.respawn_timer -= dt;
+                player.respawn_timer <= 0.0
+            };
+
+            if should_respawn {
+                self.reset_player_for_spawn(id, SPAWN_PROTECTION_TIME);
+            }
+        }
+    }
+
+    fn process_movement(&mut self, dt: f32) {
+        for player in self.players.values_mut() {
+            if !player.alive {
+                continue;
+            }
+
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
             let (move_x, move_y) = normalize(input.dx, input.dy);
 
@@ -167,6 +443,202 @@ impl GameWorld {
         }
     }
 
+    fn process_combat(&mut self, dt: f32) {
+        let mut shots: Vec<(u8, f32, f32, f32, f32)> = Vec::new();
+        let mut reload_requests: Vec<u8> = Vec::new();
+
+        for player in self.players.values_mut() {
+            if !player.alive {
+                continue;
+            }
+
+            if player.fire_cooldown > 0.0 {
+                player.fire_cooldown = (player.fire_cooldown - dt).max(0.0);
+            }
+
+            if player.reload_timer > 0.0 {
+                player.reload_timer = (player.reload_timer - dt).max(0.0);
+                if player.reload_timer <= 0.0 {
+                    player.ammo = player.max_ammo;
+                }
+                continue;
+            }
+
+            let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
+
+            if input.reload && player.ammo < player.max_ammo {
+                reload_requests.push(player.id);
+                continue;
+            }
+
+            if !input.fire || player.fire_cooldown > 0.0 {
+                continue;
+            }
+
+            if player.ammo == 0 {
+                reload_requests.push(player.id);
+                continue;
+            }
+
+            let (aim_x, aim_y) = normalize(input.aim_x, input.aim_y);
+            if aim_x == 0.0 && aim_y == 0.0 {
+                continue;
+            }
+
+            player.ammo -= 1;
+            player.fire_cooldown = GLOCK_FIRE_RATE;
+
+            let spawn_x = player.x + aim_x * (PLAYER_RADIUS + 6.0);
+            let spawn_y = player.y + aim_y * (PLAYER_RADIUS + 6.0);
+            shots.push((player.id, spawn_x, spawn_y, aim_x, aim_y));
+        }
+
+        for id in reload_requests {
+            if let Some(player) = self.players.get_mut(&id) {
+                if player.alive && player.reload_timer <= 0.0 && player.ammo < player.max_ammo {
+                    player.reload_timer = GLOCK_RELOAD_TIME;
+                }
+            }
+        }
+
+        for (owner_id, x, y, aim_x, aim_y) in shots {
+            let id = self.next_bullet_id;
+            self.next_bullet_id += 1;
+            self.bullets.push(Bullet {
+                id,
+                owner_id,
+                x,
+                y,
+                vx: aim_x * GLOCK_BULLET_SPEED,
+                vy: aim_y * GLOCK_BULLET_SPEED,
+                life: GLOCK_BULLET_LIFE,
+            });
+        }
+    }
+
+    fn process_bullets(&mut self, dt: f32) {
+        let mut hits: Vec<(u32, u8, u8)> = Vec::new();
+
+        for bullet in &mut self.bullets {
+            bullet.life -= dt;
+            bullet.x += bullet.vx * dt;
+            bullet.y += bullet.vy * dt;
+        }
+
+        self.bullets.retain(|bullet| {
+            bullet.life > 0.0
+                && bullet.x >= 0.0
+                && bullet.y >= 0.0
+                && bullet.x <= self.config.width
+                && bullet.y <= self.config.height
+                && !circle_hits_walls(bullet.x, bullet.y, BULLET_RADIUS, &self.map.walls)
+        });
+
+        for bullet in &self.bullets {
+            for player in self.players.values() {
+                if !player.alive || player.spawn_protected() || player.id == bullet.owner_id {
+                    continue;
+                }
+
+                if circle_hits_circle(
+                    bullet.x,
+                    bullet.y,
+                    BULLET_RADIUS,
+                    player.x,
+                    player.y,
+                    PLAYER_RADIUS,
+                ) {
+                    hits.push((bullet.id, bullet.owner_id, player.id));
+                    break;
+                }
+            }
+        }
+
+        if hits.is_empty() {
+            return;
+        }
+
+        let hit_bullet_ids: std::collections::HashSet<u32> =
+            hits.iter().map(|(bullet_id, _, _)| *bullet_id).collect();
+        self.bullets
+            .retain(|bullet| !hit_bullet_ids.contains(&bullet.id));
+
+        for (_, killer_id, victim_id) in hits {
+            self.apply_damage(killer_id, victim_id, GLOCK_DAMAGE);
+        }
+    }
+
+    fn apply_damage(&mut self, killer_id: u8, victim_id: u8, damage: u16) {
+        let died = {
+            let Some(victim) = self.players.get_mut(&victim_id) else {
+                return;
+            };
+            if !victim.alive || victim.spawn_protected() {
+                return;
+            }
+            victim.hp = victim.hp.saturating_sub(damage);
+            victim.hp == 0
+        };
+
+        if !died {
+            return;
+        }
+
+        let (killer_name, victim_name) = {
+            let killer_name = self
+                .players
+                .get(&killer_id)
+                .map(|player| player.name.clone())
+                .unwrap_or_else(|| "Unknown".to_string());
+            let victim_name = self
+                .players
+                .get(&victim_id)
+                .map(|player| player.name.clone())
+                .unwrap_or_else(|| "Unknown".to_string());
+            (killer_name, victim_name)
+        };
+
+        if let Some(victim) = self.players.get_mut(&victim_id) {
+            victim.alive = false;
+            victim.hp = 0;
+            victim.deaths += 1;
+            victim.respawn_timer = RESPAWN_TIME;
+            victim.reload_timer = 0.0;
+        }
+
+        if let Some(killer) = self.players.get_mut(&killer_id) {
+            killer.kills += 1;
+            killer.score += 1;
+        }
+
+        self.kill_feed.push(KillFeedEntry {
+            killer_id,
+            killer_name,
+            victim_id,
+            victim_name,
+        });
+        if self.kill_feed.len() > KILL_FEED_LIMIT {
+            let overflow = self.kill_feed.len() - KILL_FEED_LIMIT;
+            self.kill_feed.drain(0..overflow);
+        }
+    }
+
+    fn check_match_end(&mut self) {
+        if self.match_ended {
+            return;
+        }
+
+        if let Some((winner_id, _)) = self
+            .players
+            .values()
+            .find(|player| player.score >= self.score_limit)
+            .map(|player| (player.id, player.score))
+        {
+            self.match_ended = true;
+            self.winner_id = Some(winner_id);
+        }
+    }
+
     pub fn snapshot(&self) -> StateSnapshot {
         let mut players: Vec<_> = self.players.values().map(Player::snapshot).collect();
         players.sort_by_key(|player| player.id);
@@ -177,30 +649,44 @@ impl GameWorld {
             world: self.config.clone(),
             map: self.map.snapshot(),
             players,
+            bullets: self.bullets.iter().map(Bullet::snapshot).collect(),
+            kill_feed: self.kill_feed.clone(),
+            match_ended: self.match_ended,
+            winner_id: self.winner_id,
+            score_limit: self.score_limit,
         }
     }
 }
 
-fn normalize(x: f32, y: f32) -> (f32, f32) {
+pub fn normalize(x: f32, y: f32) -> (f32, f32) {
     let length = (x * x + y * y).sqrt();
     if length > 1.0 {
         (x / length, y / length)
+    } else if length > 0.0001 {
+        (x / length, y / length)
     } else {
-        (x, y)
+        (0.0, 0.0)
     }
 }
 
-fn circle_hits_walls(x: f32, y: f32, radius: f32, walls: &[Rect]) -> bool {
+pub fn circle_hits_walls(x: f32, y: f32, radius: f32, walls: &[Rect]) -> bool {
     walls
         .iter()
         .any(|wall| circle_hits_rect(x, y, radius, wall))
 }
 
-fn circle_hits_rect(x: f32, y: f32, radius: f32, rect: &Rect) -> bool {
+pub fn circle_hits_rect(x: f32, y: f32, radius: f32, rect: &Rect) -> bool {
     let closest_x = x.clamp(rect.x, rect.x + rect.w);
     let closest_y = y.clamp(rect.y, rect.y + rect.h);
     let dx = x - closest_x;
     let dy = y - closest_y;
+    dx * dx + dy * dy < radius * radius
+}
+
+pub fn circle_hits_circle(x1: f32, y1: f32, r1: f32, x2: f32, y2: f32, r2: f32) -> bool {
+    let dx = x1 - x2;
+    let dy = y1 - y2;
+    let radius = r1 + r2;
     dx * dx + dy * dy < radius * radius
 }
 
@@ -248,6 +734,17 @@ fn scale_rect_from_python((x, y, w, h): (f32, f32, f32, f32)) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_world_with_two_players() -> GameWorld {
+        let mut world = GameWorld::default();
+        world.add_player(0, "Host".to_string(), "sonny".to_string());
+        world.add_player(1, "Guest".to_string(), "bailey".to_string());
+        world.reset_for_match(20);
+        for player in world.players.values_mut() {
+            player.spawn_protection = 0.0;
+        }
+        world
+    }
 
     #[test]
     fn diagonal_movement_is_normalized() {
@@ -302,5 +799,92 @@ mod tests {
 
         let player = world.players.get(&0).unwrap();
         assert!(player.x <= wall.x - PLAYER_RADIUS);
+    }
+
+    #[test]
+    fn bullet_is_removed_when_it_hits_a_wall() {
+        let mut world = GameWorld::default();
+        let wall = world.map.walls[4].clone();
+        world.bullets.push(Bullet {
+            id: 1,
+            owner_id: 0,
+            x: wall.x - 8.0,
+            y: wall.y + wall.h / 2.0,
+            vx: 720.0,
+            vy: 0.0,
+            life: GLOCK_BULLET_LIFE,
+        });
+
+        world.process_bullets(1.0 / 60.0);
+
+        assert!(world.bullets.is_empty());
+    }
+
+    #[test]
+    fn bullet_damages_an_enemy_player() {
+        let mut world = test_world_with_two_players();
+        let victim_pos = {
+            let victim = world.players.get(&1).unwrap();
+            (victim.x, victim.y)
+        };
+
+        world.bullets.push(Bullet {
+            id: 1,
+            owner_id: 0,
+            x: victim_pos.0 - 20.0,
+            y: victim_pos.1,
+            vx: GLOCK_BULLET_SPEED,
+            vy: 0.0,
+            life: GLOCK_BULLET_LIFE,
+        });
+
+        world.process_bullets(1.0 / 60.0);
+
+        let victim = world.players.get(&1).unwrap();
+        assert_eq!(victim.hp, PLAYER_MAX_HP - GLOCK_DAMAGE);
+        assert!(victim.alive);
+        assert!(world.bullets.is_empty());
+    }
+
+    #[test]
+    fn reload_blocks_shooting() {
+        let mut world = test_world_with_two_players();
+        {
+            let player = world.players.get_mut(&0).unwrap();
+            player.ammo = 0;
+            player.reload_timer = GLOCK_RELOAD_TIME;
+        }
+
+        world.set_input(
+            0,
+            InputSnapshot {
+                aim_x: 1.0,
+                fire: true,
+                ..Default::default()
+            },
+        );
+
+        world.process_combat(1.0 / 60.0);
+
+        assert!(world.bullets.is_empty());
+        assert!(world.players.get(&0).unwrap().reloading());
+    }
+
+    #[test]
+    fn reaching_score_limit_ends_the_match() {
+        let mut world = test_world_with_two_players();
+        world.score_limit = 3;
+        {
+            let player = world.players.get_mut(&0).unwrap();
+            player.score = 2;
+            player.kills = 2;
+        }
+
+        world.apply_damage(0, 1, PLAYER_MAX_HP);
+        world.check_match_end();
+
+        assert!(world.match_ended);
+        assert_eq!(world.winner_id, Some(0));
+        assert_eq!(world.players.get(&0).unwrap().score, 3);
     }
 }
