@@ -148,6 +148,7 @@ export interface PlayerSnapshot {
   respawn_in: number;
   ability_charge: number;
   ability_windup: number;
+  hacked_remaining: number;
 }
 
 export interface StateSnapshot {

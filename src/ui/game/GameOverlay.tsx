@@ -134,6 +134,7 @@ export function GameOverlay({
   const abilityWindup = me?.ability_windup ?? 0;
   const abilityReady = abilityCharge >= 100;
   const abilityCasting = abilityWindup > 0;
+  const isHacked = (me?.hacked_remaining ?? 0) > 0;
   const remaining = timeRemaining(state);
   const showTimer = (state?.time_limit_secs ?? 0) > 0 && state?.win_condition !== 'kills';
   const isDead = me && !me.alive && me.respawn_in > 0 && !matchEnded;
@@ -229,7 +230,14 @@ export function GameOverlay({
 
   return (
     <>
-      <div className={`game-overlay ${paused || matchEnded ? 'paused' : ''}`}>
+      <div
+        className={`game-overlay ${paused || matchEnded ? 'paused' : ''} ${isHacked ? 'hud-hacked' : ''}`}
+      >
+        {isHacked && !matchEnded && (
+          <div className="hud-hack-banner" role="status">
+            Controls hacked — {me?.hacked_remaining.toFixed(1)}s
+          </div>
+        )}
         <div className="hud-left">
           <div className="hud-pill hud-player">
             <span

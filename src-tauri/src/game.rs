@@ -131,6 +131,7 @@ pub struct Player {
     pub ability_windup: f32,
     pub ability_aim_x: f32,
     pub ability_aim_y: f32,
+    pub controls_inverted_until: f32,
 }
 
 impl Player {
@@ -166,6 +167,7 @@ impl Player {
             ability_windup: 0.0,
             ability_aim_x: 0.0,
             ability_aim_y: 0.0,
+            controls_inverted_until: 0.0,
         }
     }
 
@@ -204,6 +206,7 @@ impl Player {
             },
             ability_charge: self.ability_charge,
             ability_windup: self.ability_windup.max(0.0),
+            hacked_remaining: self.controls_inverted_until.max(0.0),
         }
     }
 
@@ -237,6 +240,7 @@ impl Player {
         self.respawn_timer = snapshot.respawn_in;
         self.ability_charge = snapshot.ability_charge;
         self.ability_windup = snapshot.ability_windup;
+        self.controls_inverted_until = snapshot.hacked_remaining;
     }
 }
 
@@ -433,6 +437,8 @@ impl GameWorld {
             player.reload_timer = 0.0;
             player.respawn_timer = 0.0;
             player.spawn_protection = spawn_protection;
+            player.controls_inverted_until = 0.0;
+            player.ability_windup = 0.0;
         }
     }
 
@@ -497,6 +503,7 @@ impl GameWorld {
         }
 
         abilities::passive_charge_tick(&mut self.players, dt);
+        abilities::tick_status_effects(&mut self.players, dt);
         self.process_ability_input();
         abilities::process_abilities(self, dt);
         abilities::process_effects(self, dt);
@@ -535,7 +542,11 @@ impl GameWorld {
             }
 
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
-            let (move_x, move_y) = normalize(input.dx, input.dy);
+            let invert = player.controls_inverted_until > 0.0;
+            let (move_x, move_y) = normalize(
+                if invert { -input.dx } else { input.dx },
+                if invert { -input.dy } else { input.dy },
+            );
 
             let next_x = (player.x + move_x * PLAYER_SPEED * dt)
                 .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
@@ -1136,5 +1147,27 @@ mod tests {
             .effects
             .iter()
             .any(|effect| effect.kind == EffectKind::Explosion));
+    }
+
+    #[test]
+    fn sonny_reverse_shell_hacks_nearest_enemy() {
+        use crate::abilities::ABILITY_CHARGE_MAX;
+
+        let mut world = test_world_with_two_players();
+        world.players.get_mut(&0).unwrap().ability_charge = ABILITY_CHARGE_MAX;
+
+        world.set_input(
+            0,
+            InputSnapshot {
+                ability: true,
+                ..Default::default()
+            },
+        );
+        world.process_ability_input();
+        world.ability_held.insert(0, true);
+
+        let victim = world.players.get(&1).unwrap();
+        assert!(victim.controls_inverted_until > 0.0);
+        assert_eq!(world.players.get(&0).unwrap().ability_charge, 0.0);
     }
 }

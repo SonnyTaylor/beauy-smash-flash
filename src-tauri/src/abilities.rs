@@ -15,11 +15,23 @@ const BAILEY_NUKE_RADIUS: f32 = 150.0;
 pub const BAILEY_NUKE_DAMAGE: u16 = 60;
 const EXPLOSION_VFX_LIFE: f32 = 0.45;
 
+const SONNY_HACK_RANGE: f32 = 280.0;
+const SONNY_HACK_DURATION: f32 = 3.0;
+const SONNY_HACK_VFX_LIFE: f32 = 0.4;
+
 pub fn add_charge(player: &mut Player, amount: f32) {
     if !player.alive {
         return;
     }
     player.ability_charge = (player.ability_charge + amount).min(ABILITY_CHARGE_MAX);
+}
+
+pub fn tick_status_effects(players: &mut HashMap<u8, Player>, dt: f32) {
+    for player in players.values_mut() {
+        if player.controls_inverted_until > 0.0 {
+            player.controls_inverted_until = (player.controls_inverted_until - dt).max(0.0);
+        }
+    }
 }
 
 pub fn passive_charge_tick(players: &mut HashMap<u8, Player>, dt: f32) {
@@ -55,6 +67,7 @@ pub fn try_activate(world: &mut GameWorld, player_id: u8) {
     };
 
     match character_id.as_str() {
+        "sonny" => activate_sonny_reverse_shell(world, player_id, x, y),
         "bailey" => {
             let target_x = (x + angle.cos() * BAILEY_NUKE_RANGE)
                 .clamp(PLAYER_RADIUS, world.config.width - PLAYER_RADIUS);
@@ -113,6 +126,58 @@ pub fn process_abilities(world: &mut GameWorld, dt: f32) {
             }
         }
     }
+}
+
+fn activate_sonny_reverse_shell(world: &mut GameWorld, caster_id: u8, x: f32, y: f32) {
+    let target_id = world
+        .players
+        .values()
+        .filter(|player| {
+            player.alive
+                && player.id != caster_id
+                && !player.spawn_protected()
+                && distance_sq(x, y, player.x, player.y) <= SONNY_HACK_RANGE * SONNY_HACK_RANGE
+        })
+        .min_by(|a, b| {
+            distance_sq(x, y, a.x, a.y)
+                .partial_cmp(&distance_sq(x, y, b.x, b.y))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|player| player.id);
+
+    let Some(target_id) = target_id else {
+        return;
+    };
+
+    if let Some(target) = world.players.get_mut(&target_id) {
+        target.controls_inverted_until = SONNY_HACK_DURATION;
+    }
+    if let Some(caster) = world.players.get_mut(&caster_id) {
+        caster.ability_charge = 0.0;
+    }
+
+    let (tx, ty) = world
+        .players
+        .get(&target_id)
+        .map(|player| (player.x, player.y))
+        .unwrap_or((x, y));
+    let id = world.next_effect_id;
+    world.next_effect_id += 1;
+    world.effects.push(WorldEffect {
+        id,
+        kind: EffectKind::AimReticle,
+        x: tx,
+        y: ty,
+        radius: 36.0,
+        life: SONNY_HACK_VFX_LIFE,
+        owner_id: caster_id,
+    });
+}
+
+fn distance_sq(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
+    let dx = x1 - x2;
+    let dy = y1 - y2;
+    dx * dx + dy * dy
 }
 
 fn detonate_bailey_nuke(world: &mut GameWorld, owner_id: u8, x: f32, y: f32) {

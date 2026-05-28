@@ -55,6 +55,7 @@ export function useGameSession() {
   const pausedRef = useRef(false);
   const matchEndedRef = useRef(false);
   const gameSettingsRef = useRef(gameSettings);
+  const pointerLockCleanupRef = useRef<(() => void) | null>(null);
 
   const selectedCharacter = getCharacter(selectedCharacterId);
   const players = latestState?.players ?? [];
@@ -78,6 +79,14 @@ export function useGameSession() {
   useEffect(() => {
     input.setEnabled(!paused && !matchEnded);
   }, [input, matchEnded, paused]);
+
+  useEffect(() => {
+    if (screen !== 'game' || paused || matchEnded) {
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+    }
+  }, [screen, paused, matchEnded]);
 
   useEffect(() => {
     client.listenForState((state) => {
@@ -249,7 +258,32 @@ export function useGameSession() {
     }
   }
 
+  function teardownPointerLock() {
+    pointerLockCleanupRef.current?.();
+    pointerLockCleanupRef.current = null;
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }
+
+  function setupPointerLock(canvas: HTMLCanvasElement) {
+    teardownPointerLock();
+    const onClick = () => {
+      if (pausedRef.current || matchEndedRef.current) {
+        return;
+      }
+      if (document.pointerLockElement !== canvas) {
+        void canvas.requestPointerLock();
+      }
+    };
+    canvas.addEventListener('click', onClick);
+    pointerLockCleanupRef.current = () => {
+      canvas.removeEventListener('click', onClick);
+    };
+  }
+
   function teardownGameRuntime() {
+    teardownPointerLock();
     if (inputTimerRef.current !== null) {
       window.clearInterval(inputTimerRef.current);
       inputTimerRef.current = null;
@@ -340,6 +374,7 @@ export function useGameSession() {
       input.detach();
       await renderer.mount(container, state.world, playerId);
       input.attach(renderer.canvas, state.world);
+      setupPointerLock(renderer.canvas);
       inputTimerRef.current = window.setInterval(async () => {
         if (pausedRef.current || matchEndedRef.current || latestStateRef.current?.match_ended) {
           return;

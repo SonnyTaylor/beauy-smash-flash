@@ -184,6 +184,8 @@ pub struct PlayerSnapshot {
     pub ability_charge: f32,
     #[serde(default)]
     pub ability_windup: f32,
+    #[serde(default)]
+    pub hacked_remaining: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
