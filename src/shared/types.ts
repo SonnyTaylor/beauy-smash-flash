@@ -107,6 +107,18 @@ export interface BulletSnapshot {
   y: number;
 }
 
+export type EffectKind = 'explosion' | 'aim_reticle';
+
+export interface WorldEffectSnapshot {
+  id: number;
+  kind: EffectKind;
+  x: number;
+  y: number;
+  radius: number;
+  life: number;
+  owner_id: number;
+}
+
 export interface KillFeedEntry {
   killer_id: number;
   killer_name: string;
@@ -134,6 +146,8 @@ export interface PlayerSnapshot {
   reload_remaining: number;
   spawn_protected: boolean;
   respawn_in: number;
+  ability_charge: number;
+  ability_windup: number;
 }
 
 export interface StateSnapshot {
@@ -143,6 +157,7 @@ export interface StateSnapshot {
   map: MapSnapshot;
   players: PlayerSnapshot[];
   bullets: BulletSnapshot[];
+  effects: WorldEffectSnapshot[];
   kill_feed: KillFeedEntry[];
   match_ended: boolean;
   winner_id: number | null;

@@ -10,6 +10,8 @@ interface VfxBurst {
 const MUZZLE_LIFE = 0.09;
 const SPAWN_LIFE = 0.55;
 const DUST_LIFE = 0.3;
+const EXPLOSION_LIFE = 0.45;
+const RETICLE_LIFE = 1.2;
 
 export class VfxManager {
   private layer = new Container();
@@ -62,6 +64,30 @@ export class VfxManager {
   }
 
   /** Dust at feet, trailing opposite movement direction. */
+  emitExplosion(x: number, y: number, radius: number) {
+    const gfx = new Graphics();
+    gfx.circle(0, 0, radius * 0.35)
+      .fill({ color: 0xfff4a8, alpha: 0.95 })
+      .circle(0, 0, radius * 0.7)
+      .fill({ color: 0xff6b35, alpha: 0.55 })
+      .circle(0, 0, radius)
+      .stroke({ color: 0xff2d55, width: 5, alpha: 0.75 });
+    gfx.position.set(x, y);
+    this.layer.addChild(gfx);
+    this.bursts.push({ gfx, life: EXPLOSION_LIFE, maxLife: EXPLOSION_LIFE, fadeOnly: false });
+  }
+
+  emitAimReticle(x: number, y: number, radius: number) {
+    const gfx = new Graphics();
+    gfx.circle(0, 0, radius)
+      .stroke({ color: 0xff4466, width: 3, alpha: 0.85 })
+      .circle(0, 0, 8)
+      .fill({ color: 0xffffff, alpha: 0.9 });
+    gfx.position.set(x, y);
+    this.layer.addChild(gfx);
+    this.bursts.push({ gfx, life: RETICLE_LIFE, maxLife: RETICLE_LIFE, fadeOnly: true });
+  }
+
   emitMoveDust(feetX: number, feetY: number, moveAngle: number, accentColor: number) {
     const gfx = new Graphics();
     const behindX = -Math.cos(moveAngle) * 14;

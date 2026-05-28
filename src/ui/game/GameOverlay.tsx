@@ -130,6 +130,10 @@ export function GameOverlay({
     ? 1 - reloadRemaining / GLOCK_RELOAD_SECS
     : 0;
   const ammoLabel = isReloading ? 'Reloading...' : `${me?.ammo ?? 0} / ${me?.max_ammo ?? 0}`;
+  const abilityCharge = me?.ability_charge ?? 0;
+  const abilityWindup = me?.ability_windup ?? 0;
+  const abilityReady = abilityCharge >= 100;
+  const abilityCasting = abilityWindup > 0;
   const remaining = timeRemaining(state);
   const showTimer = (state?.time_limit_secs ?? 0) > 0 && state?.win_condition !== 'kills';
   const isDead = me && !me.alive && me.respawn_in > 0 && !matchEnded;
@@ -267,6 +271,30 @@ export function GameOverlay({
                 />
               </div>
             )}
+            <div className="hud-bar-label hud-ability-row">
+              <span>{character.abilityName}</span>
+              <span className={abilityCasting ? 'hud-casting' : abilityReady ? 'hud-ready' : ''}>
+                {abilityCasting
+                  ? 'Arming...'
+                  : abilityReady
+                    ? 'Ready — E'
+                    : `${Math.round(abilityCharge)}%`}
+              </span>
+            </div>
+            <div className="hud-bar-track hud-ability-track">
+              <div
+                className={`hud-bar-fill hud-bar-ability ${abilityReady ? 'hud-bar-ability-ready' : ''}`}
+                style={{ width: `${Math.min(100, Math.max(0, abilityCharge))}%` }}
+              />
+              {abilityCasting && (
+                <div
+                  className="hud-bar-fill hud-bar-windup"
+                  style={{
+                    width: `${Math.min(100, (1 - abilityWindup / 1.2) * 100)}%`,
+                  }}
+                />
+              )}
+            </div>
           </div>
 
           <div className="hud-pill hud-stats">
@@ -297,7 +325,7 @@ export function GameOverlay({
 
         {showControlsHint && !matchEnded && !paused && (
           <div className="hud-controls-hint">
-            <span>WASD move · Mouse aim · LMB fire · R reload · Tab scores · Esc menu</span>
+            <span>WASD move · Mouse aim · LMB fire · R reload · E ability · Tab scores · Esc menu</span>
           </div>
         )}
 

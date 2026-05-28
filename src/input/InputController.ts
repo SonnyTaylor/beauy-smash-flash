@@ -75,14 +75,14 @@ export class InputController {
       aim_y: this.pointer.y - aimOrigin.y,
       fire: this.keys.has('mouse0'),
       reload: this.keys.has('r'),
-      ability: false,
+      ability: this.keys.has('e'),
       dash: false,
     };
   }
 
   private handleKeyDown = (event: KeyboardEvent) => {
     const key = event.key.toLowerCase();
-    if (MOVEMENT_KEYS.has(key) || key === 'r') {
+    if (MOVEMENT_KEYS.has(key) || key === 'r' || key === 'e') {
       event.preventDefault();
       this.keys.add(key);
     }

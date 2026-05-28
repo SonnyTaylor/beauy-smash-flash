@@ -1003,6 +1003,38 @@ h2 {
   color: var(--cyan);
 }
 
+.hud-ability-row {
+  margin-top: 6px;
+}
+
+.hud-ability-track {
+  position: relative;
+  margin-top: 2px;
+}
+
+.hud-bar-ability {
+  background: linear-gradient(90deg, #a855f7, #ec4899);
+}
+
+.hud-bar-ability-ready {
+  background: linear-gradient(90deg, #22d3ee, #a3e635);
+}
+
+.hud-bar-windup {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255, 68, 102, 0.85), rgba(255, 200, 80, 0.9));
+  pointer-events: none;
+}
+
+.hud-ready {
+  color: #a3e635;
+}
+
+.hud-casting {
+  color: #ff4466;
+}
+
 .hud-kill-feed {
   min-width: 220px;
   gap: 4px;

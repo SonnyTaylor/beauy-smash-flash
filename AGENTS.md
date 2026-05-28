@@ -59,7 +59,7 @@ After making code changes, create a git commit unless the user asked for no comm
 
 ## Planned Features (not yet implemented)
 
-- Character abilities (`E` / space wired in input but not simulated in Rust)
+- Remaining character abilities (Bailey Truth Nuke is in `src-tauri/src/abilities.rs`; others still stubbed)
 - More weapons, game modes (TDM/LMS stubs in UI), fog of war
 - Cosmetics, bots/zombie mode, more maps and visual map polish
 - Audio (volume slider exists in settings as placeholder)
@@ -69,3 +69,4 @@ After making code changes, create a git commit unless the user asked for no comm
 - Glock sprite: `public/assets/weapons/glock.png`, metadata in `src/content/weapons/glock.json`
 - Re-process asset: `bun run assets:glock` (runs `scripts/process-glock.py`)
 - Arena VFX live in `src/game/vfx/VfxManager.ts`; gun orbit in `ArenaRenderer.ts`
+- Ability sim: `src-tauri/src/abilities.rs` (charge, windup, world `effects` in snapshots)

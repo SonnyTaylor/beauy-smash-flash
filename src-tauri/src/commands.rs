@@ -132,6 +132,7 @@ pub async fn join_game(
                     map,
                     players,
                     bullets: Vec::new(),
+                    effects: Vec::new(),
                     kill_feed: Vec::new(),
                     match_ended: false,
                     winner_id: None,

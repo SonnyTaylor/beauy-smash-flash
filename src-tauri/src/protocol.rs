@@ -124,6 +124,24 @@ pub struct InputSnapshot {
     pub dash: bool,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectKind {
+    Explosion,
+    AimReticle,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorldEffectSnapshot {
+    pub id: u32,
+    pub kind: EffectKind,
+    pub x: f32,
+    pub y: f32,
+    pub radius: f32,
+    pub life: f32,
+    pub owner_id: u8,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BulletSnapshot {
     pub id: u32,
@@ -162,6 +180,10 @@ pub struct PlayerSnapshot {
     pub reload_remaining: f32,
     pub spawn_protected: bool,
     pub respawn_in: f32,
+    #[serde(default)]
+    pub ability_charge: f32,
+    #[serde(default)]
+    pub ability_windup: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -173,6 +195,8 @@ pub struct StateSnapshot {
     pub players: Vec<PlayerSnapshot>,
     #[serde(default)]
     pub bullets: Vec<BulletSnapshot>,
+    #[serde(default)]
+    pub effects: Vec<WorldEffectSnapshot>,
     #[serde(default)]
     pub kill_feed: Vec<KillFeedEntry>,
     #[serde(default)]

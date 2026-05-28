@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+mod abilities;
 mod commands;
 mod discovery;
 mod game;

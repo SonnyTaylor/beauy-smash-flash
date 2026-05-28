@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
+use crate::abilities::{self, is_casting};
 use crate::protocol::{
-    BulletSnapshot, InputSnapshot, KillFeedEntry, LobbyConfig, MapSnapshot, MatchEndReason,
-    PlayerSnapshot, RectSnapshot, StateSnapshot, WinCondition, WorldConfig, PROTOCOL_VERSION,
+    BulletSnapshot, EffectKind, InputSnapshot, KillFeedEntry, LobbyConfig, MapSnapshot,
+    MatchEndReason, PlayerSnapshot, RectSnapshot, StateSnapshot, WinCondition, WorldConfig,
+    PROTOCOL_VERSION,
 };
 
 pub const DEFAULT_WORLD_WIDTH: f32 = 1920.0;
@@ -81,6 +83,17 @@ pub struct Bullet {
     pub life: f32,
 }
 
+#[derive(Clone, Debug)]
+pub struct WorldEffect {
+    pub id: u32,
+    pub kind: EffectKind,
+    pub x: f32,
+    pub y: f32,
+    pub radius: f32,
+    pub life: f32,
+    pub owner_id: u8,
+}
+
 impl Bullet {
     fn snapshot(&self) -> BulletSnapshot {
         BulletSnapshot {
@@ -114,6 +127,10 @@ pub struct Player {
     pub respawn_timer: f32,
     pub spawn_protection: f32,
     pub spawn_index: usize,
+    pub ability_charge: f32,
+    pub ability_windup: f32,
+    pub ability_aim_x: f32,
+    pub ability_aim_y: f32,
 }
 
 impl Player {
@@ -145,6 +162,10 @@ impl Player {
             respawn_timer: 0.0,
             spawn_protection: 0.0,
             spawn_index,
+            ability_charge: 0.0,
+            ability_windup: 0.0,
+            ability_aim_x: 0.0,
+            ability_aim_y: 0.0,
         }
     }
 
@@ -152,7 +173,7 @@ impl Player {
         self.reload_timer > 0.0
     }
 
-    fn spawn_protected(&self) -> bool {
+    pub(crate) fn spawn_protected(&self) -> bool {
         self.spawn_protection > 0.0
     }
 
@@ -181,6 +202,8 @@ impl Player {
             } else {
                 self.respawn_timer.max(0.0)
             },
+            ability_charge: self.ability_charge,
+            ability_windup: self.ability_windup.max(0.0),
         }
     }
 
@@ -212,6 +235,8 @@ impl Player {
             0.0
         };
         self.respawn_timer = snapshot.respawn_in;
+        self.ability_charge = snapshot.ability_charge;
+        self.ability_windup = snapshot.ability_windup;
     }
 }
 
@@ -222,8 +247,11 @@ pub struct GameWorld {
     pub tick: u64,
     pub players: HashMap<u8, Player>,
     pub inputs: HashMap<u8, InputSnapshot>,
+    ability_held: HashMap<u8, bool>,
     pub bullets: Vec<Bullet>,
+    pub effects: Vec<WorldEffect>,
     pub next_bullet_id: u32,
+    pub next_effect_id: u32,
     pub kill_feed: Vec<KillFeedEntry>,
     pub score_limit: u16,
     pub time_limit_secs: u16,
@@ -275,8 +303,11 @@ impl GameWorld {
             tick: 0,
             players: HashMap::new(),
             inputs: HashMap::new(),
+            ability_held: HashMap::new(),
             bullets: Vec::new(),
+            effects: Vec::new(),
             next_bullet_id: 1,
+            next_effect_id: 1,
             kill_feed: Vec::new(),
             score_limit: 20,
             time_limit_secs: 0,
@@ -335,7 +366,9 @@ impl GameWorld {
     ) {
         self.tick = 0;
         self.bullets.clear();
+        self.effects.clear();
         self.kill_feed.clear();
+        self.next_effect_id = 1;
         self.score_limit = score_limit;
         self.time_limit_secs = time_limit_secs;
         self.match_elapsed = 0.0;
@@ -352,6 +385,8 @@ impl GameWorld {
                 player.score = 0;
                 player.kills = 0;
                 player.deaths = 0;
+                player.ability_charge = 0.0;
+                player.ability_windup = 0.0;
             }
             self.reset_player_for_spawn(id, SPAWN_PROTECTION_TIME);
         }
@@ -461,6 +496,10 @@ impl GameWorld {
             }
         }
 
+        abilities::passive_charge_tick(&mut self.players, dt);
+        self.process_ability_input();
+        abilities::process_abilities(self, dt);
+        abilities::process_effects(self, dt);
         self.process_respawns(dt);
         self.process_movement(dt);
         self.process_combat(dt);
@@ -491,7 +530,7 @@ impl GameWorld {
 
     fn process_movement(&mut self, dt: f32) {
         for player in self.players.values_mut() {
-            if !player.alive {
+            if !player.alive || is_casting(player) {
                 continue;
             }
 
@@ -516,12 +555,28 @@ impl GameWorld {
         }
     }
 
+    fn process_ability_input(&mut self) {
+        let player_ids: Vec<u8> = self.players.keys().copied().collect();
+        for id in player_ids {
+            let pressed = self
+                .inputs
+                .get(&id)
+                .map(|input| input.ability)
+                .unwrap_or(false);
+            let was_pressed = self.ability_held.get(&id).copied().unwrap_or(false);
+            if pressed && !was_pressed {
+                abilities::try_activate(self, id);
+            }
+            self.ability_held.insert(id, pressed);
+        }
+    }
+
     fn process_combat(&mut self, dt: f32) {
         let mut shots: Vec<(u8, f32, f32, f32, f32)> = Vec::new();
         let mut reload_requests: Vec<u8> = Vec::new();
 
         for player in self.players.values_mut() {
-            if !player.alive {
+            if !player.alive || is_casting(player) {
                 continue;
             }
 
@@ -644,7 +699,7 @@ impl GameWorld {
         }
     }
 
-    fn apply_damage(&mut self, killer_id: u8, victim_id: u8, damage: u16) {
+    pub(crate) fn apply_damage(&mut self, killer_id: u8, victim_id: u8, damage: u16) {
         let died = {
             let Some(victim) = self.players.get_mut(&victim_id) else {
                 return;
@@ -657,6 +712,9 @@ impl GameWorld {
         };
 
         if !died {
+            if let Some(killer) = self.players.get_mut(&killer_id) {
+                abilities::add_charge(killer, abilities::CHARGE_ON_DAMAGE);
+            }
             return;
         }
 
@@ -685,6 +743,7 @@ impl GameWorld {
         if let Some(killer) = self.players.get_mut(&killer_id) {
             killer.kills += 1;
             killer.score += 1;
+            abilities::add_charge(killer, abilities::CHARGE_ON_KILL);
         }
 
         self.kill_feed.push(KillFeedEntry {
@@ -760,6 +819,11 @@ impl GameWorld {
             map: self.map.snapshot(),
             players,
             bullets: self.bullets.iter().map(Bullet::snapshot).collect(),
+            effects: self
+                .effects
+                .iter()
+                .map(abilities::effect_snapshot)
+                .collect(),
             kill_feed: self.kill_feed.clone(),
             match_ended: self.match_ended,
             winner_id: self.winner_id,
@@ -1031,5 +1095,46 @@ mod tests {
         assert!(world.match_ended);
         assert_eq!(world.winner_id, Some(0));
         assert_eq!(world.match_end_reason, Some(MatchEndReason::Time));
+    }
+
+    #[test]
+    fn bailey_truth_nuke_damages_players_in_blast() {
+        use crate::abilities::{ABILITY_CHARGE_MAX, BAILEY_NUKE_DAMAGE};
+
+        let mut world = test_world_with_two_players();
+        {
+            let caster = world.players.get_mut(&1).unwrap();
+            caster.ability_charge = ABILITY_CHARGE_MAX;
+            caster.x = 400.0;
+            caster.y = 400.0;
+        }
+        {
+            let victim = world.players.get_mut(&0).unwrap();
+            victim.x = 700.0;
+            victim.y = 400.0;
+        }
+
+        world.set_input(
+            1,
+            InputSnapshot {
+                ability: true,
+                aim_x: 1.0,
+                aim_y: 0.0,
+                ..Default::default()
+            },
+        );
+        world.process_ability_input();
+        world.ability_held.insert(1, true);
+
+        for _ in 0..90 {
+            world.tick(1.0 / 60.0);
+        }
+
+        let victim = world.players.get(&0).unwrap();
+        assert_eq!(victim.hp, PLAYER_MAX_HP - BAILEY_NUKE_DAMAGE);
+        assert!(world
+            .effects
+            .iter()
+            .any(|effect| effect.kind == EffectKind::Explosion));
     }
 }

@@ -2,7 +2,15 @@ import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js
 import { CHARACTERS, getCharacter } from '../content/characters';
 import { getMap, getMapTheme } from '../content/maps';
 import { GLOCK_WEAPON, weaponOrbitPosition } from '../content/weapons/glock';
-import type { BulletSnapshot, MapSnapshot, PlayerSnapshot, RectSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
+import type {
+  BulletSnapshot,
+  MapSnapshot,
+  PlayerSnapshot,
+  RectSnapshot,
+  StateSnapshot,
+  WorldConfig,
+  WorldEffectSnapshot,
+} from '../shared/types';
 import { VfxManager } from './vfx/VfxManager';
 import { fitWorldToViewport } from './Viewport';
 
@@ -63,6 +71,7 @@ export class ArenaRenderer {
   private mapTheme = getMapTheme(undefined);
   private world: WorldConfig = { width: 1920, height: 1080 };
   private knownBulletIds = new Set<number>();
+  private knownEffectIds = new Set<number>();
   private lastFrameMs = 0;
 
   get canvas(): HTMLCanvasElement {
@@ -78,6 +87,7 @@ export class ArenaRenderer {
 
   prepareRematch() {
     this.knownBulletIds.clear();
+    this.knownEffectIds.clear();
     this.bulletStates.clear();
     this.vfx.clear();
     for (const view of this.players.values()) {
@@ -95,6 +105,7 @@ export class ArenaRenderer {
 
     this.players.clear();
     this.knownBulletIds.clear();
+    this.knownEffectIds.clear();
     this.bulletStates.clear();
     this.mapId = null;
     this.mapSignature = '';
@@ -154,6 +165,7 @@ export class ArenaRenderer {
     this.headTextures.clear();
     this.glockTexture = null;
     this.knownBulletIds.clear();
+    this.knownEffectIds.clear();
     this.bulletStates.clear();
     this.vfx.clear();
     this.mounted = false;
@@ -169,6 +181,7 @@ export class ArenaRenderer {
     this.applyMap(snapshot.map);
     this.resize();
     this.syncBulletTargets(snapshot.bullets);
+    this.syncWorldEffects(snapshot.effects ?? []);
     this.detectMuzzleFlashes(snapshot.bullets, snapshot.players);
 
     const aliveIds = new Set<number>();
@@ -215,6 +228,28 @@ export class ArenaRenderer {
       if (!aliveIds.has(id)) {
         view.container.destroy({ children: true });
         this.players.delete(id);
+      }
+    }
+  }
+
+  private syncWorldEffects(effects: WorldEffectSnapshot[]) {
+    const liveIds = new Set<number>();
+    for (const effect of effects) {
+      liveIds.add(effect.id);
+      if (this.knownEffectIds.has(effect.id)) {
+        continue;
+      }
+      this.knownEffectIds.add(effect.id);
+      if (effect.kind === 'explosion') {
+        this.vfx.emitExplosion(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'aim_reticle') {
+        this.vfx.emitAimReticle(effect.x, effect.y, effect.radius);
+      }
+    }
+
+    for (const id of this.knownEffectIds) {
+      if (!liveIds.has(id)) {
+        this.knownEffectIds.delete(id);
       }
     }
   }
