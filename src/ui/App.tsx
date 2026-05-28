@@ -3,6 +3,7 @@ import { useGameSession } from './hooks/useGameSession';
 import { Lobby } from './lobby/Lobby';
 import { MainMenuScreen } from './main-menu/MainMenuScreen';
 import { ServerSelectScreen } from './server-select/ServerSelectScreen';
+import { SettingsScreen } from './settings/SettingsScreen';
 
 export function App() {
   const session = useGameSession();
@@ -20,7 +21,21 @@ export function App() {
               error={session.error}
               onHost={() => void session.createLobbySession('host')}
               onJoin={session.goToServerSelect}
+              onSettings={session.openSettings}
             />
+          )}
+
+          {session.screen === 'settings' && (
+            <div className="screen-card settings-card">
+              <SettingsScreen
+                settings={session.gameSettings}
+                onSave={(next) => {
+                  session.saveGameSettings(next);
+                  session.setScreen('main-menu');
+                }}
+                onBack={() => session.setScreen('main-menu')}
+              />
+            </div>
           )}
 
           {session.screen === 'server-select' && (
@@ -73,6 +88,7 @@ export function App() {
           onLeaveToMenu={() => void session.leaveGame()}
           onReturnToLobby={() => void session.returnToLobby()}
           onRematch={() => void session.rematch()}
+          showControlsHint={session.gameSettings.showControlsHint}
         />
       )}
     </div>

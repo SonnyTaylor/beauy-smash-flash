@@ -60,6 +60,17 @@ export function LobbySettingsPanel({
       </div>
 
       <div className="lobby-settings-scroll">
+        <SettingRow label="Server Name">
+          <input
+            type="text"
+            className="settings-text-input"
+            maxLength={32}
+            value={config.server_name}
+            disabled={!isHost}
+            onChange={(event) => patch({ server_name: event.target.value })}
+          />
+        </SettingRow>
+
         <div className="map-setting-block">
           <SettingRow label="Map">
             <Cycle

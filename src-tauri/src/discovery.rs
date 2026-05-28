@@ -81,7 +81,7 @@ async fn server_info(state: &SharedState, requester_ip: IpAddr) -> Option<Server
     }
 
     Some(ServerInfo {
-        name: "Beauy Smash Flash Host".to_string(),
+        name: st.lobby_config.server_name.clone(),
         address: requester_ip.to_string(),
         game_port: GAME_PORT,
         player_count: st.world.players.len(),

@@ -1,11 +1,13 @@
 export function MainMenu({
   onHost,
   onJoin,
+  onSettings,
   isBusy,
   error,
 }: {
   onHost: () => void;
   onJoin: () => void;
+  onSettings: () => void;
   isBusy: boolean;
   error: string | null;
 }) {
@@ -22,6 +24,9 @@ export function MainMenu({
         </button>
         <button className="secondary-button" onClick={onJoin} disabled={isBusy}>
           Join Game
+        </button>
+        <button className="ghost-button menu-settings-button" onClick={onSettings} disabled={isBusy}>
+          Settings
         </button>
       </div>
 

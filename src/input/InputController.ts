@@ -6,6 +6,7 @@ const MOVEMENT_KEYS = new Set(['w', 'a', 's', 'd']);
 export class InputController {
   private keys = new Set<string>();
   private pointer = { x: 0, y: 0 };
+  private hasPointer = false;
   private seq = 0;
   private canvas: HTMLCanvasElement | null = null;
   private world: WorldConfig = { width: 1920, height: 1080 };
@@ -15,11 +16,13 @@ export class InputController {
   attach(canvas: HTMLCanvasElement, world: WorldConfig) {
     this.canvas = canvas;
     this.world = world;
+    this.hasPointer = false;
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
     window.addEventListener('mousemove', this.handleMouseMove);
     window.addEventListener('mousedown', this.handleMouseDown);
     window.addEventListener('mouseup', this.handleMouseUp);
+    canvas.addEventListener('mouseleave', this.handleMouseLeave);
   }
 
   detach() {
@@ -28,8 +31,10 @@ export class InputController {
     window.removeEventListener('mousemove', this.handleMouseMove);
     window.removeEventListener('mousedown', this.handleMouseDown);
     window.removeEventListener('mouseup', this.handleMouseUp);
+    this.canvas?.removeEventListener('mouseleave', this.handleMouseLeave);
     this.keys.clear();
     this.canvas = null;
+    this.hasPointer = false;
   }
 
   setWorld(world: WorldConfig) {
@@ -70,14 +75,14 @@ export class InputController {
       aim_y: this.pointer.y - aimOrigin.y,
       fire: this.keys.has('mouse0'),
       reload: this.keys.has('r'),
-      ability: this.keys.has('e'),
-      dash: this.keys.has(' '),
+      ability: false,
+      dash: false,
     };
   }
 
   private handleKeyDown = (event: KeyboardEvent) => {
     const key = event.key.toLowerCase();
-    if (MOVEMENT_KEYS.has(key) || key === 'r' || key === 'e' || key === ' ') {
+    if (MOVEMENT_KEYS.has(key) || key === 'r') {
       event.preventDefault();
       this.keys.add(key);
     }
@@ -87,7 +92,7 @@ export class InputController {
     this.keys.delete(event.key.toLowerCase());
   };
 
-  private handleMouseMove = (event: MouseEvent) => {
+  private updatePointerFromEvent(event: MouseEvent) {
     if (!this.canvas) return;
     const rect = this.canvas.getBoundingClientRect();
     const transform = fitWorldToViewport(this.world, rect.width, rect.height);
@@ -97,9 +102,19 @@ export class InputController {
       x: clamp(x, 0, this.world.width),
       y: clamp(y, 0, this.world.height),
     };
+    this.hasPointer = true;
+  }
+
+  private handleMouseMove = (event: MouseEvent) => {
+    this.updatePointerFromEvent(event);
+  };
+
+  private handleMouseLeave = () => {
+    // Keep last aim direction when cursor leaves the arena.
   };
 
   private handleMouseDown = (event: MouseEvent) => {
+    this.updatePointerFromEvent(event);
     this.keys.add(`mouse${event.button}`);
   };
 

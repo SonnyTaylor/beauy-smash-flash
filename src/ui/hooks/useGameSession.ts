@@ -3,6 +3,7 @@ import { ArenaRenderer } from '../../game/ArenaRenderer';
 import { InputController } from '../../input/InputController';
 import { TauriGameClient } from '../../net/TauriGameClient';
 import type {
+  GameSettings,
   LobbyConfig,
   LobbySnapshot,
   ServerInfo,
@@ -12,11 +13,14 @@ import type {
 import { getCharacter } from '../character';
 import type { Screen, SessionKind } from '../navigation';
 import {
+  readGameSettings,
   readStoredCharacterId,
   readStoredName,
+  writeGameSettings,
   writeStoredCharacterId,
   writeStoredName,
 } from '../storage';
+import { DEFAULT_LOBBY_CONFIG } from '../../shared/types';
 
 export function useGameSession() {
   const client = useMemo(() => new TauriGameClient(), []);
@@ -47,8 +51,10 @@ export function useGameSession() {
   const [localIp, setLocalIp] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [matchEnded, setMatchEnded] = useState(false);
+  const [gameSettings, setGameSettings] = useState(readGameSettings);
   const pausedRef = useRef(false);
   const matchEndedRef = useRef(false);
+  const gameSettingsRef = useRef(gameSettings);
 
   const selectedCharacter = getCharacter(selectedCharacterId);
   const players = latestState?.players ?? [];
@@ -64,6 +70,10 @@ export function useGameSession() {
   useEffect(() => {
     screenRef.current = screen;
   }, [screen]);
+
+  useEffect(() => {
+    gameSettingsRef.current = gameSettings;
+  }, [gameSettings]);
 
   useEffect(() => {
     input.setEnabled(!paused && !matchEnded);
@@ -90,6 +100,11 @@ export function useGameSession() {
       setLatestState(state);
       setMatchEnded(false);
       setPaused(false);
+      if (screenRef.current === 'game' && renderer.isMounted) {
+        renderer.prepareRematch();
+        renderer.applyState(state);
+        return;
+      }
       void enterGame(state);
     });
     client.listenForMatchEnded((state) => {
@@ -157,7 +172,11 @@ export function useGameSession() {
     try {
       const session =
         kind === 'host'
-          ? await client.host(playerName, selectedCharacterId)
+          ? await client.host(
+              playerName,
+              selectedCharacterId,
+              gameSettingsRef.current.serverName,
+            )
           : await client.join((ip ?? joinIp).trim() || '127.0.0.1', playerName, selectedCharacterId);
       setSessionInfo(session);
       sessionInfoRef.current = session;
@@ -167,6 +186,12 @@ export function useGameSession() {
       setMatchEnded(false);
       setScreen('lobby');
       await client.setReady(false);
+      if (kind === 'host') {
+        await client.updateLobbyConfig({
+          ...DEFAULT_LOBBY_CONFIG,
+          server_name: gameSettingsRef.current.serverName,
+        });
+      }
     } catch (caught) {
       setError(String(caught));
     } finally {
@@ -290,6 +315,10 @@ export function useGameSession() {
       }
       setMatchEnded(false);
       setPaused(false);
+      if (renderer.isMounted && latestStateRef.current) {
+        renderer.prepareRematch();
+        renderer.applyState(latestStateRef.current);
+      }
     } catch (caught) {
       setError(String(caught));
     } finally {
@@ -300,24 +329,42 @@ export function useGameSession() {
   async function enterGame(initialState: StateSnapshot) {
     const container = gameContainerRef.current;
     if (!container) return;
-    teardownGameRuntime();
     const playerId = sessionInfoRef.current?.player_id ?? myIdRef.current;
-    await renderer.mount(container, initialState.world, playerId);
-    setScreen('game');
     const state = latestStateRef.current ?? initialState;
+
+    if (!renderer.isMounted) {
+      if (inputTimerRef.current !== null) {
+        window.clearInterval(inputTimerRef.current);
+        inputTimerRef.current = null;
+      }
+      input.detach();
+      await renderer.mount(container, state.world, playerId);
+      input.attach(renderer.canvas, state.world);
+      inputTimerRef.current = window.setInterval(async () => {
+        if (pausedRef.current || matchEndedRef.current || latestStateRef.current?.match_ended) {
+          return;
+        }
+        const player =
+          latestStateRef.current?.players.find((candidate) => candidate.id === playerId) ?? null;
+        try {
+          await client.sendInput(input.sample(player));
+        } catch {
+          // Best-effort UDP input should not break the UI.
+        }
+      }, 1000 / 60);
+    }
+
+    setScreen('game');
     renderer.applyState(state);
-    input.attach(renderer.canvas, state.world);
-    inputTimerRef.current = window.setInterval(async () => {
-      if (pausedRef.current || matchEndedRef.current || latestStateRef.current?.match_ended) {
-        return;
-      }
-      const player = latestStateRef.current?.players.find((candidate) => candidate.id === playerId) ?? null;
-      try {
-        await client.sendInput(input.sample(player));
-      } catch {
-        // Best-effort UDP input should not break the UI.
-      }
-    }, 1000 / 60);
+  }
+
+  function saveGameSettings(next: GameSettings) {
+    setGameSettings(next);
+    writeGameSettings(next);
+  }
+
+  function openSettings() {
+    setScreen('settings');
   }
 
   function goToServerSelect() {
@@ -329,6 +376,7 @@ export function useGameSession() {
     if (screen === 'main-menu') return 'landing-screen';
     if (screen === 'lobby') return 'lobby-screen';
     if (screen === 'server-select') return 'flow-screen join-screen';
+    if (screen === 'settings') return 'flow-screen settings-screen';
     return 'flow-screen';
   }
 
@@ -367,6 +415,9 @@ export function useGameSession() {
     returnToLobby,
     rematch,
     goToServerSelect,
+    openSettings,
+    gameSettings,
+    saveGameSettings,
     setScreen,
   };
 }

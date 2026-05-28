@@ -56,3 +56,16 @@ After making code changes, create a git commit unless the user asked for no comm
 - The game should feel fullscreen and modern, not boxed into the old Python resolution.
 - Python limits like player count, fixed resolution, and single weapon are not hard requirements.
 - The old guide at `C:\Users\Sonny Taylor\Code\local-game\GAME_GUIDE.md` is useful for characters, powers, maps, and vibe.
+
+## Planned Features (not yet implemented)
+
+- Character abilities (`E` / space wired in input but not simulated in Rust)
+- More weapons, game modes (TDM/LMS stubs in UI), fog of war
+- Cosmetics, bots/zombie mode, more maps and visual map polish
+- Audio (volume slider exists in settings as placeholder)
+
+## Weapons & VFX
+
+- Glock sprite: `public/assets/weapons/glock.png`, metadata in `src/content/weapons/glock.json`
+- Re-process asset: `bun run assets:glock` (runs `scripts/process-glock.py`)
+- Arena VFX live in `src/game/vfx/VfxManager.ts`; gun orbit in `ArenaRenderer.ts`

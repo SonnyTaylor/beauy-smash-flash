@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterDefinition, PlayerSnapshot, StateSnapshot } from '../../shared/types';
 import { formatMatchTime, GLOCK_RELOAD_SECS } from '../constants';
 import { getCharacter } from '../character';
+import { MatchScoreboard } from './MatchScoreboard';
 
 interface HitMarker {
   id: number;
@@ -98,6 +99,7 @@ export function GameOverlay({
   onLeaveToMenu,
   onReturnToLobby,
   onRematch,
+  showControlsHint = true,
 }: {
   state: StateSnapshot | null;
   myId: number;
@@ -105,6 +107,7 @@ export function GameOverlay({
   selectedCharacter: CharacterDefinition;
   paused: boolean;
   isBusy?: boolean;
+  showControlsHint?: boolean;
   onPauseChange: (paused: boolean) => void;
   onLeaveToMenu: () => void;
   onReturnToLobby: () => void;
@@ -131,6 +134,7 @@ export function GameOverlay({
   const showTimer = (state?.time_limit_secs ?? 0) > 0 && state?.win_condition !== 'kills';
   const isDead = me && !me.alive && me.respawn_in > 0 && !matchEnded;
 
+  const [showScoreboard, setShowScoreboard] = useState(false);
   const [hitFlash, setHitFlash] = useState(false);
   const [hitMarkers, setHitMarkers] = useState<HitMarker[]>([]);
   const hpRef = useRef<Map<number, number>>(new Map());
@@ -198,13 +202,26 @@ export function GameOverlay({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Tab' && state && !matchEnded && !paused) {
+        event.preventDefault();
+        setShowScoreboard(true);
+      }
       if (event.key === 'Escape' && !matchEnded) {
         onPauseChange(!paused);
       }
     }
+    function onKeyUp(event: KeyboardEvent) {
+      if (event.key === 'Tab') {
+        setShowScoreboard(false);
+      }
+    }
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [matchEnded, onPauseChange, paused]);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [matchEnded, onPauseChange, paused, state]);
 
   return (
     <>
@@ -265,10 +282,22 @@ export function GameOverlay({
           </div>
         </div>
 
+        {!matchEnded && state && (
+          <div className="hud-objective">
+            <span>{matchGoalLabel(state)}</span>
+          </div>
+        )}
+
         {showTimer && remaining != null && !matchEnded && (
           <div className={`hud-timer ${remaining <= 30 ? 'hud-timer-low' : ''}`}>
             <span className="hud-timer-label">Time</span>
             <strong>{formatMatchTime(remaining)}</strong>
+          </div>
+        )}
+
+        {showControlsHint && !matchEnded && !paused && (
+          <div className="hud-controls-hint">
+            <span>WASD move · Mouse aim · LMB fire · R reload · Tab scores · Esc menu</span>
           </div>
         )}
 
@@ -290,6 +319,10 @@ export function GameOverlay({
           </button>
         )}
       </div>
+
+      {showScoreboard && state && !matchEnded && (
+        <MatchScoreboard state={state} myId={myId} />
+      )}
 
       {hitFlash && <div className="hit-vignette" aria-hidden />}
 
@@ -388,7 +421,9 @@ export function GameOverlay({
                   </button>
                 </>
               ) : (
-                <p className="game-over-wait">Waiting for host to rematch or return to lobby…</p>
+                <p className="game-over-wait">
+                  {isBusy ? 'Rematch starting…' : 'Waiting for host to rematch or return to lobby…'}
+                </p>
               )}
               <button type="button" className="secondary-button" onClick={onLeaveToMenu}>
                 Main Menu

@@ -47,6 +47,7 @@ export type WinCondition = 'kills' | 'time' | 'either';
 export type MatchEndReason = 'score' | 'time';
 
 export interface LobbyConfig {
+  server_name: string;
   map_id: string;
   gamemode: Gamemode;
   max_players: number;
@@ -57,6 +58,7 @@ export interface LobbyConfig {
 }
 
 export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
+  server_name: 'LAN Game',
   map_id: 'split',
   gamemode: 'deathmatch',
   max_players: 8,
@@ -64,6 +66,18 @@ export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
   time_limit_secs: 300,
   win_condition: 'kills',
   friendly_fire: true,
+};
+
+export interface GameSettings {
+  serverName: string;
+  masterVolume: number;
+  showControlsHint: boolean;
+}
+
+export const DEFAULT_GAME_SETTINGS: GameSettings = {
+  serverName: 'LAN Game',
+  masterVolume: 0.85,
+  showControlsHint: true,
 };
 
 export interface LobbySnapshot {

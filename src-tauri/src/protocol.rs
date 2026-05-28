@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 3;
+pub const PROTOCOL_VERSION: u16 = 4;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -47,6 +47,7 @@ pub enum MatchEndReason {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LobbyConfig {
+    pub server_name: String,
     pub map_id: String,
     pub gamemode: Gamemode,
     pub max_players: u8,
@@ -59,6 +60,7 @@ pub struct LobbyConfig {
 impl Default for LobbyConfig {
     fn default() -> Self {
         Self {
+            server_name: "LAN Game".to_string(),
             map_id: "split".to_string(),
             gamemode: Gamemode::Deathmatch,
             max_players: 8,

@@ -27,8 +27,12 @@ export class TauriGameClient {
     });
   }
 
-  async host(playerName: string, characterId: string): Promise<SessionInfo> {
-    return invoke<SessionInfo>('start_host', { playerName, characterId });
+  async host(
+    playerName: string,
+    characterId: string,
+    serverName?: string,
+  ): Promise<SessionInfo> {
+    return invoke<SessionInfo>('start_host', { playerName, characterId, serverName });
   }
 
   async join(ip: string, playerName: string, characterId: string): Promise<SessionInfo> {

@@ -13,6 +13,8 @@ const FOOT_OFFSET_Y = 22;
 const MOVE_DUST_SPEED = 100;
 const MOVE_DUST_INTERVAL_MS = 100;
 const BULLET_LERP_RATE = 32;
+const PLAYER_LERP_RATE = 24;
+const BULLET_TRAIL_LENGTH = 4;
 
 function assetUrl(relativePath: string): string {
   return `/assets/${relativePath}`;
@@ -46,7 +48,10 @@ export class ArenaRenderer {
   private grid = new Graphics();
   private wallContainer = new Container();
   private bullets = new Graphics();
-  private bulletStates = new Map<number, { x: number; y: number; targetX: number; targetY: number }>();
+  private bulletStates = new Map<
+    number,
+    { x: number; y: number; targetX: number; targetY: number; trail: Array<{ x: number; y: number }> }
+  >();
   private players = new Map<number, PlayerView>();
   private headTextures = new Map<string, Texture>();
   private glockTexture: Texture | null = null;
@@ -65,6 +70,19 @@ export class ArenaRenderer {
       throw new Error('ArenaRenderer is not mounted');
     }
     return this.app.canvas;
+  }
+
+  get isMounted(): boolean {
+    return this.mounted;
+  }
+
+  prepareRematch() {
+    this.knownBulletIds.clear();
+    this.bulletStates.clear();
+    this.vfx.clear();
+    for (const view of this.players.values()) {
+      view.wasSpawnProtected = false;
+    }
   }
 
   async mount(container: HTMLElement, world: WorldConfig, myId: number) {
@@ -240,8 +258,12 @@ export class ArenaRenderer {
     view.container.alpha = player.spawn_protected ? 0.85 : 1;
     view.shield.visible = player.spawn_protected;
     if (player.spawn_protected) {
-      const pulse = 0.65 + 0.35 * Math.abs(Math.sin(performance.now() / 150));
+      const pulse = 0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 120));
       view.shield.alpha = pulse;
+      const scale = 1 + Math.sin(performance.now() / 200) * 0.06;
+      view.shield.scale.set(scale);
+    } else {
+      view.shield.scale.set(1);
     }
   }
 
@@ -256,9 +278,14 @@ export class ArenaRenderer {
           y: bullet.y,
           targetX: bullet.x,
           targetY: bullet.y,
+          trail: [],
         };
         this.bulletStates.set(bullet.id, state);
       } else {
+        state.trail.push({ x: state.x, y: state.y });
+        if (state.trail.length > BULLET_TRAIL_LENGTH) {
+          state.trail.shift();
+        }
         state.targetX = bullet.x;
         state.targetY = bullet.y;
       }
@@ -277,9 +304,18 @@ export class ArenaRenderer {
     for (const state of this.bulletStates.values()) {
       state.x += (state.targetX - state.x) * blend;
       state.y += (state.targetY - state.y) * blend;
+
+      for (let i = 0; i < state.trail.length; i += 1) {
+        const point = state.trail[i];
+        const t = state.trail.length > 0 ? i / state.trail.length : 0;
+        const alpha = 0.18 + t * 0.28;
+        this.bullets.circle(point.x, point.y, BULLET_RADIUS * (0.55 + t * 0.25));
+        this.bullets.fill({ color: 0xffff32, alpha });
+      }
+
       this.bullets.circle(state.x, state.y, BULLET_RADIUS);
+      this.bullets.fill({ color: 0xffff32, alpha: 0.95 });
     }
-    this.bullets.fill({ color: 0xffff32, alpha: 0.95 });
   }
 
   private createPlayer(player: PlayerSnapshot): PlayerView {
@@ -407,8 +443,9 @@ export class ArenaRenderer {
       const prevX = view.container.x;
       const prevY = view.container.y;
 
-      view.container.x += (view.targetX - view.container.x) * 0.35;
-      view.container.y += (view.targetY - view.container.y) * 0.35;
+      const playerBlend = 1 - Math.exp(-PLAYER_LERP_RATE * dt);
+      view.container.x += (view.targetX - view.container.x) * playerBlend;
+      view.container.y += (view.targetY - view.container.y) * playerBlend;
 
       let angleDelta = view.targetAngle - view.displayAngle;
       while (angleDelta > Math.PI) angleDelta -= Math.PI * 2;

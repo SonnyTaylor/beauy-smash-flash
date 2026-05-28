@@ -24,6 +24,7 @@ pub async fn stop_session(state: tauri::State<'_, SharedState>) -> Result<(), St
 pub async fn start_host(
     player_name: Option<String>,
     character_id: Option<String>,
+    server_name: Option<String>,
     window: tauri::Window,
     state: tauri::State<'_, SharedState>,
 ) -> Result<SessionInfo, String> {
@@ -46,7 +47,9 @@ pub async fn start_host(
         st.host_addr = None;
         st.my_id = 0;
         st.world = GameWorld::default();
-        st.lobby_config = LobbyConfig::default();
+        let mut lobby_config = LobbyConfig::default();
+        lobby_config.server_name = clean_server_name(server_name);
+        st.lobby_config = lobby_config;
         st.world.add_player(
             0,
             clean_player_name(player_name).unwrap_or_else(|| "Host".to_string()),
@@ -336,9 +339,12 @@ pub async fn update_lobby_config(
     if st.mode != SessionMode::Host {
         return Err("Only the host can change lobby settings".to_string());
     }
-    st.lobby_config = config.clone();
+    let mut config = config;
+    config.server_name = clean_server_name(Some(config.server_name));
+    let map_id = config.map_id.clone();
+    st.lobby_config = config;
     if !st.match_started {
-        st.world.set_map(&config.map_id);
+        st.world.set_map(&map_id);
         st.world.reposition_players_to_spawns();
     }
     Ok(())
@@ -462,6 +468,20 @@ fn clean_player_name(name: Option<String>) -> Option<String> {
         None
     } else {
         Some(name.chars().take(24).collect())
+    }
+}
+
+fn clean_server_name(server_name: Option<String>) -> String {
+    let name = server_name
+        .unwrap_or_else(|| "LAN Game".to_string())
+        .trim()
+        .chars()
+        .take(32)
+        .collect::<String>();
+    if name.is_empty() {
+        "LAN Game".to_string()
+    } else {
+        name
     }
 }
 

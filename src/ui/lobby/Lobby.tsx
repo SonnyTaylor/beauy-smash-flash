@@ -95,7 +95,7 @@ export function Lobby({
         <header className="lobby-header">
           <div>
             <p className="screen-kicker">{isHost ? 'Hosting' : 'Joined'}</p>
-            <h2 className="lobby-title">{isHost ? `${playerName}'s Game` : 'LAN Game'}</h2>
+            <h2 className="lobby-title">{config.server_name || 'LAN Game'}</h2>
           </div>
           <div className="lobby-meta">
             {isHost && localIp && (
