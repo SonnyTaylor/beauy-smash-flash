@@ -355,7 +355,10 @@ function CharacterSelect({
             style={{ '--accent': rgbCss(character.color) } as CSSProperties & Record<'--accent', string>}
             onClick={() => onSelect(character.id)}
           >
-            <span className="head-placeholder">{character.initials}</span>
+            <span className="head-placeholder">
+              <img src={`/assets/${character.sprite}`} alt="" />
+              <span>{character.initials}</span>
+            </span>
             <strong>{character.name}</strong>
             <small>{character.abilityName}</small>
           </button>

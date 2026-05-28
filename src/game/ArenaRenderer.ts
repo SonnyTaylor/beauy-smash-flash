@@ -1,12 +1,16 @@
-import { Application, Container, Graphics, Text } from 'pixi.js';
-import { getCharacter } from '../content/characters';
+import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { CHARACTERS, getCharacter } from '../content/characters';
 import type { MapSnapshot, PlayerSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
 import { fitWorldToViewport } from './Viewport';
+
+const PLAYER_RADIUS = 24;
+const PLAYER_DIAMETER = PLAYER_RADIUS * 2;
 
 interface PlayerView {
   container: Container;
   body: Graphics;
   label: Text;
+  characterId: string;
   targetX: number;
   targetY: number;
 }
@@ -18,6 +22,7 @@ export class ArenaRenderer {
   private grid = new Graphics();
   private walls = new Graphics();
   private players = new Map<number, PlayerView>();
+  private headTextures = new Map<string, Texture>();
   private myId = 0;
   private mapId: string | null = null;
   private world: WorldConfig = { width: 1920, height: 1080 };
@@ -33,6 +38,7 @@ export class ArenaRenderer {
       resolution: window.devicePixelRatio || 1,
       resizeTo: window,
     });
+    await this.loadHeadTextures();
 
     container.appendChild(this.app.canvas);
     this.root.addChild(this.grid, this.walls);
@@ -58,6 +64,12 @@ export class ArenaRenderer {
     for (const player of snapshot.players) {
       aliveIds.add(player.id);
       let view = this.players.get(player.id);
+      if (view && view.characterId !== player.character_id) {
+        view.container.destroy({ children: true });
+        this.players.delete(player.id);
+        view = undefined;
+      }
+
       if (!view) {
         view = this.createPlayer(player);
         this.players.set(player.id, view);
@@ -83,13 +95,16 @@ export class ArenaRenderer {
     const container = new Container();
     const color = rgbToHex(player.color);
     const body = new Graphics()
-      .circle(0, 0, 24)
-      .fill({ color, alpha: 0.95 })
-      .circle(0, 0, 34)
+      .circle(0, 0, PLAYER_RADIUS + 8)
+      .fill({ color, alpha: 0.16 })
+      .circle(0, 0, PLAYER_RADIUS + 3)
+      .stroke({ color: player.id === this.myId ? 0xffffff : color, width: player.id === this.myId ? 4 : 2, alpha: 0.95 })
+      .circle(0, 0, PLAYER_RADIUS + 10)
       .stroke({ color, width: 2, alpha: 0.35 })
       .moveTo(20, 0)
       .lineTo(38, 0)
       .stroke({ color: 0xffffff, width: 3, alpha: 0.85 });
+    const avatar = this.createCircularAvatar(character.sprite, color);
 
     const label = new Text({
       text: player.name || character.initials,
@@ -107,15 +122,37 @@ export class ArenaRenderer {
 
     container.x = player.x;
     container.y = player.y;
-    container.addChild(body, label);
+    container.addChild(body, avatar, label);
 
     return {
       container,
       body,
       label,
+      characterId: player.character_id,
       targetX: player.x,
       targetY: player.y,
     };
+  }
+
+  private createCircularAvatar(spritePath: string, fallbackColor: number): Container {
+    const avatar = new Container();
+    const texture = this.headTextures.get(spritePath);
+
+    if (texture) {
+      const sprite = new Sprite(texture);
+      sprite.anchor.set(0.5);
+      const scale = PLAYER_DIAMETER / Math.min(texture.width, texture.height);
+      sprite.scale.set(scale);
+
+      const mask = new Graphics().circle(0, 0, PLAYER_RADIUS).fill(0xffffff);
+      sprite.mask = mask;
+      avatar.addChild(sprite, mask);
+    } else {
+      avatar.addChild(new Graphics().circle(0, 0, PLAYER_RADIUS).fill({ color: fallbackColor }));
+    }
+
+    avatar.addChild(new Graphics().circle(0, 0, PLAYER_RADIUS).stroke({ color: 0x050505, width: 2, alpha: 0.8 }));
+    return avatar;
   }
 
   private renderFrame() {
@@ -158,6 +195,25 @@ export class ArenaRenderer {
 
     this.walls.fill({ color: 0x262631, alpha: 0.96 });
     this.walls.stroke({ color: 0x55556a, width: 2, alpha: 0.9 });
+  }
+
+  private async loadHeadTextures() {
+    const entries = await Promise.all(
+      CHARACTERS.map(async (character) => {
+        try {
+          const texture = await Assets.load<Texture>(`/assets/${character.sprite}`);
+          return [character.sprite, texture] as const;
+        } catch {
+          return [character.sprite, null] as const;
+        }
+      }),
+    );
+
+    for (const [sprite, texture] of entries) {
+      if (texture) {
+        this.headTextures.set(sprite, texture);
+      }
+    }
   }
 }
 
