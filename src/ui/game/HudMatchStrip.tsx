@@ -5,17 +5,22 @@ export function HudMatchStrip({
   state,
   me,
   timeRemaining,
+  layout = 'horizontal',
 }: {
   state: StateSnapshot;
   me: PlayerSnapshot | null;
   timeRemaining: number | null;
+  layout?: 'horizontal' | 'vertical';
 }) {
   const showScore = state.win_condition !== 'time';
   const showTime = timeRemaining != null;
   const timeLow = timeRemaining != null && timeRemaining <= 30;
 
   return (
-    <div className="hud-match-strip" role="status">
+    <div
+      className={`hud-match-strip ${layout === 'vertical' ? 'is-vertical' : ''}`}
+      role="status"
+    >
       {showScore && (
         <div className="hud-strip-cell">
           <span className="hud-strip-label">Score</span>

@@ -29,3 +29,28 @@ export function fitWorldToViewport(
     offsetY: top + (innerHeight - world.height * scale) / 2,
   };
 }
+
+export interface MapScreenRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  scale: number;
+}
+
+/** Screen-space bounds of the letterboxed arena (matches Pixi root placement). */
+export function mapScreenRect(
+  world: WorldConfig,
+  viewportWidth: number,
+  viewportHeight: number,
+  insets?: SafeAreaInsets,
+): MapScreenRect {
+  const transform = fitWorldToViewport(world, viewportWidth, viewportHeight, insets);
+  return {
+    left: transform.offsetX,
+    top: transform.offsetY,
+    width: world.width * transform.scale,
+    height: world.height * transform.scale,
+    scale: transform.scale,
+  };
+}

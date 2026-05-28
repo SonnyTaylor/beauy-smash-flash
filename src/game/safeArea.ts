@@ -5,9 +5,9 @@
 // when projecting mouse coordinates back into world space.
 //
 // Keep these numbers in rough sync with the HUD CSS in `styles.css`:
-//   top    — match strip (top: 16 + ~52 height)
+//   top    — 0; score/menu sit in side gutters beside the map frame
 //   bottom — player card / ability button / ammo / controls hint
-//   left/right — currently 0; bottom-corner pills sit inside the bottom band
+//   left/right — 0; side HUD anchors to mapScreenRect gutters via CSS vars
 
 export interface SafeAreaInsets {
   top: number;
@@ -17,7 +17,7 @@ export interface SafeAreaInsets {
 }
 
 export const GAME_SAFE_AREA_INSETS: SafeAreaInsets = {
-  top: 72,
+  top: 0,
   right: 0,
   bottom: 138,
   left: 0,

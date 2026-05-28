@@ -891,19 +891,29 @@ h2 {
   pointer-events: none;
 }
 
-.hud-zone-top {
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+/* Side gutters — anchored to the letterboxed map frame via --map-* vars
+   set by useArenaLayout (must match Pixi safe-area insets). */
+.hud-zone-side-left {
+  top: var(--map-top);
+  left: var(--hud-score-left);
+  height: var(--map-height);
+  display: flex;
+  align-items: flex-start;
+  padding-top: 10px;
+  transform: var(--hud-score-transform);
 }
 
-.hud-zone-top-right {
-  top: 16px;
-  right: 18px;
+.hud-zone-side-right {
+  top: var(--map-top);
+  left: var(--hud-menu-left);
+  height: var(--map-height);
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 10px;
+  padding-top: 10px;
+  transform: var(--hud-menu-transform);
+  max-width: min(280px, max(0px, calc(100vw - var(--map-left) - var(--map-width) - 20px)));
 }
 
 .hud-zone-bottom-left {
@@ -922,7 +932,7 @@ h2 {
   bottom: 22px;
 }
 
-/* --- Match strip (top center) --- */
+/* --- Match strip (side gutter or top center fallback) --- */
 .hud-match-strip {
   display: flex;
   align-items: stretch;
@@ -932,6 +942,15 @@ h2 {
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.hud-match-strip.is-vertical {
+  flex-direction: column;
+}
+
+.hud-match-strip.is-vertical .hud-strip-cell + .hud-strip-cell {
+  border-left: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .hud-strip-cell {
@@ -1040,15 +1059,14 @@ h2 {
 .hud-kill-feed {
   display: grid;
   gap: 4px;
-  min-width: 220px;
-  max-width: min(320px, 38vw);
+  min-width: 180px;
+  max-width: min(280px, 28vw);
   padding: 6px 12px;
   border-radius: 10px;
-  /* Kill feed extends below the top safe area; keep it transparent so
-     players moving through the top-right corner stay visible behind it. */
+  /* Transparent so players in the top map corner stay visible behind it. */
   background: rgba(8, 11, 22, 0.32);
   backdrop-filter: blur(4px);
-  text-align: right;
+  text-align: left;
 }
 
 .hud-kill-feed:empty {

@@ -8,6 +8,7 @@ import { HudAbilityButton } from './HudAbilityButton';
 import { HudAmmoReadout } from './HudAmmoReadout';
 import { HudMatchStrip } from './HudMatchStrip';
 import { HudCrosshair } from './HudCrosshair';
+import { useArenaLayout } from '../hooks/useArenaLayout';
 
 interface HitMarker {
   id: number;
@@ -138,6 +139,7 @@ export function GameOverlay({
   const remaining = timeRemaining(state);
   const showTimer = (state?.time_limit_secs ?? 0) > 0 && state?.win_condition !== 'kills';
   const isDead = me && !me.alive && me.respawn_in > 0 && !matchEnded;
+  const arenaLayout = useArenaLayout(state?.world);
 
   const [showScoreboard, setShowScoreboard] = useState(false);
   const [hitFlash, setHitFlash] = useState(false);
@@ -248,6 +250,7 @@ export function GameOverlay({
     <>
       <div
         className={`game-overlay ${paused || matchEnded ? 'is-paused' : ''} ${isHacked ? 'is-hacked' : ''}`}
+        style={arenaLayout as React.CSSProperties}
       >
         {isHacked && !matchEnded && (
           <div className="hud-hack-banner" role="status">
@@ -256,13 +259,18 @@ export function GameOverlay({
         )}
 
         {!matchEnded && state && (
-          <div className="hud-zone hud-zone-top">
-            <HudMatchStrip state={state} me={me} timeRemaining={showTimer ? remaining : null} />
+          <div className="hud-zone hud-zone-side-left">
+            <HudMatchStrip
+              state={state}
+              me={me}
+              timeRemaining={showTimer ? remaining : null}
+              layout="vertical"
+            />
           </div>
         )}
 
         {!matchEnded && (
-          <div className="hud-zone hud-zone-top-right">
+          <div className="hud-zone hud-zone-side-right">
             <button
               type="button"
               className="hud-menu-button"
