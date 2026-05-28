@@ -16,7 +16,9 @@ export function CharacterGrid({
           key={character.id}
           type="button"
           className={`character-card ${character.id === selectedCharacterId ? 'selected' : ''}`}
-          style={{ '--accent': rgbCss(character.color) } as CSSProperties & Record<'--accent', string>}
+          style={
+            { '--accent': rgbCss(character.color) } as CSSProperties & Record<'--accent', string>
+          }
           onClick={() => onSelect(character.id)}
         >
           <span className="head-placeholder">
@@ -31,8 +33,7 @@ export function CharacterGrid({
           </span>
           <strong>{character.name}</strong>
           <span className="ability-name">{character.abilityName}</span>
-          <span className="ability-desc">{character.abilityDescription}</span>
-          <span className="selected-tag">Selected</span>
+          <span className="selected-tag">Picked</span>
         </button>
       ))}
     </div>

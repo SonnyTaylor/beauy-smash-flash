@@ -73,11 +73,25 @@ export function LoadoutScreen({
               <span>{character.name}</span>
             </header>
             <div
-              className="loadout-ability-highlight"
+              className="loadout-character-focus"
               style={{ '--accent': rgbCss(character.color) } as CSSProperties}
             >
-              <span className="ability-name">{character.abilityName}</span>
-              <p className="ability-desc">{character.abilityDescription}</p>
+              <span className="loadout-focus-portrait" aria-hidden="true">
+                <img
+                  src={`/assets/${character.sprite}`}
+                  alt=""
+                  onError={(event) => {
+                    event.currentTarget.style.display = 'none';
+                  }}
+                />
+                <span>{character.initials}</span>
+              </span>
+              <span className="loadout-focus-copy">
+                <span className="loadout-focus-label">Selected mate</span>
+                <strong>{character.name}</strong>
+                <span className="ability-name">{character.abilityName}</span>
+                <span className="ability-desc">{character.abilityDescription}</span>
+              </span>
             </div>
             <div className="loadout-character-scroll lobby-settings-scroll">
               <CharacterGrid
@@ -96,9 +110,7 @@ export function LoadoutScreen({
           </section>
         </div>
 
-        <p className="loadout-cosmetics-note">
-          <strong>Cosmetics</strong> coming soon — skins, trails, and emotes.
-        </p>
+        <p className="loadout-cosmetics-note">Cosmetics coming later: skins, trails, emotes.</p>
       </div>
 
       {error && <p className="error-text loadout-error">{error}</p>}
