@@ -8,6 +8,21 @@ pub struct WorldConfig {
     pub height: f32,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RectSnapshot {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MapSnapshot {
+    pub id: String,
+    pub name: String,
+    pub walls: Vec<RectSnapshot>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct InputSnapshot {
     #[serde(default)]
@@ -46,6 +61,7 @@ pub struct StateSnapshot {
     pub version: u16,
     pub tick: u64,
     pub world: WorldConfig,
+    pub map: MapSnapshot,
     pub players: Vec<PlayerSnapshot>,
 }
 
@@ -63,6 +79,7 @@ pub enum ServerMessage {
     Assigned {
         id: u8,
         world: WorldConfig,
+        map: MapSnapshot,
         players: Vec<PlayerSnapshot>,
     },
     State(StateSnapshot),

@@ -1,6 +1,6 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import { getCharacter } from '../content/characters';
-import type { PlayerSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
+import type { MapSnapshot, PlayerSnapshot, StateSnapshot, WorldConfig } from '../shared/types';
 import { fitWorldToViewport } from './Viewport';
 
 interface PlayerView {
@@ -16,8 +16,10 @@ export class ArenaRenderer {
 
   private root = new Container();
   private grid = new Graphics();
+  private walls = new Graphics();
   private players = new Map<number, PlayerView>();
   private myId = 0;
+  private mapId: string | null = null;
   private world: WorldConfig = { width: 1920, height: 1080 };
 
   async mount(container: HTMLElement, world: WorldConfig, myId: number) {
@@ -33,7 +35,7 @@ export class ArenaRenderer {
     });
 
     container.appendChild(this.app.canvas);
-    this.root.addChild(this.grid);
+    this.root.addChild(this.grid, this.walls);
     this.app.stage.addChild(this.root);
     this.resize();
 
@@ -50,6 +52,7 @@ export class ArenaRenderer {
   applyState(snapshot: StateSnapshot) {
     this.world = snapshot.world;
     this.resize();
+    this.applyMap(snapshot.map);
 
     const aliveIds = new Set<number>();
     for (const player of snapshot.players) {
@@ -142,6 +145,19 @@ export class ArenaRenderer {
       this.grid.moveTo(0, y).lineTo(this.world.width, y);
     }
     this.grid.stroke({ color: 0x141414, width: 1 });
+  }
+
+  private applyMap(map: MapSnapshot) {
+    if (this.mapId === map.id) return;
+    this.mapId = map.id;
+    this.walls.clear();
+
+    for (const wall of map.walls) {
+      this.walls.rect(wall.x, wall.y, wall.w, wall.h);
+    }
+
+    this.walls.fill({ color: 0x262631, alpha: 0.96 });
+    this.walls.stroke({ color: 0x55556a, width: 2, alpha: 0.9 });
   }
 }
 

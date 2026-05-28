@@ -112,6 +112,7 @@ async fn handle_host_message(
                     ServerMessage::Assigned {
                         id: peer.id,
                         world: st.world.config.clone(),
+                        map: st.world.map.snapshot(),
                         players: st.world.snapshot().players,
                     }
                 } else if st.world.players.len() >= MAX_PLAYERS {
@@ -129,6 +130,7 @@ async fn handle_host_message(
                     ServerMessage::Assigned {
                         id,
                         world: st.world.config.clone(),
+                        map: st.world.map.snapshot(),
                         players: st.world.snapshot().players,
                     }
                 }

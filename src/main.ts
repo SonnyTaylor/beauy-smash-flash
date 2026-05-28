@@ -23,6 +23,7 @@ let inputTimer: number | null = null;
 
 client.listenForState((state) => {
   latestState = state;
+  input.setWorld(state.world);
   renderer.applyState(state);
   updateHud();
 });
@@ -56,7 +57,8 @@ async function startSession(createSession: () => Promise<SessionInfo>) {
 
 async function sendInput() {
   try {
-    await client.sendInput(input.sample());
+    const player = latestState?.players.find((candidate) => candidate.id === myId) ?? null;
+    await client.sendInput(input.sample(player));
   } catch {
     // UDP input is best-effort; short failures should not interrupt rendering.
   }

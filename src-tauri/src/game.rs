@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::protocol::{
-    InputSnapshot, PlayerSnapshot, StateSnapshot, WorldConfig, PROTOCOL_VERSION,
+    InputSnapshot, MapSnapshot, PlayerSnapshot, RectSnapshot, StateSnapshot, WorldConfig,
+    PROTOCOL_VERSION,
 };
 
 pub const DEFAULT_WORLD_WIDTH: f32 = 1920.0;
@@ -20,16 +21,42 @@ const PALETTE: [[u8; 3]; 8] = [
     [249, 115, 22],
 ];
 
-const SPAWNS: [(f32, f32); 8] = [
-    (240.0, 240.0),
-    (1680.0, 240.0),
-    (1680.0, 840.0),
-    (240.0, 840.0),
-    (960.0, 220.0),
-    (960.0, 860.0),
-    (420.0, 540.0),
-    (1500.0, 540.0),
-];
+#[derive(Clone, Debug)]
+pub struct GameMap {
+    pub id: String,
+    pub name: String,
+    pub walls: Vec<Rect>,
+    pub spawns: Vec<(f32, f32)>,
+}
+
+impl GameMap {
+    pub fn snapshot(&self) -> MapSnapshot {
+        MapSnapshot {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            walls: self.walls.iter().map(Rect::snapshot).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Rect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Rect {
+    fn snapshot(&self) -> RectSnapshot {
+        RectSnapshot {
+            x: self.x,
+            y: self.y,
+            w: self.w,
+            h: self.h,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Player {
@@ -59,6 +86,7 @@ impl Player {
 #[derive(Clone, Debug)]
 pub struct GameWorld {
     pub config: WorldConfig,
+    pub map: GameMap,
     pub tick: u64,
     pub players: HashMap<u8, Player>,
     pub inputs: HashMap<u8, InputSnapshot>,
@@ -76,6 +104,7 @@ impl Default for GameWorld {
 impl GameWorld {
     pub fn new(config: WorldConfig) -> Self {
         Self {
+            map: warehouse_map(),
             config,
             tick: 0,
             players: HashMap::new(),
@@ -84,7 +113,7 @@ impl GameWorld {
     }
 
     pub fn add_player(&mut self, id: u8, name: String, character_id: String) {
-        let spawn = SPAWNS[id as usize % SPAWNS.len()];
+        let spawn = self.map.spawns[id as usize % self.map.spawns.len()];
         self.players.insert(
             id,
             Player {
@@ -120,10 +149,17 @@ impl GameWorld {
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
             let (move_x, move_y) = normalize(input.dx, input.dy);
 
-            player.x = (player.x + move_x * PLAYER_SPEED * dt)
+            let next_x = (player.x + move_x * PLAYER_SPEED * dt)
                 .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
-            player.y = (player.y + move_y * PLAYER_SPEED * dt)
+            if !circle_hits_walls(next_x, player.y, PLAYER_RADIUS, &self.map.walls) {
+                player.x = next_x;
+            }
+
+            let next_y = (player.y + move_y * PLAYER_SPEED * dt)
                 .clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
+            if !circle_hits_walls(player.x, next_y, PLAYER_RADIUS, &self.map.walls) {
+                player.y = next_y;
+            }
 
             if input.aim_x != 0.0 || input.aim_y != 0.0 {
                 player.angle = input.aim_y.atan2(input.aim_x);
@@ -139,6 +175,7 @@ impl GameWorld {
             version: PROTOCOL_VERSION,
             tick: self.tick,
             world: self.config.clone(),
+            map: self.map.snapshot(),
             players,
         }
     }
@@ -150,6 +187,61 @@ fn normalize(x: f32, y: f32) -> (f32, f32) {
         (x / length, y / length)
     } else {
         (x, y)
+    }
+}
+
+fn circle_hits_walls(x: f32, y: f32, radius: f32, walls: &[Rect]) -> bool {
+    walls
+        .iter()
+        .any(|wall| circle_hits_rect(x, y, radius, wall))
+}
+
+fn circle_hits_rect(x: f32, y: f32, radius: f32, rect: &Rect) -> bool {
+    let closest_x = x.clamp(rect.x, rect.x + rect.w);
+    let closest_y = y.clamp(rect.y, rect.y + rect.h);
+    let dx = x - closest_x;
+    let dy = y - closest_y;
+    dx * dx + dy * dy < radius * radius
+}
+
+fn warehouse_map() -> GameMap {
+    let walls = [
+        (-100.0, -100.0, 1480.0, 100.0),
+        (-100.0, 720.0, 1480.0, 100.0),
+        (-100.0, 0.0, 100.0, 720.0),
+        (1280.0, 0.0, 100.0, 720.0),
+        (160.0, 80.0, 160.0, 120.0),
+        (960.0, 80.0, 160.0, 120.0),
+        (160.0, 520.0, 160.0, 120.0),
+        (960.0, 520.0, 160.0, 120.0),
+        (440.0, 240.0, 400.0, 40.0),
+        (440.0, 440.0, 400.0, 40.0),
+        (80.0, 280.0, 40.0, 160.0),
+        (1160.0, 280.0, 40.0, 160.0),
+    ];
+    GameMap {
+        id: "warehouse".to_string(),
+        name: "Warehouse".to_string(),
+        walls: walls.into_iter().map(scale_rect_from_python).collect(),
+        spawns: vec![
+            (240.0, 540.0),
+            (1680.0, 540.0),
+            (960.0, 180.0),
+            (960.0, 900.0),
+            (540.0, 180.0),
+            (1380.0, 900.0),
+        ],
+    }
+}
+
+fn scale_rect_from_python((x, y, w, h): (f32, f32, f32, f32)) -> Rect {
+    let sx = DEFAULT_WORLD_WIDTH / 1280.0;
+    let sy = DEFAULT_WORLD_HEIGHT / 720.0;
+    Rect {
+        x: x * sx,
+        y: y * sy,
+        w: w * sx,
+        h: h * sy,
     }
 }
 
@@ -184,5 +276,31 @@ mod tests {
         let player = world.players.get(&0).unwrap();
         assert_eq!(player.x, PLAYER_RADIUS);
         assert_eq!(player.y, PLAYER_RADIUS);
+    }
+
+    #[test]
+    fn player_collides_with_map_walls() {
+        let mut world = GameWorld::default();
+        world.add_player(0, "Host".to_string(), "sonny".to_string());
+        let wall = world.map.walls[4].clone();
+        let player = world.players.get_mut(&0).unwrap();
+        player.x = wall.x - PLAYER_RADIUS - 1.0;
+        player.y = wall.y + wall.h / 2.0;
+
+        world.set_input(
+            0,
+            InputSnapshot {
+                dx: 1.0,
+                dy: 0.0,
+                ..Default::default()
+            },
+        );
+
+        for _ in 0..30 {
+            world.tick(1.0 / 60.0);
+        }
+
+        let player = world.players.get(&0).unwrap();
+        assert!(player.x <= wall.x - PLAYER_RADIUS);
     }
 }

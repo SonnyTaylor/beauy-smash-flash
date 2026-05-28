@@ -5,6 +5,19 @@ export interface WorldConfig {
   height: number;
 }
 
+export interface RectSnapshot {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface MapSnapshot {
+  id: string;
+  name: string;
+  walls: RectSnapshot[];
+}
+
 export interface SessionInfo {
   player_id: number;
   world: WorldConfig;
@@ -36,6 +49,7 @@ export interface StateSnapshot {
   version: number;
   tick: number;
   world: WorldConfig;
+  map: MapSnapshot;
   players: PlayerSnapshot[];
 }
 

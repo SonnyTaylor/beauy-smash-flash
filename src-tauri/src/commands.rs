@@ -71,7 +71,12 @@ pub async fn join_game(
     let assigned = wait_for_assignment(&socket, &mut buf).await?;
 
     let (player_id, world) = match assigned {
-        ServerMessage::Assigned { id, world, players } => {
+        ServerMessage::Assigned {
+            id,
+            world,
+            map: _,
+            players,
+        } => {
             let mut st = state.lock().await;
             st.socket = Some(socket.clone());
             st.mode = SessionMode::Client;

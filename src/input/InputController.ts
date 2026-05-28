@@ -1,4 +1,5 @@
 import type { InputSnapshot, WorldConfig } from '../shared/types';
+import { fitWorldToViewport } from '../game/Viewport';
 
 const MOVEMENT_KEYS = new Set(['w', 'a', 's', 'd']);
 
@@ -29,20 +30,21 @@ export class InputController {
     this.canvas = null;
   }
 
-  sample(): InputSnapshot {
+  setWorld(world: WorldConfig) {
+    this.world = world;
+  }
+
+  sample(origin: { x: number; y: number } | null): InputSnapshot {
     const dx = Number(this.keys.has('d')) - Number(this.keys.has('a'));
     const dy = Number(this.keys.has('s')) - Number(this.keys.has('w'));
-    const center = {
-      x: this.world.width / 2,
-      y: this.world.height / 2,
-    };
+    const aimOrigin = origin ?? { x: this.world.width / 2, y: this.world.height / 2 };
 
     return {
       seq: ++this.seq,
       dx,
       dy,
-      aim_x: this.pointer.x - center.x,
-      aim_y: this.pointer.y - center.y,
+      aim_x: this.pointer.x - aimOrigin.x,
+      aim_y: this.pointer.y - aimOrigin.y,
       fire: this.keys.has('mouse0'),
       reload: this.keys.has('r'),
       ability: this.keys.has('e'),
@@ -65,11 +67,12 @@ export class InputController {
   private handleMouseMove = (event: MouseEvent) => {
     if (!this.canvas) return;
     const rect = this.canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = (event.clientY - rect.top) / rect.height;
+    const transform = fitWorldToViewport(this.world, rect.width, rect.height);
+    const x = (event.clientX - rect.left - transform.offsetX) / transform.scale;
+    const y = (event.clientY - rect.top - transform.offsetY) / transform.scale;
     this.pointer = {
-      x: x * this.world.width,
-      y: y * this.world.height,
+      x: clamp(x, 0, this.world.width),
+      y: clamp(y, 0, this.world.height),
     };
   };
 
@@ -80,4 +83,8 @@ export class InputController {
   private handleMouseUp = (event: MouseEvent) => {
     this.keys.delete(`mouse${event.button}`);
   };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
