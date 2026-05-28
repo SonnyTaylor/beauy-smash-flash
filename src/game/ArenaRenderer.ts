@@ -12,6 +12,12 @@ import type {
   WorldConfig,
   WorldEffectSnapshot,
 } from '../shared/types';
+import {
+  REEL_SHIELD_OFFSET,
+  TajReelVisuals,
+  type TajReelPostView,
+  type TajReelShieldView,
+} from './TajReelVisuals';
 import { VfxManager } from './vfx/VfxManager';
 import { fitWorldToViewport } from './Viewport';
 import { GAME_SAFE_AREA_INSETS } from './safeArea';
@@ -101,6 +107,23 @@ interface PlayerView {
   abilityWindup: number;
   abilityAimX: number;
   abilityAimY: number;
+  stillnessStacks: number;
+  boatModeRemaining: number;
+  reelShieldRemaining: number;
+  reelIndex: number;
+  reelShieldWasActive: boolean;
+  reelShieldLoading: boolean;
+  tajReelShield: TajReelShieldView | null;
+  chiAura: Graphics;
+  boatAura: Graphics;
+}
+
+interface ReelPostRuntime {
+  view: TajReelPostView | null;
+  reelIndex: number;
+  targetX: number;
+  targetY: number;
+  angle: number;
 }
 
 interface TruthNukeView {
@@ -153,6 +176,8 @@ export class ArenaRenderer {
   private headTextures = new Map<string, Texture>();
   private weaponTextures = new Map<string, Texture>();
   private vfx = new VfxManager();
+  private tajReels = new TajReelVisuals();
+  private reelPosts = new Map<number, ReelPostRuntime>();
   private truthNukes = new Map<number, TruthNukeView>();
   private mounted = false;
   private myId = 0;
@@ -312,6 +337,12 @@ export class ArenaRenderer {
       view.gfx.destroy();
     }
     this.truthNukes.clear();
+    for (const post of this.reelPosts.values()) {
+      if (post.view) {
+        this.tajReels.destroyPost(post.view);
+      }
+    }
+    this.reelPosts.clear();
     this.mounted = false;
     this.mapId = null;
     this.mapSignature = '';
@@ -346,6 +377,7 @@ export class ArenaRenderer {
     this.syncWeaponPickups(snapshot.weapon_pickups ?? []);
     this.syncWorldEffects(snapshot.effects ?? []);
     this.syncTruthNukes(snapshot.effects ?? []);
+    this.syncReelPosts(snapshot.effects ?? []);
     this.detectMuzzleFlashes(snapshot.bullets, snapshot.players, me);
 
     const aliveIds = new Set<number>();
@@ -357,6 +389,9 @@ export class ArenaRenderer {
       aliveIds.add(player.id);
       let view = this.players.get(player.id);
       if (view && view.characterId !== player.character_id) {
+        if (view.tajReelShield) {
+          this.tajReels.destroyShield(view.tajReelShield);
+        }
         view.truthReticle.destroy();
         view.container.destroy({ children: true });
         this.players.delete(player.id);
@@ -397,6 +432,9 @@ export class ArenaRenderer {
 
     for (const [id, view] of this.players) {
       if (!aliveIds.has(id)) {
+        if (view.tajReelShield) {
+          this.tajReels.destroyShield(view.tajReelShield);
+        }
         view.truthReticle.destroy();
         view.container.destroy({ children: true });
         this.players.delete(id);
@@ -449,6 +487,18 @@ export class ArenaRenderer {
         this.vfx.emitWallImpact(effect.x, effect.y, dirX, dirY, effect.radius);
       } else if (effect.kind === 'directors_cut') {
         this.vfx.emitDirectorsCut(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'chi_beam') {
+        this.vfx.emitChiBeam(
+          effect.origin_x ?? effect.x,
+          effect.origin_y ?? effect.y,
+          effect.target_x ?? effect.x,
+          effect.target_y ?? effect.y,
+          effect.radius,
+        );
+      } else if (effect.kind === 'chi_channel') {
+        this.vfx.emitChiChannel(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'boat_splash') {
+        this.vfx.emitBoatSplash(effect.x, effect.y, effect.radius);
       }
     }
 
@@ -486,6 +536,66 @@ export class ArenaRenderer {
       if (!liveIds.has(id)) {
         view.gfx.destroy();
         this.truthNukes.delete(id);
+      }
+    }
+  }
+
+  private syncReelPosts(effects: WorldEffectSnapshot[]) {
+    const liveIds = new Set<number>();
+    for (const effect of effects) {
+      if (effect.kind !== 'reel_post') {
+        continue;
+      }
+      liveIds.add(effect.id);
+      if (this.fogEnabled && !this.isInVision(effect.x, effect.y)) {
+        continue;
+      }
+
+      const targetX = effect.x;
+      const targetY = effect.y;
+      const angle = Math.atan2(effect.target_y ?? 0, effect.target_x ?? 1);
+      const reelIndex = Math.max(0, Math.round(effect.radius));
+
+      let runtime = this.reelPosts.get(effect.id);
+      if (!runtime) {
+        runtime = { view: null, reelIndex, targetX, targetY, angle };
+        this.reelPosts.set(effect.id, runtime);
+        void this.tajReels.createPost(reelIndex).then((view) => {
+          const current = this.reelPosts.get(effect.id);
+          if (!current) {
+            this.tajReels.destroyPost(view);
+            return;
+          }
+          current.view = view;
+          view.targetX = current.targetX;
+          view.targetY = current.targetY;
+          view.angle = current.angle;
+          view.container.x = current.targetX;
+          view.container.y = current.targetY;
+          view.container.rotation = current.angle;
+          view.container.visible = true;
+          this.entityLayer.addChild(view.container);
+          void this.tajReels.playReel(view.video);
+        });
+      } else {
+        runtime.targetX = targetX;
+        runtime.targetY = targetY;
+        runtime.angle = angle;
+        if (runtime.view) {
+          runtime.view.targetX = targetX;
+          runtime.view.targetY = targetY;
+          runtime.view.angle = angle;
+          runtime.view.container.visible = true;
+        }
+      }
+    }
+
+    for (const [id, runtime] of this.reelPosts) {
+      if (!liveIds.has(id)) {
+        if (runtime.view) {
+          this.tajReels.destroyPost(runtime.view);
+        }
+        this.reelPosts.delete(id);
       }
     }
   }
@@ -658,6 +768,10 @@ export class ArenaRenderer {
       view.abilityWindup = player.ability_windup;
       view.abilityAimX = player.ability_aim_x ?? 0;
       view.abilityAimY = player.ability_aim_y ?? 0;
+      view.stillnessStacks = player.stillness_stacks ?? 0;
+      view.reelShieldRemaining = player.reel_shield_remaining ?? 0;
+      view.reelIndex = player.reel_index ?? 0;
+      view.boatModeRemaining = player.boat_mode_remaining ?? 0;
       view.truthReticle.visible =
         player.character_id === 'bailey' && player.ability_windup > 0;
       if (view.truthReticle.visible) {
@@ -770,6 +884,14 @@ export class ArenaRenderer {
     markAura.visible = false;
     container.addChild(markAura);
 
+    const chiAura = new Graphics();
+    chiAura.visible = false;
+    container.addChild(chiAura);
+
+    const boatAura = new Graphics();
+    boatAura.visible = false;
+    container.addChild(boatAura);
+
     const truthReticle = new Graphics();
     truthReticle.visible = false;
     this.entityLayer.addChild(truthReticle);
@@ -822,6 +944,8 @@ export class ArenaRenderer {
       shield,
       hackAura,
       markAura,
+      chiAura,
+      boatAura,
       truthReticle,
       weaponId,
       targetX: player.x,
@@ -844,7 +968,54 @@ export class ArenaRenderer {
       abilityWindup: player.ability_windup,
       abilityAimX: player.ability_aim_x ?? 0,
       abilityAimY: player.ability_aim_y ?? 0,
+      stillnessStacks: player.stillness_stacks ?? 0,
+      boatModeRemaining: player.boat_mode_remaining ?? 0,
+      reelShieldRemaining: player.reel_shield_remaining ?? 0,
+      reelIndex: player.reel_index ?? 0,
+      reelShieldWasActive: (player.reel_shield_remaining ?? 0) > 0,
+      reelShieldLoading: false,
+      tajReelShield: null,
     };
+  }
+
+  private updateTajReelShield(view: PlayerView) {
+    if (view.characterId !== 'taj') {
+      return;
+    }
+
+    const active = view.reelShieldRemaining > 0;
+
+    if (active && !view.tajReelShield && !view.reelShieldLoading) {
+      view.reelShieldLoading = true;
+      void this.tajReels.createShield(view.reelIndex).then((shield) => {
+        view.reelShieldLoading = false;
+        if (view.tajReelShield || view.reelShieldRemaining <= 0) {
+          this.tajReels.destroyShield(shield);
+          return;
+        }
+        view.container.addChild(shield.container);
+        view.tajReelShield = shield;
+        shield.container.visible = true;
+        void this.tajReels.playReel(shield.video);
+      });
+    }
+
+    if (!active && view.tajReelShield) {
+      this.tajReels.destroyShield(view.tajReelShield);
+      view.tajReelShield = null;
+    }
+
+    if (view.tajReelShield) {
+      const angle = view.displayAngle;
+      view.tajReelShield.container.rotation = angle;
+      view.tajReelShield.container.position.set(
+        Math.cos(angle) * REEL_SHIELD_OFFSET,
+        Math.sin(angle) * REEL_SHIELD_OFFSET,
+      );
+      view.tajReelShield.container.visible = true;
+    }
+
+    view.reelShieldWasActive = active;
   }
 
   private createAvatar(spritePath: string, initials: string, accentColor: number): Container {
@@ -956,6 +1127,32 @@ export class ArenaRenderer {
       .stroke({ color: 0xfff4a8, width: 1.5, alpha: 0.25 + pulse * 0.25 });
   }
 
+  private drawChiAura(view: PlayerView, now: number) {
+    const pulse = 0.45 + 0.55 * Math.abs(Math.sin(now / 95));
+    const aura = view.chiAura;
+    aura.clear();
+    aura.visible = true;
+    aura.circle(0, 0, PLAYER_RADIUS + 10 + pulse * 4)
+      .stroke({ color: 0xffcc00, width: 2.5, alpha: 0.35 + pulse * 0.35 });
+    for (let i = 0; i < view.stillnessStacks; i += 1) {
+      const angle = (i / 3) * Math.PI * 2 - Math.PI / 2;
+      const dist = PLAYER_RADIUS + 18;
+      aura.circle(Math.cos(angle) * dist, Math.sin(angle) * dist, 4)
+        .fill({ color: 0xffe066, alpha: 0.85 });
+    }
+  }
+
+  private drawBoatAura(view: PlayerView, now: number) {
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 120));
+    const aura = view.boatAura;
+    aura.clear();
+    aura.visible = true;
+    aura.ellipse(0, 6, PLAYER_RADIUS + 20, PLAYER_RADIUS + 10)
+      .fill({ color: 0x5ec8ff, alpha: 0.22 + pulse * 0.12 })
+      .ellipse(0, 6, PLAYER_RADIUS + 20, PLAYER_RADIUS + 10)
+      .stroke({ color: 0xb8ecff, width: 2, alpha: 0.55 });
+  }
+
   private renderFrame() {
     if (this.mountContainer) {
       const width = Math.max(1, this.mountContainer.clientWidth);
@@ -972,6 +1169,17 @@ export class ArenaRenderer {
     this.drawBullets(dt);
     this.animatePickups(now, dt);
     this.animateTruthNukes(now, dt);
+
+    const postBlend = 1 - Math.exp(-PLAYER_LERP_RATE * dt * 1.35);
+    for (const runtime of this.reelPosts.values()) {
+      const post = runtime.view;
+      if (!post) {
+        continue;
+      }
+      post.container.x += (post.targetX - post.container.x) * postBlend;
+      post.container.y += (post.targetY - post.container.y) * postBlend;
+      post.container.rotation = post.angle;
+    }
 
     const reticlePulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 120));
     for (const view of this.players.values()) {
@@ -1031,6 +1239,22 @@ export class ArenaRenderer {
         view.markAura.clear();
         view.markAura.visible = false;
       }
+
+      if (view.characterId === 'isaak' && (view.abilityWindup > 0 || view.stillnessStacks > 0)) {
+        this.drawChiAura(view, now);
+      } else {
+        view.chiAura.clear();
+        view.chiAura.visible = false;
+      }
+
+      if (view.boatModeRemaining > 0) {
+        this.drawBoatAura(view, now);
+      } else {
+        view.boatAura.clear();
+        view.boatAura.visible = false;
+      }
+
+      this.updateTajReelShield(view);
 
       const dx = view.container.x - prevX;
       const dy = view.container.y - prevY;
@@ -1233,6 +1457,7 @@ export class ArenaRenderer {
 
   private async loadTextures() {
     await this.vfx.loadAssets();
+    await this.tajReels.preload();
     await Promise.all(
       listWeapons().map(async (weapon) => {
         const texture = await loadTextureFromUrl(assetUrl(weapon.meta.sprite));

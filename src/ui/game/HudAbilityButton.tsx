@@ -1,7 +1,9 @@
 import type { CharacterDefinition } from '../../shared/types';
+import { TAJ_SHIELD_DURATION_SECS } from '../../content/reels';
 import { rgbCss } from '../character';
 
-const WINDUP_TOTAL_SECS = 1.25;
+const BAILEY_WINDUP_SECS = 1.25;
+const ISAAC_WINDUP_SECS = 1.4;
 
 export function HudAbilityButton({
   character,
@@ -9,35 +11,56 @@ export function HudAbilityButton({
   windup,
   hacked,
   directorsCutShots,
+  boatModeRemaining,
+  reelShieldRemaining,
+  stillnessStacks,
 }: {
   character: CharacterDefinition;
   charge: number;
   windup: number;
   hacked: boolean;
   directorsCutShots?: number | null;
+  boatModeRemaining?: number;
+  reelShieldRemaining?: number;
+  stillnessStacks?: number;
 }) {
   const clampedCharge = Math.max(0, Math.min(100, charge));
   const ready = clampedCharge >= 100;
   const casting = windup > 0;
   const inDirectorsCut = directorsCutShots != null && directorsCutShots > 0;
+  const inBoat = (boatModeRemaining ?? 0) > 0;
+  const hasShield = (reelShieldRemaining ?? 0) > 0;
+  const windupTotal =
+    character.id === 'isaak' ? ISAAC_WINDUP_SECS : BAILEY_WINDUP_SECS;
   const windupRatio = casting
-    ? Math.max(0, Math.min(1, 1 - windup / WINDUP_TOTAL_SECS))
+    ? Math.max(0, Math.min(1, 1 - windup / windupTotal))
     : 0;
   const popcornRatio = inDirectorsCut
-    ? Math.max(0, Math.min(1, directorsCutShots / 15))
+    ? Math.max(0, Math.min(1, (directorsCutShots ?? 0) / 15))
+    : 0;
+  const shieldRatio = hasShield
+    ? Math.max(0, Math.min(1, (reelShieldRemaining ?? 0) / TAJ_SHIELD_DURATION_SECS))
     : 0;
 
   const ringStyle = {
     background: inDirectorsCut
       ? `conic-gradient(#32ff32 ${popcornRatio * 100}%, rgba(255, 255, 255, 0.08) ${popcornRatio * 100}% 100%)`
-      : casting
-        ? `conic-gradient(#ff4d6d ${windupRatio * 100}%, rgba(255, 255, 255, 0.08) ${windupRatio * 100}% 100%)`
-        : `conic-gradient(var(--accent) ${clampedCharge}%, rgba(255, 255, 255, 0.08) ${clampedCharge}% 100%)`,
+      : hasShield
+        ? `conic-gradient(#ff5050 ${shieldRatio * 100}%, rgba(255, 255, 255, 0.08) ${shieldRatio * 100}% 100%)`
+        : casting
+          ? `conic-gradient(#ffcc00 ${windupRatio * 100}%, rgba(255, 255, 255, 0.08) ${windupRatio * 100}% 100%)`
+          : `conic-gradient(var(--accent) ${clampedCharge}%, rgba(255, 255, 255, 0.08) ${clampedCharge}% 100%)`,
   } as React.CSSProperties;
+
+  let statusLabel = character.abilityName;
+  if (inDirectorsCut) statusLabel = 'Rolling…';
+  else if (inBoat) statusLabel = 'Boating…';
+  else if (hasShield) statusLabel = 'E to post';
+  else if (casting) statusLabel = character.id === 'isaak' ? 'Channeling…' : 'Arming…';
 
   return (
     <div
-      className={`hud-ability ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${hacked ? 'is-hacked' : ''}`}
+      className={`hud-ability ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''}`}
       style={{ '--accent': rgbCss(character.color) } as React.CSSProperties}
     >
       <div className="hud-ability-ring" style={ringStyle} aria-hidden />
@@ -50,17 +73,23 @@ export function HudAbilityButton({
           }}
         />
         <span aria-hidden>{character.initials}</span>
-        {!ready && !casting && !inDirectorsCut && (
+        {!ready && !casting && !inDirectorsCut && !inBoat && !hasShield && (
           <div className="hud-ability-percent">{Math.round(clampedCharge)}%</div>
         )}
         {inDirectorsCut && (
           <div className="hud-ability-percent">{directorsCutShots}</div>
         )}
+        {hasShield && (
+          <div className="hud-ability-percent">{Math.ceil(reelShieldRemaining ?? 0)}s</div>
+        )}
+        {character.id === 'isaak' && stillnessStacks != null && stillnessStacks > 0 && !casting && (
+          <div className="hud-ability-stacks" aria-label={`${stillnessStacks} stillness stacks`}>
+            {'●'.repeat(stillnessStacks)}
+          </div>
+        )}
       </div>
       <div className="hud-ability-key" aria-hidden>E</div>
-      <div className="hud-ability-name">
-        {inDirectorsCut ? 'Rolling…' : casting ? 'Arming…' : character.abilityName}
-      </div>
+      <div className="hud-ability-name">{statusLabel}</div>
     </div>
   );
 }

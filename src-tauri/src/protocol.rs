@@ -154,6 +154,11 @@ pub enum EffectKind {
     Slash,
     WallHit,
     DirectorsCut,
+    ChiBeam,
+    ChiChannel,
+    ReelShield,
+    ReelPost,
+    BoatSplash,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -260,6 +265,16 @@ pub struct PlayerSnapshot {
     pub directors_cut_shots: u8,
     #[serde(default)]
     pub poison_remaining: f32,
+    #[serde(default)]
+    pub stillness_stacks: u8,
+    #[serde(default)]
+    pub reel_shield_remaining: f32,
+    #[serde(default)]
+    pub boat_mode_remaining: f32,
+    #[serde(default)]
+    pub hangover_remaining: f32,
+    #[serde(default)]
+    pub reel_index: u8,
     #[serde(default = "default_weapon_id")]
     pub active_weapon: String,
     #[serde(default)]

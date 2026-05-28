@@ -204,6 +204,16 @@ pub struct Player {
     pub poison_accumulator: f32,
     pub directors_cut_until: f32,
     pub directors_cut_shots: u8,
+    pub stillness_timer: f32,
+    pub stillness_stacks: u8,
+    pub last_shot_timer: f32,
+    pub reel_shield_remaining: f32,
+    pub reel_shield_hp: f32,
+    pub reel_shield_angle: f32,
+    pub boat_mode_until: f32,
+    pub boat_rammed: Vec<u8>,
+    pub hangover_until: f32,
+    pub reel_index: u8,
 }
 
 impl Player {
@@ -259,6 +269,16 @@ impl Player {
             poison_accumulator: 0.0,
             directors_cut_until: 0.0,
             directors_cut_shots: 0,
+            stillness_timer: 0.0,
+            stillness_stacks: 0,
+            last_shot_timer: 999.0,
+            reel_shield_remaining: 0.0,
+            reel_shield_hp: 0.0,
+            reel_shield_angle: 0.0,
+            boat_mode_until: 0.0,
+            boat_rammed: Vec::new(),
+            hangover_until: 0.0,
+            reel_index: 0,
         }
     }
 
@@ -380,6 +400,15 @@ impl Player {
                 0
             },
             poison_remaining: self.poison_until.max(0.0),
+            stillness_stacks: self.stillness_stacks,
+            reel_shield_remaining: self.reel_shield_remaining.max(0.0),
+            boat_mode_remaining: self.boat_mode_until.max(0.0),
+            hangover_remaining: self.hangover_until.max(0.0),
+            reel_index: if self.reel_shield_remaining > 0.0 {
+                self.reel_index
+            } else {
+                0
+            },
             active_weapon,
             active_slot: self.active_slot as u8,
             reload_duration,
@@ -540,6 +569,8 @@ pub struct GameWorld {
     pub match_end_reason: Option<MatchEndReason>,
     pub weapon_pickups: Vec<WeaponPickup>,
     pub next_pickup_id: u32,
+    pub next_reel_index: u8,
+    pub dev_mode: bool,
     input_prev: HashMap<u8, InputSnapshot>,
 }
 
@@ -600,6 +631,8 @@ impl GameWorld {
             match_end_reason: None,
             weapon_pickups: Vec::new(),
             next_pickup_id: 1,
+            next_reel_index: 0,
+            dev_mode: cfg!(debug_assertions),
             input_prev: HashMap::new(),
         }
     }
@@ -760,6 +793,15 @@ impl GameWorld {
             player.ability_windup = 0.0;
             player.directors_cut_until = 0.0;
             player.directors_cut_shots = 0;
+            player.stillness_timer = 0.0;
+            player.stillness_stacks = 0;
+            player.last_shot_timer = 999.0;
+            player.reel_shield_remaining = 0.0;
+            player.reel_shield_hp = 0.0;
+            player.boat_mode_until = 0.0;
+            player.boat_rammed.clear();
+            player.hangover_until = 0.0;
+            player.reel_index = 0;
         }
     }
 
@@ -1015,11 +1057,13 @@ impl GameWorld {
             }
         }
 
-        abilities::passive_charge_tick(&mut self.players, dt);
+        abilities::passive_charge_tick(&mut self.players, &self.inputs, dt, self.dev_mode);
         abilities::tick_status_effects(&mut self.players, dt);
+        abilities::tick_character_passives(&mut self.players, &self.inputs, dt);
         self.tick_poison_damage(dt);
         self.process_ability_input();
         abilities::process_abilities(self, dt);
+        abilities::process_active_modes(self, dt);
         abilities::process_projectile_effects(self, dt);
         abilities::process_effects(self, dt);
         self.process_respawns(dt);
@@ -1063,6 +1107,10 @@ impl GameWorld {
 
             let speed = if player.slowed_until > 0.0 {
                 PLAYER_SPEED * player.slow_multiplier
+            } else if abilities::in_boat_mode(player) {
+                PLAYER_SPEED * abilities::FINN_BOAT_SPEED_MULT
+            } else if player.hangover_until > 0.0 {
+                PLAYER_SPEED * abilities::FINN_HANGOVER_SPEED_MULT
             } else if abilities::in_directors_cut(player) {
                 PLAYER_SPEED * abilities::JACOB_DIRECTORS_CUT_SPEED
             } else {
@@ -1085,6 +1133,8 @@ impl GameWorld {
                 player.angle = input.aim_y.atan2(input.aim_x);
             }
         }
+
+        abilities::process_boat_rams(self);
     }
 
     fn process_ability_input(&mut self) {
@@ -1098,6 +1148,9 @@ impl GameWorld {
             let was_pressed = self.ability_held.get(&id).copied().unwrap_or(false);
             if pressed && !was_pressed {
                 abilities::try_activate(self, id);
+            }
+            if !pressed && was_pressed {
+                abilities::try_release(self, id);
             }
             self.ability_held.insert(id, pressed);
         }
@@ -1169,7 +1222,10 @@ impl GameWorld {
         }
 
         for player in self.players.values_mut() {
-            if !player.alive || is_casting(player) || abilities::in_directors_cut(player) {
+            if !player.alive || is_casting(player) || abilities::in_boat_mode(player) {
+                continue;
+            }
+            if player.hangover_until > 0.0 {
                 continue;
             }
 
@@ -1227,6 +1283,7 @@ impl GameWorld {
                     player.ammo -= 1;
                     player.save_ammo_to_active_slot();
                     player.fire_cooldown = weapon.fire_rate;
+                    abilities::notify_shot(player);
 
                     let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
                     let spawn_y = player.y + aim_y * (PLAYER_RADIUS + weapon.muzzle_offset);
@@ -1255,6 +1312,7 @@ impl GameWorld {
                     player.ammo -= 1;
                     player.save_ammo_to_active_slot();
                     player.fire_cooldown = weapon.fire_rate;
+                    abilities::notify_shot(player);
 
                     let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
                     let spawn_y = player.y + aim_y * (PLAYER_RADIUS + weapon.muzzle_offset);
@@ -1351,7 +1409,14 @@ impl GameWorld {
     fn process_bullets(&mut self, dt: f32) {
         let mut hits: Vec<(u32, u8, u8, u16, String, f32, f32, f32, f32)> = Vec::new();
         let mut wall_hits: Vec<(f32, f32, f32, f32, f32, u8)> = Vec::new();
+        let mut shield_hits: Vec<(u8, u16, f32, f32)> = Vec::new();
         let mut surviving = Vec::with_capacity(self.bullets.len());
+        let shields: Vec<(u8, f32, f32, f32)> = self
+            .players
+            .values()
+            .filter(|player| player.alive && abilities::has_reel_shield(player))
+            .map(|player| (player.id, player.x, player.y, player.reel_shield_angle))
+            .collect();
 
         for mut bullet in self.bullets.drain(..) {
             let prev_x = bullet.x;
@@ -1361,6 +1426,17 @@ impl GameWorld {
             bullet.y += bullet.vy * dt;
 
             if bullet.life <= 0.0 {
+                continue;
+            }
+            if let Some((owner_id, cx, cy)) = abilities::check_shield_block_with(
+                &shields,
+                bullet.owner_id,
+                prev_x,
+                prev_y,
+                bullet.x,
+                bullet.y,
+            ) {
+                shield_hits.push((owner_id, bullet.damage, cx, cy));
                 continue;
             }
             if bullet.x < 0.0
@@ -1383,16 +1459,14 @@ impl GameWorld {
                 );
                 if bullet.weapon_id == abilities::POPCORN_WEAPON_ID && bullet.bounces_remaining > 0
                 {
-                    if let Some((nx, ny)) =
-                        wall_normal_at(
-                            impact_x,
-                            impact_y,
-                            bullet.vx,
-                            bullet.vy,
-                            bullet.radius,
-                            &self.map.walls,
-                        )
-                    {
+                    if let Some((nx, ny)) = wall_normal_at(
+                        impact_x,
+                        impact_y,
+                        bullet.vx,
+                        bullet.vy,
+                        bullet.radius,
+                        &self.map.walls,
+                    ) {
                         bullet.bounces_remaining -= 1;
                         let (vx, vy) = abilities::deflect_popcorn(
                             bullet.vx,
@@ -1422,6 +1496,10 @@ impl GameWorld {
             surviving.push(bullet);
         }
         self.bullets = surviving;
+
+        for (owner_id, damage, cx, cy) in shield_hits {
+            abilities::apply_shield_block(self, owner_id, damage, cx, cy);
+        }
 
         for (impact_x, impact_y, vx, vy, radius, owner_id) in wall_hits {
             let id = self.next_effect_id;
@@ -1715,12 +1793,20 @@ impl GameWorld {
             victim.reload_timer = 0.0;
             victim.directors_cut_until = 0.0;
             victim.directors_cut_shots = 0;
+            victim.reel_shield_remaining = 0.0;
+            victim.reel_shield_hp = 0.0;
+            victim.boat_mode_until = 0.0;
+            victim.boat_rammed.clear();
+            victim.hangover_until = 0.0;
         }
 
         if let Some(killer) = self.players.get_mut(&killer_id) {
             killer.kills += 1;
             killer.score += 1;
             abilities::add_charge(killer, abilities::CHARGE_ON_KILL);
+            if killer.character_id == "bailey" {
+                abilities::add_charge(killer, abilities::BAILEY_CHARGE_ON_KILL);
+            }
         }
 
         self.kill_feed.push(KillFeedEntry {

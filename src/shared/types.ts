@@ -143,7 +143,12 @@ export type EffectKind =
   | 'zap'
   | 'slash'
   | 'wall_hit'
-  | 'directors_cut';
+  | 'directors_cut'
+  | 'chi_beam'
+  | 'chi_channel'
+  | 'reel_shield'
+  | 'reel_post'
+  | 'boat_splash';
 
 export interface WorldEffectSnapshot {
   id: number;
@@ -198,6 +203,11 @@ export interface PlayerSnapshot {
   directors_cut_remaining?: number;
   directors_cut_shots?: number;
   poison_remaining?: number;
+  stillness_stacks?: number;
+  reel_shield_remaining?: number;
+  boat_mode_remaining?: number;
+  hangover_remaining?: number;
+  reel_index?: number;
   active_weapon?: string;
   active_slot?: number;
   reload_duration?: number;

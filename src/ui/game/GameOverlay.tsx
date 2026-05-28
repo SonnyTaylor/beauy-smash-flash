@@ -418,6 +418,9 @@ export function GameOverlay({
                 windup={abilityWindup}
                 hacked={isHacked}
                 directorsCutShots={inDirectorsCut ? (me?.directors_cut_shots ?? 0) : null}
+                boatModeRemaining={me?.boat_mode_remaining ?? 0}
+                reelShieldRemaining={me?.reel_shield_remaining ?? 0}
+                stillnessStacks={me?.stillness_stacks ?? 0}
               />
             </div>
 

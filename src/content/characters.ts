@@ -40,7 +40,8 @@ export const CHARACTERS: CharacterDefinition[] = [
     initials: 'IS',
     abilityId: 'chi_blast',
     abilityName: 'Chi Blast',
-    abilityDescription: 'Channel a piercing golden beam after a windup.',
+    abilityDescription:
+      'Stand still to build stillness stacks. Channel a golden beam — 3 stacks add a slow on hit.',
   },
   {
     id: 'taj',
@@ -49,8 +50,9 @@ export const CHARACTERS: CharacterDefinition[] = [
     sprite: 'heads/taj.png',
     initials: 'TJ',
     abilityId: 'doomscroll',
-    abilityName: 'Doomscroll',
-    abilityDescription: 'Send a deadly vertical reel across the arena.',
+    abilityName: 'Story Shield',
+    abilityDescription:
+      'E deploys a playing reel shield for 5.5s (blocks shots). Press E again to post it forward.',
   },
   {
     id: 'finn',
@@ -60,7 +62,8 @@ export const CHARACTERS: CharacterDefinition[] = [
     initials: 'FN',
     abilityId: 'cheeky_dinghy',
     abilityName: 'Cheeky Dinghy',
-    abilityDescription: 'Summon a speedboat and ram enemies around the map.',
+    abilityDescription:
+      'Summon a speedboat — ram enemies, but you cannot shoot. Hangover slows you briefly after.',
   },
 ];
 

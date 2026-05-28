@@ -357,6 +357,74 @@ export class VfxManager {
     this.bursts.push({ node: gfx, life: 0.45, maxLife: 0.45, fadeOnly: true });
   }
 
+  emitChiBeam(originX: number, originY: number, endX: number, endY: number, halfWidth: number) {
+    const gfx = new Graphics();
+    const dx = endX - originX;
+    const dy = endY - originY;
+    const angle = Math.atan2(dy, dx);
+    const length = Math.hypot(dx, dy);
+    gfx.roundRect(0, -halfWidth, length, halfWidth * 2, halfWidth * 0.35)
+      .fill({ color: 0xffd700, alpha: 0.35 })
+      .roundRect(0, -halfWidth * 0.45, length, halfWidth * 0.9, halfWidth * 0.2)
+      .fill({ color: 0xfff8dc, alpha: 0.85 });
+    gfx.position.set(originX, originY);
+    gfx.rotation = angle;
+    this.layer.addChild(gfx);
+    this.bursts.push({ node: gfx, life: 0.4, maxLife: 0.4, fadeOnly: true });
+  }
+
+  emitChiChannel(x: number, y: number, radius: number) {
+    const gfx = new Graphics();
+    gfx.circle(0, 0, radius)
+      .stroke({ color: 0xffcc00, width: 3, alpha: 0.55 })
+      .circle(0, 0, radius * 0.65)
+      .stroke({ color: 0xffffff, width: 1.5, alpha: 0.35 });
+    gfx.position.set(x, y);
+    this.layer.addChild(gfx);
+    this.bursts.push({ node: gfx, life: 0.25, maxLife: 0.25, fadeOnly: true });
+  }
+
+  emitReelShield(x: number, y: number, radius: number) {
+    const gfx = new Graphics();
+    gfx.roundRect(-radius * 0.35, -radius, radius * 0.7, radius * 2, 8)
+      .fill({ color: 0x1a1a1a, alpha: 0.82 })
+      .roundRect(-radius * 0.35, -radius, radius * 0.7, radius * 2, 8)
+      .stroke({ color: 0xff5050, width: 2.5, alpha: 0.75 });
+    for (let i = -2; i <= 2; i += 1) {
+      gfx.rect(-radius * 0.28, i * radius * 0.38, radius * 0.56, radius * 0.12)
+        .fill({ color: i % 2 === 0 ? 0xff7090 : 0x303030, alpha: 0.65 });
+    }
+    gfx.position.set(x, y);
+    this.layer.addChild(gfx);
+    this.bursts.push({ node: gfx, life: 0.35, maxLife: 0.35, fadeOnly: true });
+  }
+
+  emitReelPost(x: number, y: number, radius: number) {
+    const gfx = new Graphics();
+    gfx.roundRect(-radius * 0.4, -radius * 0.9, radius * 0.8, radius * 1.8, 10)
+      .fill({ color: 0xff4060, alpha: 0.55 })
+      .roundRect(-radius * 0.4, -radius * 0.9, radius * 0.8, radius * 1.8, 10)
+      .stroke({ color: 0xffffff, width: 2, alpha: 0.6 });
+    gfx.position.set(x, y);
+    this.layer.addChild(gfx);
+    this.bursts.push({ node: gfx, life: 0.35, maxLife: 0.35, fadeOnly: false });
+  }
+
+  emitBoatSplash(x: number, y: number, radius: number) {
+    const gfx = new Graphics();
+    for (let i = 0; i < 8; i += 1) {
+      const angle = (i / 8) * Math.PI * 2;
+      const dist = radius * (0.45 + (i % 3) * 0.12);
+      gfx.circle(Math.cos(angle) * dist, Math.sin(angle) * dist, 3 + (i % 2))
+        .fill({ color: i % 2 === 0 ? 0xc8f0ff : 0x5ec8ff, alpha: 0.75 });
+    }
+    gfx.circle(0, 0, radius * 0.35)
+      .fill({ color: 0xe8fcff, alpha: 0.5 });
+    gfx.position.set(x, y);
+    this.layer.addChild(gfx);
+    this.bursts.push({ node: gfx, life: 0.45, maxLife: 0.45, fadeOnly: true });
+  }
+
   emitMoveDust(feetX: number, feetY: number, moveAngle: number, accentColor: number) {
     const gfx = new Graphics();
     const behindX = -Math.cos(moveAngle) * 14;
