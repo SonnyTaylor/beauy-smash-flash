@@ -1,0 +1,11 @@
+{
+  "identifier": "default",
+  "description": "Default permissions for Beauy Smash Flash",
+  "local": true,
+  "windows": ["*"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-emit",
+    "core:event:default"
+  ]
+}

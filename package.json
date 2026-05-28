@@ -1,0 +1,20 @@
+{
+  "name": "lan-arena-test",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bunx vite",
+    "build": "bunx vite build",
+    "preview": "bunx vite preview",
+    "tauri": "bunx tauri",
+    "test-mp": "pwsh -ExecutionPolicy Bypass -File scripts/test-multiplayer.ps1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "vite": "^5"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-shell": "^2"
+  }
+}
