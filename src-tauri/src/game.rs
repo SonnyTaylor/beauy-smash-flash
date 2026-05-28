@@ -29,7 +29,32 @@ pub const HORDE_BASE_ZOMBIES: u16 = 3;
 pub const HORDE_WAVE_SCALE: u16 = 1;
 pub const HORDE_SPAWN_STAGGER_SECS: f32 = 0.65;
 
+pub const LUCA_MAX_HP: u16 = 1;
+pub const LUCA_SPEED_MULT: f32 = 0.42;
+
 const BOT_CHARACTERS: [&str; 6] = ["sonny", "bailey", "jacob", "isaak", "taj", "finn"];
+
+pub fn is_luca_character(character_id: &str) -> bool {
+    character_id == "luca"
+}
+
+fn max_hp_for_character(character_id: &str) -> u16 {
+    if is_luca_character(character_id) {
+        LUCA_MAX_HP
+    } else {
+        PLAYER_MAX_HP
+    }
+}
+
+fn strip_player_weapons(player: &mut Player) {
+    player.primary = None;
+    player.secondary = None;
+    player.active_slot = ActiveSlot::Primary;
+    player.ammo = 0;
+    player.max_ammo = 0;
+    player.reload_timer = 0.0;
+    player.fire_cooldown = 0.0;
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BotNavState {
@@ -128,6 +153,8 @@ pub struct WorldEffect {
     pub target_x: f32,
     pub target_y: f32,
     pub max_life: f32,
+    /// Server-only: players already damaged by a traveling reel post.
+    pub hit_players: Vec<u8>,
 }
 
 impl WorldEffect {
@@ -153,6 +180,7 @@ impl WorldEffect {
             target_x: x,
             target_y: y,
             max_life: life,
+            hit_players: Vec::new(),
         }
     }
 }
@@ -248,8 +276,18 @@ impl Player {
         spawn: (f32, f32),
     ) -> Self {
         let primary_id = weapons::validate_weapon_id(&primary_weapon_id);
-        let primary = weapons::primary_slot_for(&primary_id);
-        let weapon = weapons::get_or_default(&primary.weapon_id);
+        let primary = if is_luca_character(&character_id) {
+            None
+        } else {
+            Some(weapons::primary_slot_for(&primary_id))
+        };
+        let max_hp = max_hp_for_character(&character_id);
+        let (ammo, max_ammo) = if let Some(slot) = primary.as_ref() {
+            let weapon = weapons::get_or_default(&slot.weapon_id);
+            (weapon.max_ammo, weapon.max_ammo)
+        } else {
+            (0, 0)
+        };
         Self {
             id,
             x: spawn.0,
@@ -260,13 +298,13 @@ impl Player {
             character_id,
             pending_character_id: None,
             loadout_primary_weapon_id: primary_id,
-            hp: PLAYER_MAX_HP,
-            max_hp: PLAYER_MAX_HP,
-            primary: Some(primary),
+            hp: max_hp,
+            max_hp,
+            primary,
             secondary: None,
             active_slot: ActiveSlot::Primary,
-            ammo: weapon.max_ammo,
-            max_ammo: weapon.max_ammo,
+            ammo,
+            max_ammo,
             score: 0,
             kills: 0,
             deaths: 0,
@@ -537,6 +575,17 @@ impl Player {
             return;
         }
 
+        if is_luca_character(&self.character_id) {
+            self.max_hp = LUCA_MAX_HP;
+            self.hp = LUCA_MAX_HP;
+            strip_player_weapons(self);
+            return;
+        }
+
+        self.max_hp = PLAYER_MAX_HP;
+        if self.hp > PLAYER_MAX_HP {
+            self.hp = PLAYER_MAX_HP;
+        }
         let new_primary = weapons::primary_slot_for(&self.loadout_primary_weapon_id);
         self.primary = Some(new_primary);
         self.active_slot = ActiveSlot::Primary;
@@ -920,11 +969,16 @@ impl GameWorld {
             player.apply_pending_character();
             player.x = spawn.0;
             player.y = spawn.1;
-            player.hp = PLAYER_MAX_HP;
-            player.primary = Some(weapons::primary_slot_for(&player.loadout_primary_weapon_id));
-            player.secondary = None;
-            player.active_slot = ActiveSlot::Primary;
-            player.apply_active_slot_to_combat_state();
+            player.max_hp = max_hp_for_character(&player.character_id);
+            player.hp = player.max_hp;
+            if is_luca_character(&player.character_id) {
+                strip_player_weapons(player);
+            } else {
+                player.primary = Some(weapons::primary_slot_for(&player.loadout_primary_weapon_id));
+                player.secondary = None;
+                player.active_slot = ActiveSlot::Primary;
+                player.apply_active_slot_to_combat_state();
+            }
             player.alive = true;
             player.fire_cooldown = 0.0;
             player.reload_timer = 0.0;
@@ -990,7 +1044,7 @@ impl GameWorld {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        if !player.alive || is_casting(player) {
+        if !player.alive || is_casting(player) || is_luca_character(&player.character_id) {
             return;
         }
         let other = player.active_slot.toggle();
@@ -1006,7 +1060,7 @@ impl GameWorld {
 
     fn try_drop_weapon(&mut self, id: u8) {
         let Some((angle, x, y, dropped)) = self.players.get(&id).and_then(|player| {
-            if !player.alive || is_casting(player) {
+            if !player.alive || is_casting(player) || is_luca_character(&player.character_id) {
                 return None;
             }
             let slot = player.slot_state(player.active_slot)?.clone();
@@ -1035,7 +1089,7 @@ impl GameWorld {
             let Some(player) = self.players.get(&id) else {
                 return;
             };
-            if !player.alive || is_casting(player) {
+            if !player.alive || is_casting(player) || is_luca_character(&player.character_id) {
                 return;
             }
             self.nearest_pickup_index(player.x, player.y)
@@ -1275,6 +1329,8 @@ impl GameWorld {
                 PLAYER_SPEED * abilities::JACOB_DIRECTORS_CUT_SPEED
             } else if player.is_zombie {
                 PLAYER_SPEED * ZOMBIE_SPEED_MULT
+            } else if is_luca_character(&player.character_id) {
+                PLAYER_SPEED * LUCA_SPEED_MULT
             } else {
                 PLAYER_SPEED
             };
@@ -3344,5 +3400,75 @@ mod tests {
         let zombie = world.players.get(&200).unwrap();
         assert!(zombie.hp < zombie.max_hp);
         assert!(world.bullets.is_empty());
+    }
+
+    #[test]
+    fn luca_spawns_with_one_hp_and_no_weapons() {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Luca".to_string(),
+            "luca".to_string(),
+            "glock".to_string(),
+        );
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.max_hp, LUCA_MAX_HP);
+        assert_eq!(player.hp, LUCA_MAX_HP);
+        assert!(player.primary.is_none());
+        assert!(player.secondary.is_none());
+    }
+
+    #[test]
+    fn luca_cannot_pick_up_weapons() {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Luca".to_string(),
+            "luca".to_string(),
+            "glock".to_string(),
+        );
+        world.weapon_pickups.push(WeaponPickup {
+            id: 1,
+            weapon_id: "glock".to_string(),
+            x: world.players.get(&0).unwrap().x,
+            y: world.players.get(&0).unwrap().y,
+            ammo: 12,
+            max_ammo: 12,
+        });
+
+        world.inputs.insert(
+            0,
+            InputSnapshot {
+                interact: true,
+                ..Default::default()
+            },
+        );
+        world.process_weapon_interactions();
+
+        let player = world.players.get(&0).unwrap();
+        assert!(player.primary.is_none());
+        assert_eq!(world.weapon_pickups.len(), 1);
+    }
+
+    #[test]
+    fn luca_loadout_strips_weapons_when_selected() {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Host".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
+        world.players.get_mut(&0).unwrap().apply_loadout(
+            "luca".to_string(),
+            "glock".to_string(),
+            false,
+        );
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.character_id, "luca");
+        assert_eq!(player.max_hp, LUCA_MAX_HP);
+        assert!(player.primary.is_none());
     }
 }

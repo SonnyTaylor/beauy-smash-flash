@@ -1,5 +1,6 @@
 import { type CSSProperties } from 'react';
 import { getCharacter, rgbCss } from '../character';
+import { isLucaCharacter } from '../../content/characters';
 import { EditableName } from '../components/EditableName';
 import type { SessionKind } from '../navigation';
 import { CharacterGrid } from './CharacterGrid';
@@ -35,6 +36,7 @@ export function LoadoutScreen({
   onContinue: () => void;
 }) {
   const character = getCharacter(selectedCharacterId);
+  const isLuca = isLucaCharacter(selectedCharacterId);
   const isHost = sessionKind === 'host';
   const inSession = mode === 'session';
 
@@ -104,9 +106,15 @@ export function LoadoutScreen({
           <section className="loadout-section loadout-section-weapon">
             <header className="panel-heading">
               <h3>Weapon</h3>
-              <span>{inSession ? 'Swaps on save' : 'Your starting weapon'}</span>
+              <span>{isLuca ? 'Not for Luca' : inSession ? 'Swaps on save' : 'Your starting weapon'}</span>
             </header>
-            <WeaponPicker selectedWeaponId={selectedWeaponId} onSelect={onWeaponChange} />
+            {isLuca ? (
+              <p className="setting-hint loadout-luca-weapon-note">
+                Luca cannot equip weapons. You will spawn unarmed with 1 HP and reduced speed.
+              </p>
+            ) : (
+              <WeaponPicker selectedWeaponId={selectedWeaponId} onSelect={onWeaponChange} />
+            )}
           </section>
         </div>
 

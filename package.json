@@ -10,6 +10,7 @@
     "maps:validate": "bun scripts/maps-cli.ts validate",
     "maps:preview": "bun scripts/maps-cli.ts preview",
     "maps:list": "bun scripts/maps-cli.ts list",
+    "assets:luca": "python scripts/process-luca.py",
     "assets:glock": "python scripts/process-glock.py",
     "assets:yoghurt": "python scripts/process-yoghurt.py",
     "assets:weapon": "python scripts/process-weapon.py",

@@ -1,6 +1,6 @@
 import type { CharacterDefinition } from '../shared/types';
 
-export const CHARACTERS: CharacterDefinition[] = [
+export const PLAYABLE_CHARACTERS: CharacterDefinition[] = [
   {
     id: 'sonny',
     name: 'Sonny',
@@ -68,19 +68,42 @@ export const CHARACTERS: CharacterDefinition[] = [
       'Speedboat for 4s — ram for 40 dmg (refunds charge). Cannot shoot; shorter hangover after.',
   },
   {
-    id: 'zombie',
-    name: 'Zombie',
-    color: [80, 200, 60],
-    sprite: 'heads/finn.png',
-    initials: 'Z',
+    id: 'luca',
+    name: 'Luca',
+    color: [100, 140, 70],
+    sprite: 'heads/luca.png',
+    initials: 'LC',
     abilityId: 'none',
-    abilityName: 'Shamble',
-    abilityDescription: 'Slow, hungry, and armed with claws.',
+    abilityName: 'Existing',
+    abilityDescription:
+      '1 HP. No gun. Slow legs. Charge fills anyway — E still does nothing.',
   },
 ];
 
-const CHARACTER_BY_ID = new Map(CHARACTERS.map((character) => [character.id, character]));
+/** Horde-only NPC — not selectable in loadout or lobby. */
+export const ZOMBIE_CHARACTER: CharacterDefinition = {
+  id: 'zombie',
+  name: 'Zombie',
+  color: [80, 200, 60],
+  sprite: 'heads/luca.png',
+  initials: 'Z',
+  abilityId: 'none',
+  abilityName: 'Shamble',
+  abilityDescription: 'Slow, hungry, and armed with claws.',
+};
+
+export const ALL_CHARACTERS: CharacterDefinition[] = [...PLAYABLE_CHARACTERS, ZOMBIE_CHARACTER];
+
+const CHARACTER_BY_ID = new Map(ALL_CHARACTERS.map((character) => [character.id, character]));
 
 export function getCharacter(id: string | undefined): CharacterDefinition {
-  return CHARACTER_BY_ID.get(id ?? '') ?? CHARACTERS[0];
+  return CHARACTER_BY_ID.get(id ?? '') ?? PLAYABLE_CHARACTERS[0];
+}
+
+export function isPlayableCharacterId(id: string | undefined): boolean {
+  return PLAYABLE_CHARACTERS.some((character) => character.id === id);
+}
+
+export function isLucaCharacter(id: string | undefined): boolean {
+  return id === 'luca';
 }

@@ -11,6 +11,7 @@ pub const CHARGE_ON_KILL: f32 = 25.0;
 pub const CHARGE_ON_DAMAGE: f32 = 4.0;
 pub const CHARGE_PASSIVE_PER_SEC: f32 = 6.0;
 pub const BAILEY_CHARGE_PASSIVE_PER_SEC: f32 = 3.25;
+pub const LUCA_CHARGE_PASSIVE_PER_SEC: f32 = 1.5;
 pub const BAILEY_CHARGE_ON_KILL: f32 = 15.0;
 pub const TAJ_CHARGE_PASSIVE_IDLE: f32 = 9.0;
 pub const TAJ_IDLE_SHOT_THRESHOLD: f32 = 0.5;
@@ -87,6 +88,9 @@ const BOAT_SPLASH_VFX_LIFE: f32 = 0.45;
 
 pub fn add_charge(player: &mut Player, amount: f32) {
     if !player.alive {
+        return;
+    }
+    if player.character_id == "jacob" && in_directors_cut(player) {
         return;
     }
     player.ability_charge = (player.ability_charge + amount).min(ABILITY_CHARGE_MAX);
@@ -180,7 +184,7 @@ pub fn passive_charge_tick(
     }
 
     for player in players.values_mut() {
-        if player.alive && player.ability_windup <= 0.0 {
+        if player.alive && player.ability_windup <= 0.0 && !in_directors_cut(player) {
             let rate = passive_charge_rate(player, inputs);
             add_charge(player, rate * dt);
         }
@@ -215,6 +219,7 @@ pub fn tick_character_passives(
 fn passive_charge_rate(player: &Player, _inputs: &HashMap<u8, InputSnapshot>) -> f32 {
     match player.character_id.as_str() {
         "bailey" => BAILEY_CHARGE_PASSIVE_PER_SEC,
+        "luca" => LUCA_CHARGE_PASSIVE_PER_SEC,
         "taj" if player.last_shot_timer >= TAJ_IDLE_SHOT_THRESHOLD => TAJ_CHARGE_PASSIVE_IDLE,
         _ => CHARGE_PASSIVE_PER_SEC,
     }
@@ -511,7 +516,6 @@ pub fn apply_shield_block(world: &mut GameWorld, owner_id: u8, damage: u16, _cx:
 
 pub fn process_projectile_effects(world: &mut GameWorld, dt: f32) {
     let mut detonations: Vec<(u8, f32, f32)> = Vec::new();
-    let mut reel_posts: Vec<(u8, f32, f32, f32, f32)> = Vec::new();
 
     for effect in &mut world.effects {
         if effect.kind == EffectKind::ReelPost {
@@ -521,16 +525,6 @@ pub fn process_projectile_effects(world: &mut GameWorld, dt: f32) {
             let travel = REEL_POST_RANGE * progress;
             effect.x = effect.origin_x + effect.target_x * travel;
             effect.y = effect.origin_y + effect.target_y * travel;
-
-            if effect.life <= 0.0 {
-                reel_posts.push((
-                    effect.owner_id,
-                    effect.x,
-                    effect.y,
-                    effect.target_x,
-                    effect.target_y,
-                ));
-            }
             continue;
         }
 
@@ -550,17 +544,45 @@ pub fn process_projectile_effects(world: &mut GameWorld, dt: f32) {
         }
     }
 
+    let reel_snapshots: Vec<(u32, u8, f32, f32, f32, f32, Vec<u8>)> = world
+        .effects
+        .iter()
+        .filter(|effect| effect.kind == EffectKind::ReelPost)
+        .map(|effect| {
+            (
+                effect.id,
+                effect.owner_id,
+                effect.x,
+                effect.y,
+                effect.target_x,
+                effect.target_y,
+                effect.hit_players.clone(),
+            )
+        })
+        .collect();
+
+    let mut reel_hits: Vec<(u8, f32, f32, u8)> = Vec::new();
+    for (effect_id, owner_id, x, y, dir_x, dir_y, already_hit) in reel_snapshots {
+        for victim_id in find_reel_post_contacts(world, owner_id, x, y, &already_hit) {
+            if let Some(effect) = world.effects.iter_mut().find(|effect| effect.id == effect_id)
+            {
+                effect.hit_players.push(victim_id);
+            }
+            reel_hits.push((owner_id, dir_x, dir_y, victim_id));
+        }
+    }
+
     world.effects.retain(|effect| {
         (effect.kind != EffectKind::TruthNuke || effect.life > 0.0)
             && (effect.kind != EffectKind::ReelPost || effect.life > 0.0)
     });
 
-    for (owner_id, x, y) in detonations {
-        detonate_bailey_nuke(world, owner_id, x, y);
+    for (owner_id, dir_x, dir_y, victim_id) in reel_hits {
+        apply_reel_post_hit(world, owner_id, victim_id, dir_x, dir_y);
     }
 
-    for (owner_id, x, y, dir_x, dir_y) in reel_posts {
-        apply_reel_post_hit(world, owner_id, x, y, dir_x, dir_y);
+    for (owner_id, x, y) in detonations {
+        detonate_bailey_nuke(world, owner_id, x, y);
     }
 }
 
@@ -639,6 +661,7 @@ fn post_taj_reel_shield(world: &mut GameWorld, player_id: u8) {
         target_x: dir_x,
         target_y: dir_y,
         max_life: 0.55,
+        hit_players: Vec::new(),
     });
 }
 
@@ -710,6 +733,7 @@ fn fire_isaak_chi_blast(world: &mut GameWorld, player_id: u8, dir_x: f32, dir_y:
         target_x: end_x.0,
         target_y: end_x.1,
         max_life: ISAAC_CHI_VFX_LIFE,
+        hit_players: Vec::new(),
     });
 
     if let Some((victim_id, hit_x, hit_y, _)) = hit {
@@ -764,44 +788,34 @@ fn emit_isaak_channel_pulse(world: &mut GameWorld, player_id: u8) {
     ));
 }
 
-fn apply_reel_post_hit(
-    world: &mut GameWorld,
+fn find_reel_post_contacts(
+    world: &GameWorld,
     owner_id: u8,
     x: f32,
     y: f32,
-    dir_x: f32,
-    dir_y: f32,
-) {
-    if !world.friendly_fire {
-        return;
-    }
-
-    let victims: Vec<u8> = world
+    already_hit: &[u8],
+) -> Vec<u8> {
+    let hit_radius = REEL_SHIELD_HALF_WIDTH * 0.85;
+    world
         .players
         .values()
         .filter(|player| {
             player.alive
                 && player.id != owner_id
                 && !player.spawn_protected()
-                && circle_hits_circle(
-                    player.x,
-                    player.y,
-                    PLAYER_RADIUS,
-                    x,
-                    y,
-                    REEL_SHIELD_HALF_WIDTH * 0.85,
-                )
+                && !already_hit.contains(&player.id)
+                && circle_hits_circle(player.x, player.y, PLAYER_RADIUS, x, y, hit_radius)
         })
         .map(|player| player.id)
-        .collect();
+        .collect()
+}
 
-    for victim_id in victims {
-        world.apply_damage(owner_id, victim_id, REEL_POST_DAMAGE);
-        apply_knockback(world, victim_id, dir_x, dir_y, REEL_POST_KNOCKBACK);
-        if let Some(victim) = world.players.get_mut(&victim_id) {
-            victim.slowed_until = victim.slowed_until.max(REEL_POST_SLOW_DURATION);
-            victim.slow_multiplier = REEL_POST_SLOW_MULT;
-        }
+fn apply_reel_post_hit(world: &mut GameWorld, owner_id: u8, victim_id: u8, dir_x: f32, dir_y: f32) {
+    world.apply_damage(owner_id, victim_id, REEL_POST_DAMAGE);
+    apply_knockback(world, victim_id, dir_x, dir_y, REEL_POST_KNOCKBACK);
+    if let Some(victim) = world.players.get_mut(&victim_id) {
+        victim.slowed_until = victim.slowed_until.max(REEL_POST_SLOW_DURATION);
+        victim.slow_multiplier = REEL_POST_SLOW_MULT;
     }
 }
 
@@ -1107,6 +1121,7 @@ fn launch_bailey_nuke(
         target_x,
         target_y,
         max_life: BAILEY_NUKE_FLIGHT,
+        hit_players: Vec::new(),
     });
 }
 
@@ -1162,6 +1177,7 @@ fn activate_sonny_reverse_shell(world: &mut GameWorld, caster_id: u8, x: f32, y:
         target_x: tx,
         target_y: ty,
         max_life: SONNY_HACK_VFX_LIFE,
+        hit_players: Vec::new(),
     });
 }
 
@@ -1458,5 +1474,68 @@ mod tests {
         assert!(blocked.is_some());
         apply_shield_block(&mut world, 0, 25, 344.0, 300.0);
         assert!(world.players.get(&0).unwrap().reel_shield_hp < REEL_SHIELD_HP);
+    }
+
+    #[test]
+    fn taj_reel_post_damages_while_friendly_fire_off() {
+        let mut world = test_world_with_taj();
+        world.friendly_fire = false;
+        world.add_player(
+            1,
+            "Victim".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
+        if let Some(victim) = world.players.get_mut(&1) {
+            victim.spawn_protection = 0.0;
+            victim.x = 420.0;
+            victim.y = 300.0;
+        }
+
+        post_taj_reel_shield(&mut world, 0);
+        assert!(world
+            .effects
+            .iter()
+            .any(|effect| effect.kind == EffectKind::ReelPost));
+
+        for _ in 0..40 {
+            process_projectile_effects(&mut world, 1.0 / 60.0);
+        }
+
+        assert!(world.players.get(&1).unwrap().hp < crate::game::PLAYER_MAX_HP);
+    }
+
+    #[test]
+    fn jacob_does_not_recharge_during_directors_cut() {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Jacob".to_string(),
+            "jacob".to_string(),
+            "glock".to_string(),
+        );
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            crate::protocol::Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        if let Some(player) = world.players.get_mut(&0) {
+            player.spawn_protection = 0.0;
+            player.ability_charge = ABILITY_CHARGE_MAX;
+        }
+
+        activate_jacob_directors_cut(&mut world, 0);
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.ability_charge, 0.0);
+        assert!(in_directors_cut(player));
+
+        passive_charge_tick(&mut world.players, &HashMap::new(), 5.0, false);
+        add_charge(world.players.get_mut(&0).unwrap(), CHARGE_ON_DAMAGE);
+
+        assert_eq!(world.players.get(&0).unwrap().ability_charge, 0.0);
     }
 }

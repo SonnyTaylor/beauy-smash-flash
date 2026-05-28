@@ -1,5 +1,5 @@
 import { Application, ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
-import { CHARACTERS, getCharacter } from '../content/characters';
+import { ALL_CHARACTERS, getCharacter } from '../content/characters';
 import { FINN_BOAT, finnBoatAssetUrl } from '../content/finn-boat';
 import { getMap, getMapTheme } from '../content/maps';
 import { getWeapon, listWeapons, weaponOrbitPosition } from '../content/weapons';
@@ -1493,7 +1493,7 @@ export class ArenaRenderer {
       }),
     );
     await Promise.all(
-      CHARACTERS.map(async (character) => {
+      ALL_CHARACTERS.map(async (character) => {
         const texture = await loadTextureFromUrl(assetUrl(character.sprite));
         if (texture) {
           this.headTextures.set(character.sprite, texture);

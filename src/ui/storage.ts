@@ -1,4 +1,4 @@
-import { CHARACTERS } from '../content/characters';
+import { isPlayableCharacterId, PLAYABLE_CHARACTERS } from '../content/characters';
 import { DEFAULT_WEAPON_ID } from '../content/weapons';
 import { DEFAULT_GAME_SETTINGS, type GameSettings } from '../shared/types';
 
@@ -26,13 +26,13 @@ export function writeStoredName(value: string): void {
 export function readStoredCharacterId(): string {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY_CHARACTER);
-    if (stored && CHARACTERS.some((character) => character.id === stored)) {
+    if (stored && isPlayableCharacterId(stored)) {
       return stored;
     }
   } catch {
     /* localStorage unavailable */
   }
-  return CHARACTERS[0].id;
+  return PLAYABLE_CHARACTERS[0].id;
 }
 
 export function writeStoredCharacterId(value: string): void {

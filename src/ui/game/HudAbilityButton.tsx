@@ -26,7 +26,8 @@ export function HudAbilityButton({
   stillnessStacks?: number;
 }) {
   const clampedCharge = Math.max(0, Math.min(100, charge));
-  const ready = clampedCharge >= 100;
+  const noAbility = character.abilityId === 'none';
+  const ready = !noAbility && clampedCharge >= 100;
   const casting = windup > 0;
   const inDirectorsCut = directorsCutShots != null && directorsCutShots > 0;
   const inBoat = (boatModeRemaining ?? 0) > 0;
@@ -70,7 +71,7 @@ export function HudAbilityButton({
 
   return (
     <div
-      className={`hud-ability-wrap ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''}`}
+      className={`hud-ability-wrap ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''} ${noAbility ? 'is-no-ability' : ''}`}
       style={{ '--accent': rgbCss(character.color) } as React.CSSProperties}
     >
       {character.id === 'isaak' && !casting && !inBoat && (
@@ -99,8 +100,11 @@ export function HudAbilityButton({
             }}
           />
           <span aria-hidden>{character.initials}</span>
-          {!ready && !casting && !inDirectorsCut && !inBoat && !hasShield && (
+          {!ready && !casting && !inDirectorsCut && !inBoat && !hasShield && !noAbility && (
             <div className="hud-ability-percent">{Math.round(clampedCharge)}%</div>
+          )}
+          {noAbility && !casting && (
+            <div className="hud-ability-percent">—</div>
           )}
           {inDirectorsCut && (
             <div className="hud-ability-percent">{directorsCutShots}</div>

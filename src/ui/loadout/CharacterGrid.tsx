@@ -1,5 +1,5 @@
 import { type CSSProperties } from 'react';
-import { CHARACTERS } from '../../content/characters';
+import { PLAYABLE_CHARACTERS } from '../../content/characters';
 import { rgbCss } from '../character';
 
 export function CharacterGrid({
@@ -11,7 +11,7 @@ export function CharacterGrid({
 }) {
   return (
     <div className="character-grid">
-      {CHARACTERS.map((character) => (
+      {PLAYABLE_CHARACTERS.map((character) => (
         <button
           key={character.id}
           type="button"

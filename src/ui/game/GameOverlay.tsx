@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterDefinition, GameSettings, PlayerSnapshot, StateSnapshot } from '../../shared/types';
 import { formatMatchTime } from '../constants';
 import { getCharacter } from '../character';
+import { isLucaCharacter } from '../../content/characters';
 import { MatchScoreboard } from './MatchScoreboard';
 import { HudPlayerCard } from './HudPlayerCard';
 import { HudAbilityButton } from './HudAbilityButton';
@@ -157,6 +158,7 @@ export function GameOverlay({
   const [pauseView, setPauseView] = useState<'menu' | 'settings'>('menu');
   const me = state?.players.find((player) => player.id === myId) ?? null;
   const character = getCharacter(me?.character_id ?? selectedCharacter.id);
+  const isLuca = isLucaCharacter(character.id);
   const pendingCharacter = me?.pending_character_id
     ? getCharacter(me.pending_character_id)
     : null;
@@ -458,12 +460,16 @@ export function GameOverlay({
                     maxHp={me.max_hp}
                     character={character}
                   />
-                  <HudWeaponBar
-                    activeWeapon={me.active_weapon ?? 'glock'}
-                    activeSlot={me.active_slot ?? 0}
-                    primary={me.primary_weapon}
-                    secondary={me.secondary_weapon}
-                  />
+                  {isLuca ? (
+                    <p className="hud-luca-note">Unarmed · 1 HP · slow</p>
+                  ) : (
+                    <HudWeaponBar
+                      activeWeapon={me.active_weapon ?? 'glock'}
+                      activeSlot={me.active_slot ?? 0}
+                      primary={me.primary_weapon}
+                      secondary={me.secondary_weapon}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -482,18 +488,20 @@ export function GameOverlay({
             </div>
 
             <div className="hud-zone hud-zone-bottom-right">
-              <HudAmmoReadout
-                ammo={me.ammo}
-                maxAmmo={me.max_ammo}
-                reloading={isReloading}
-                reloadRemaining={reloadRemaining}
-                reloadDuration={me.reload_duration ?? 1.2}
-              />
+              {!isLuca && (
+                <HudAmmoReadout
+                  ammo={me.ammo}
+                  maxAmmo={me.max_ammo}
+                  reloading={isReloading}
+                  reloadRemaining={reloadRemaining}
+                  reloadDuration={me.reload_duration ?? 1.2}
+                />
+              )}
             </div>
           </>
         )}
 
-        {!matchEnded && !paused && me && me.alive && (
+        {!matchEnded && !paused && me && me.alive && !isLuca && (
           <HudCrosshair
             character={character}
             reloading={isReloading}
@@ -512,18 +520,29 @@ export function GameOverlay({
             <kbd>WASD</kbd> move
             <span className="dot">·</span>
             <kbd>Mouse</kbd> aim
-            <span className="dot">·</span>
-            <kbd>LMB</kbd> fire
-            <span className="dot">·</span>
-            <kbd>R</kbd> reload
-            <span className="dot">·</span>
-            <kbd>Q</kbd> swap
-            <span className="dot">·</span>
-            <kbd>G</kbd> drop
-            <span className="dot">·</span>
-            <kbd>F</kbd> pick up
-            <span className="dot">·</span>
-            <kbd>E</kbd> {character.abilityName.toLowerCase()}
+            {isLuca ? (
+              <>
+                <span className="dot">·</span>
+                <kbd>E</kbd> existing
+                <span className="dot">·</span>
+                good luck
+              </>
+            ) : (
+              <>
+                <span className="dot">·</span>
+                <kbd>LMB</kbd> fire
+                <span className="dot">·</span>
+                <kbd>R</kbd> reload
+                <span className="dot">·</span>
+                <kbd>Q</kbd> swap
+                <span className="dot">·</span>
+                <kbd>G</kbd> drop
+                <span className="dot">·</span>
+                <kbd>F</kbd> pick up
+                <span className="dot">·</span>
+                <kbd>E</kbd> {character.abilityName.toLowerCase()}
+              </>
+            )}
             <span className="dot">·</span>
             <kbd>Tab</kbd> scores
             <span className="dot">·</span>

@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
-import { CHARACTERS } from '../../content/characters';
+import { PLAYABLE_CHARACTERS } from '../../content/characters';
 import { rgbCss } from '../character';
 import { clamp } from '../math';
 import {
@@ -16,7 +16,7 @@ export function FloatingHeads() {
   );
   const positionsRef = useRef<FloatingHeadPosition[]>([]);
   const initialPositions = useMemo(
-    () => createFloatingHeadPositions(CHARACTERS.length),
+    () => createFloatingHeadPositions(PLAYABLE_CHARACTERS.length),
     [],
   );
   const [positions, setPositions] = useState(initialPositions);
@@ -87,7 +87,7 @@ export function FloatingHeads() {
 
   return (
     <div ref={containerRef} className="floating-heads" aria-label="Floating character heads">
-      {CHARACTERS.map((character, index) => {
+      {PLAYABLE_CHARACTERS.map((character, index) => {
         const position = positions[index] ?? initialPositions[index];
         return (
           <div

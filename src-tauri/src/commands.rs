@@ -5,9 +5,9 @@ use tauri::Emitter;
 use tokio::net::UdpSocket;
 
 use crate::discovery::{discovery_loop, scan_servers as scan_lan_servers};
-use crate::network::best_local_ipv4;
 use crate::game::{validate_match_config, GameWorld};
 use crate::net::{decode_server, encode_client, encode_server, GAME_PORT};
+use crate::network::best_local_ipv4;
 use crate::protocol::{
     ClientMessage, InputSnapshot, LobbyConfig, ServerInfo, ServerMessage, SessionInfo,
 };
@@ -559,7 +559,7 @@ fn clean_character_id(character_id: Option<String>) -> String {
         Some("isaak") => "isaak",
         Some("taj") => "taj",
         Some("finn") | Some("cheeky_dinghy") => "finn",
-        Some("zombie") => "zombie",
+        Some("luca") => "luca",
         _ => "sonny",
     }
     .to_string()
