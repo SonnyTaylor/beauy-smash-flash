@@ -30,9 +30,10 @@ export function App() {
               isScanning={session.isScanning}
               scanMessage={session.scanMessage}
               isBusy={session.isBusy}
+              localIp={session.localIp}
               onJoinIpChange={session.setJoinIp}
               onScan={() => void session.scanForServers()}
-              onBack={() => session.setScreen('main-menu')}
+              onBack={() => void session.leaveLobby()}
               onContinue={(ip) => void session.createLobbySession('join', ip)}
             />
           )}

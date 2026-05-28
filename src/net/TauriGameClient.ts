@@ -79,6 +79,10 @@ export class TauriGameClient {
     await invoke('start_match');
   }
 
+  async stopSession(): Promise<void> {
+    await invoke('stop_session');
+  }
+
   dispose() {
     this.unlistenState?.();
     this.unlistenLobby?.();

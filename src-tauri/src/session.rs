@@ -42,6 +42,9 @@ pub struct AppState {
     pub my_id: u8,
     pub host_addr: Option<SocketAddr>,
     pub lobby_config: LobbyConfig,
+    pub host_task: Option<tokio::task::JoinHandle<()>>,
+    pub client_task: Option<tokio::task::JoinHandle<()>>,
+    pub discovery_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Default for AppState {
@@ -56,8 +59,34 @@ impl Default for AppState {
             my_id: 0,
             host_addr: None,
             lobby_config: LobbyConfig::default(),
+            host_task: None,
+            client_task: None,
+            discovery_task: None,
         }
     }
+}
+
+/// Tear down sockets and background loops so ports can be rebound (e.g. host again).
+pub async fn shutdown_session(state: &SharedState) {
+    let mut st = state.lock().await;
+    if let Some(handle) = st.host_task.take() {
+        handle.abort();
+    }
+    if let Some(handle) = st.client_task.take() {
+        handle.abort();
+    }
+    if let Some(handle) = st.discovery_task.take() {
+        handle.abort();
+    }
+    st.socket = None;
+    st.mode = SessionMode::Idle;
+    st.peers.clear();
+    st.ready_players.clear();
+    st.match_started = false;
+    st.host_addr = None;
+    st.my_id = 0;
+    st.world = GameWorld::default();
+    st.lobby_config = LobbyConfig::default();
 }
 
 impl AppState {

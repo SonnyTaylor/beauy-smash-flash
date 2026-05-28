@@ -14,6 +14,7 @@ fn main() {
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(session::AppState::default())))
         .invoke_handler(tauri::generate_handler![
+            commands::stop_session,
             commands::start_host,
             commands::join_game,
             commands::scan_servers,

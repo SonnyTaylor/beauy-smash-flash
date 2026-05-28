@@ -10,7 +10,15 @@ use crate::net::{decode_server, encode_client, encode_server, GAME_PORT};
 use crate::protocol::{
     ClientMessage, InputSnapshot, LobbyConfig, ServerInfo, ServerMessage, SessionInfo,
 };
-use crate::session::{client_loop, game_addr, host_loop, input_message, SessionMode, SharedState};
+use crate::session::{
+    client_loop, game_addr, host_loop, input_message, shutdown_session, SessionMode, SharedState,
+};
+
+#[tauri::command]
+pub async fn stop_session(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    shutdown_session(state.inner()).await;
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn start_host(
@@ -19,6 +27,8 @@ pub async fn start_host(
     window: tauri::Window,
     state: tauri::State<'_, SharedState>,
 ) -> Result<SessionInfo, String> {
+    shutdown_session(state.inner()).await;
+
     let socket = Arc::new(
         UdpSocket::bind(format!("0.0.0.0:{GAME_PORT}"))
             .await
@@ -45,13 +55,19 @@ pub async fn start_host(
     };
 
     let state_clone = state.inner().clone();
-    tokio::spawn(async move {
+    let host_handle = tokio::spawn(async move {
         host_loop(socket, state_clone, window).await;
     });
     let discovery_state = state.inner().clone();
-    tokio::spawn(async move {
+    let discovery_handle = tokio::spawn(async move {
         discovery_loop(discovery_state).await;
     });
+
+    {
+        let mut st = state.lock().await;
+        st.host_task = Some(host_handle);
+        st.discovery_task = Some(discovery_handle);
+    }
 
     Ok(info)
 }
@@ -64,6 +80,8 @@ pub async fn join_game(
     window: tauri::Window,
     state: tauri::State<'_, SharedState>,
 ) -> Result<SessionInfo, String> {
+    shutdown_session(state.inner()).await;
+
     let socket = Arc::new(
         UdpSocket::bind("0.0.0.0:0")
             .await
@@ -119,9 +137,14 @@ pub async fn join_game(
     };
 
     let state_clone = state.inner().clone();
-    tokio::spawn(async move {
+    let client_handle = tokio::spawn(async move {
         client_loop(socket, state_clone, window).await;
     });
+
+    {
+        let mut st = state.lock().await;
+        st.client_task = Some(client_handle);
+    }
 
     Ok(SessionInfo { player_id, world })
 }

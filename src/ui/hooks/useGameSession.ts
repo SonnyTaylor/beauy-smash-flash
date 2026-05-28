@@ -187,13 +187,25 @@ export function useGameSession() {
     }
   }
 
-  function leaveLobby() {
+  async function leaveLobby() {
+    try {
+      await client.stopSession();
+    } catch {
+      // Still navigate away if teardown fails.
+    }
+    if (inputTimerRef.current !== null) {
+      window.clearInterval(inputTimerRef.current);
+      inputTimerRef.current = null;
+    }
+    input.detach();
     setScreen('main-menu');
     setSessionInfo(null);
     sessionInfoRef.current = null;
     setLobby(null);
     setIsReady(false);
     setError(null);
+    setLatestState(null);
+    latestStateRef.current = null;
   }
 
   async function enterGame(initialState: StateSnapshot) {
@@ -225,6 +237,7 @@ export function useGameSession() {
   function backdropClass(): string {
     if (screen === 'main-menu') return 'landing-screen';
     if (screen === 'lobby') return 'lobby-screen';
+    if (screen === 'server-select') return 'flow-screen join-screen';
     return 'flow-screen';
   }
 

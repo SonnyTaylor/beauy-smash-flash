@@ -7,6 +7,7 @@ export function ServerSelectScreen({
   isScanning,
   scanMessage,
   isBusy,
+  localIp,
   onJoinIpChange,
   onScan,
   onBack,
@@ -17,6 +18,7 @@ export function ServerSelectScreen({
   isScanning: boolean;
   scanMessage: string;
   isBusy: boolean;
+  localIp?: string | null;
   onJoinIpChange: (value: string) => void;
   onScan: () => void;
   onBack: () => void;
@@ -24,16 +26,32 @@ export function ServerSelectScreen({
 }) {
   return (
     <>
-      <div className="brand-panel">
-        <p className="eyebrow">Join LAN</p>
+      <div className="brand-panel join-brand">
+        <p className="eyebrow">Join Game</p>
         <h1>
-          Pick
-          <span>A Host</span>
+          Find
+          <span>Your Host</span>
         </h1>
-        <p className="tagline">Scan the LAN for hosts, or punch in an IP directly.</p>
+        <p className="tagline">Hop on a mate&apos;s LAN game or punch in their IP if school WiFi blocks discovery.</p>
+        <ul className="join-tips">
+          <li>
+            <span className="join-tip-label">Scan</span>
+            <span>Broadcasts on UDP 5554 — works on home networks</span>
+          </li>
+          <li>
+            <span className="join-tip-label">Manual</span>
+            <span>Use the host&apos;s IP from their lobby screen</span>
+          </li>
+          {localIp && (
+            <li>
+              <span className="join-tip-label">You</span>
+              <span className="join-tip-ip">{localIp}</span>
+            </li>
+          )}
+        </ul>
       </div>
 
-      <div className="screen-card">
+      <div className="screen-card join-card">
         <ServerSelect
           servers={servers}
           joinIp={joinIp}
