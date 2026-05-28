@@ -5,11 +5,13 @@ export function UpdatePrompt({
   onInstall,
   onDismiss,
   onRetry,
+  onDismissError,
 }: {
   state: UpdatePromptState;
   onInstall: () => void;
   onDismiss: () => void;
   onRetry: () => void;
+  onDismissError?: () => void;
 }) {
   if (state.status === 'idle' || state.status === 'checking') {
     return null;
@@ -21,7 +23,7 @@ export function UpdatePrompt({
       <div className="update-prompt-backdrop" role="dialog" aria-label="Installing update">
         <div className="update-prompt-panel">
           <p className="screen-kicker">Updating</p>
-          <h2>Downloading…</h2>
+          <h2>Downloading {state.version}</h2>
           <div className="update-progress">
             <span style={{ width: `${percent}%` }} />
           </div>
@@ -36,13 +38,17 @@ export function UpdatePrompt({
       <div className="update-prompt-backdrop" role="dialog" aria-label="Update error">
         <div className="update-prompt-panel">
           <p className="screen-kicker">Update</p>
-          <h2>Couldn&apos;t check for updates</h2>
+          <h2>Couldn&apos;t install update</h2>
           <p className="setting-hint">{state.message}</p>
           <div className="update-prompt-actions">
             <button type="button" className="secondary-button" onClick={onRetry}>
               Try again
             </button>
-            <button type="button" className="ghost-button" onClick={onDismiss}>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={onDismissError ?? onDismiss}
+            >
               Dismiss
             </button>
           </div>

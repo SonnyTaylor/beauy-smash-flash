@@ -43,12 +43,20 @@ fn main() {
             .to_string()
             .replace('\\', "/");
         source.push_str(&format!(
-            "    (\"{id}\", include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/{relative}\"))),\n"
+            "    (\n        \"{id}\",\n        include_str!(concat!(\n            env!(\"CARGO_MANIFEST_DIR\"),\n            \"/{relative}\"\n        )),\n    ),\n"
         ));
     }
 
     source.push_str("];\n");
-    fs::write(&out_path, source).expect("Failed to write maps_embedded.rs");
+
+    let normalized = source.replace("\r\n", "\n");
+    let should_write = fs::read_to_string(&out_path)
+        .ok()
+        .map(|existing| existing.replace("\r\n", "\n") != normalized)
+        .unwrap_or(true);
+    if should_write {
+        fs::write(&out_path, &normalized).expect("Failed to write maps_embedded.rs");
+    }
 
     println!("cargo:rerun-if-changed={}", maps_dir.display());
     for (_, path) in &entries {

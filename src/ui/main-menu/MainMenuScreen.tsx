@@ -1,8 +1,8 @@
 import { CopyChip } from '../components/CopyChip';
 import { UpdatePrompt } from '../components/UpdatePrompt';
+import { VersionUpdatePanel } from '../components/VersionUpdatePanel';
 import { useAppInfo } from '../hooks/useAppInfo';
 import { useUpdatePrompt } from '../hooks/useUpdatePrompt';
-import { formatAppVersionLabel } from '../../shared/compatibility';
 import { FloatingHeads } from './FloatingHeads';
 import { MainMenu } from './MainMenu';
 
@@ -23,7 +23,7 @@ export function MainMenuScreen({
 }) {
   const appInfo = useAppInfo();
   const updatesEnabled = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-  const updatePrompt = useUpdatePrompt(updatesEnabled);
+  const updatePrompt = useUpdatePrompt(updatesEnabled, appInfo.app_version);
 
   return (
     <>
@@ -35,18 +35,26 @@ export function MainMenuScreen({
         isBusy={isBusy}
         error={error}
       />
-      <span className="app-version-chip">{formatAppVersionLabel(appInfo)}</span>
+      <VersionUpdatePanel
+        appInfo={appInfo}
+        status={updatePrompt.status}
+        onCheck={() => void updatePrompt.checkForUpdates({ manual: true })}
+        onInstall={() => void updatePrompt.installUpdate()}
+      />
       {localIp && (
         <div className="lan-ip">
           <CopyChip label="Your IP" value={localIp} className="meta-chip lan-ip-chip" />
         </div>
       )}
-      <UpdatePrompt
-        state={updatePrompt.state}
-        onInstall={() => void updatePrompt.installUpdate()}
-        onDismiss={updatePrompt.dismissUpdate}
-        onRetry={() => void updatePrompt.checkForUpdates()}
-      />
+      {updatePrompt.status.showPrompt && (
+        <UpdatePrompt
+          state={updatePrompt.status.promptState}
+          onInstall={() => void updatePrompt.installUpdate()}
+          onDismiss={updatePrompt.dismissUpdate}
+          onRetry={() => void updatePrompt.checkForUpdates({ manual: true })}
+          onDismissError={updatePrompt.dismissError}
+        />
+      )}
     </>
   );
 }

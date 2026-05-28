@@ -678,19 +678,134 @@ button:disabled {
   gap: 10px;
 }
 
-.app-version-chip {
+.version-update-panel {
   position: fixed;
   left: 18px;
   bottom: 14px;
   z-index: 4;
-  padding: 6px 10px;
+  display: grid;
+  gap: 10px;
+  width: min(280px, calc(100vw - 36px));
+  padding: 12px 14px;
   border: 1px solid var(--line);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    rgba(8, 11, 22, 0.82);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.version-update-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.version-update-badge {
+  padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(8, 11, 22, 0.72);
-  color: var(--muted);
+  background: rgba(67, 232, 93, 0.14);
+  border: 1px solid rgba(67, 232, 93, 0.35);
+  color: #b8ffc8;
   font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.version-update-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.version-update-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.version-update-row.is-highlight {
+  padding: 6px 8px;
+  margin: -2px -4px;
+  border-radius: 10px;
+  background: rgba(67, 232, 93, 0.08);
+  border: 1px solid rgba(67, 232, 93, 0.18);
+}
+
+.version-update-row.is-muted {
+  color: var(--muted);
   font-size: 0.74rem;
-  letter-spacing: 0.04em;
+}
+
+.version-update-label {
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.version-update-row strong {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.version-update-row strong.is-new {
+  color: #b8ffc8;
+}
+
+.version-update-row strong.is-current {
+  color: var(--cyan);
+}
+
+.version-update-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.version-update-button {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+}
+
+.version-update-download {
+  display: grid;
+  gap: 6px;
+}
+
+.version-update-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.version-update-hint.is-success {
+  color: #9ae6b4;
+}
+
+.version-update-error {
+  margin: 0;
+  color: #ff9d9d;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.version-update-notes {
+  margin: 0;
+  padding-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--mute-strong);
+  font-size: 0.72rem;
+  line-height: 1.4;
 }
 
 .update-prompt-backdrop {
