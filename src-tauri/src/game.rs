@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::f32::consts::FRAC_PI_2;
 
 use crate::abilities::{self, is_casting};
 use crate::protocol::{
@@ -8,6 +9,7 @@ use crate::protocol::{
 };
 use crate::weapons::{
     self, ActiveSlot, WeaponSlotState, DEFAULT_WEAPON_ID, DROP_FORWARD_OFFSET, PICKUP_RADIUS,
+    WEAPON_PICKUP_LIFETIME_SECS,
 };
 
 pub const DEFAULT_WORLD_WIDTH: f32 = 1920.0;
@@ -137,6 +139,7 @@ pub struct WeaponPickup {
     pub y: f32,
     pub ammo: u8,
     pub max_ammo: u8,
+    pub life: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -1018,7 +1021,49 @@ impl GameWorld {
             y,
             ammo: slot.ammo,
             max_ammo: weapons::max_ammo_for(&slot.weapon_id),
+            life: WEAPON_PICKUP_LIFETIME_SECS,
         });
+    }
+
+    fn drop_player_weapons_on_death(&mut self, id: u8) {
+        let drop_info = {
+            let Some(player) = self.players.get_mut(&id) else {
+                return;
+            };
+            if is_luca_character(&player.character_id) || player.is_zombie {
+                return;
+            }
+            player.save_ammo_to_active_slot();
+            let info = (
+                player.x,
+                player.y,
+                player.angle,
+                player.primary.clone(),
+                player.secondary.clone(),
+            );
+            strip_player_weapons(player);
+            info
+        };
+
+        let (x, y, angle, primary, secondary) = drop_info;
+        if let Some(slot) = primary {
+            let drop_x = x + angle.cos() * DROP_FORWARD_OFFSET;
+            let drop_y = y + angle.sin() * DROP_FORWARD_OFFSET;
+            self.spawn_weapon_pickup(drop_x, drop_y, &slot);
+        }
+        if let Some(slot) = secondary {
+            let side_angle = angle + FRAC_PI_2;
+            let drop_x = x + side_angle.cos() * DROP_FORWARD_OFFSET;
+            let drop_y = y + side_angle.sin() * DROP_FORWARD_OFFSET;
+            self.spawn_weapon_pickup(drop_x, drop_y, &slot);
+        }
+    }
+
+    fn tick_weapon_pickups(&mut self, dt: f32) {
+        for pickup in &mut self.weapon_pickups {
+            pickup.life = (pickup.life - dt).max(0.0);
+        }
+        self.weapon_pickups.retain(|pickup| pickup.life > 0.0);
     }
 
     fn nearest_pickup_index(&self, x: f32, y: f32) -> Option<usize> {
@@ -1132,6 +1177,7 @@ impl GameWorld {
             y: pickup.y,
             ammo: replaced.ammo,
             max_ammo: weapons::max_ammo_for(&replaced.weapon_id),
+            life: WEAPON_PICKUP_LIFETIME_SECS,
         };
         player.apply_active_slot_to_combat_state();
     }
@@ -1222,6 +1268,7 @@ impl GameWorld {
                 y: pickup.y,
                 ammo: pickup.ammo,
                 max_ammo: pickup.max_ammo,
+                life: WEAPON_PICKUP_LIFETIME_SECS,
             })
             .collect();
 
@@ -1277,6 +1324,7 @@ impl GameWorld {
         abilities::process_effects(self, dt);
         self.process_horde(dt);
         self.process_respawns(dt);
+        self.tick_weapon_pickups(dt);
         self.process_movement(dt);
         self.process_weapon_interactions();
         self.process_combat(dt);
@@ -2185,6 +2233,8 @@ impl GameWorld {
             victim.boat_rammed.clear();
             victim.hangover_until = 0.0;
         }
+
+        self.drop_player_weapons_on_death(victim_id);
 
         if let Some(killer) = self.players.get_mut(&killer_id) {
             killer.kills += 1;
@@ -3177,6 +3227,65 @@ mod tests {
     }
 
     #[test]
+    fn death_drops_weapons_with_remaining_ammo() {
+        let mut world = test_world_with_two_players();
+        {
+            let player = world.players.get_mut(&1).unwrap();
+            player.secondary = Some(WeaponSlotState {
+                weapon_id: "glock".to_string(),
+                ammo: 7,
+            });
+            player.ammo = 11;
+            player.save_ammo_to_active_slot();
+        }
+
+        world.apply_damage(0, 1, PLAYER_MAX_HP);
+
+        assert_eq!(world.weapon_pickups.len(), 2);
+        let primary_pickup = world
+            .weapon_pickups
+            .iter()
+            .find(|pickup| pickup.ammo == 11)
+            .expect("primary pickup");
+        let secondary_pickup = world
+            .weapon_pickups
+            .iter()
+            .find(|pickup| pickup.ammo == 7)
+            .expect("secondary pickup");
+        assert_eq!(primary_pickup.weapon_id, "glock");
+        assert_eq!(secondary_pickup.weapon_id, "glock");
+
+        let victim = world.players.get(&1).unwrap();
+        assert!(!victim.alive);
+        assert!(victim.primary.is_none());
+        assert!(victim.secondary.is_none());
+    }
+
+    #[test]
+    fn death_does_not_drop_weapons_for_luca() {
+        let mut world = test_world_with_two_players();
+        world.players.get_mut(&1).unwrap().apply_loadout(
+            "luca".to_string(),
+            "glock".to_string(),
+            true,
+        );
+
+        world.apply_damage(0, 1, LUCA_MAX_HP);
+
+        assert!(world.weapon_pickups.is_empty());
+    }
+
+    #[test]
+    fn weapon_pickups_despawn_after_lifetime() {
+        let mut world = test_world_with_two_players();
+        world.try_drop_weapon(0);
+
+        assert_eq!(world.weapon_pickups.len(), 1);
+        world.tick(WEAPON_PICKUP_LIFETIME_SECS + 0.1);
+        assert!(world.weapon_pickups.is_empty());
+    }
+
+    #[test]
     fn drop_only_weapon_leaves_player_unarmed() {
         let mut world = test_world_with_two_players();
         world.try_drop_weapon(0);
@@ -3220,6 +3329,7 @@ mod tests {
             y: world.players.get(&0).unwrap().y,
             ammo: 8,
             max_ammo: 17,
+            life: WEAPON_PICKUP_LIFETIME_SECS,
         });
 
         world.try_pickup_weapon(0);
@@ -3435,6 +3545,7 @@ mod tests {
             y: world.players.get(&0).unwrap().y,
             ammo: 12,
             max_ammo: 12,
+            life: WEAPON_PICKUP_LIFETIME_SECS,
         });
 
         world.inputs.insert(

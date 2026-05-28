@@ -163,11 +163,12 @@ export function GameOverlay({
     ? getCharacter(me.pending_character_id)
     : null;
   const matchEnded = state?.match_ended ?? false;
+  const humanPlayers = (state?.players ?? []).filter((player) => !player.is_zombie);
   const winner =
     state?.winner_id != null
-      ? (state.players.find((player) => player.id === state.winner_id) ?? null)
+      ? (humanPlayers.find((player) => player.id === state.winner_id) ?? null)
       : null;
-  const sortedScores = [...(state?.players ?? [])].sort(
+  const sortedScores = [...humanPlayers].sort(
     (a, b) => b.score - a.score || b.kills - a.kills,
   );
   const reloadRemaining = me?.reload_remaining ?? 0;
@@ -762,27 +763,29 @@ export function GameOverlay({
       {matchEnded && (
         <div className="game-over-backdrop" role="dialog" aria-label="Match over">
           <div className="game-over-panel game-over-panel-wide">
-            <p className="screen-kicker">Match Over</p>
-            <h2>{winner ? `${winner.name} wins` : 'Draw'}</h2>
-            <p className="game-over-subtitle">{endReasonLabel(state)}</p>
+            <div className="game-over-body">
+              <p className="screen-kicker">Match Over</p>
+              <h2>{winner ? `${winner.name} wins` : 'Draw'}</h2>
+              <p className="game-over-subtitle">{endReasonLabel(state)}</p>
 
-            <Podium players={state?.players ?? []} winnerId={state?.winner_id ?? null} />
+              <Podium players={humanPlayers} winnerId={state?.winner_id ?? null} />
 
-            <div className="game-over-scores">
-              {sortedScores.map((player) => (
-                <div
-                  key={player.id}
-                  className={`game-over-row ${player.id === winner?.id ? 'winner' : ''}`}
-                >
-                  <span>{player.name}</span>
-                  <span>
-                    {player.score} · {player.kills}K / {player.deaths}D
-                  </span>
-                </div>
-              ))}
+              <div className="game-over-scores">
+                {sortedScores.map((player) => (
+                  <div
+                    key={player.id}
+                    className={`game-over-row ${player.id === winner?.id ? 'winner' : ''}`}
+                  >
+                    <span>{player.name}</span>
+                    <span>
+                      {player.score} · {player.kills}K / {player.deaths}D
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="game-pause-actions">
+            <div className="game-over-actions game-pause-actions">
               {sessionKind === 'host' ? (
                 <>
                   <button
@@ -801,15 +804,32 @@ export function GameOverlay({
                   >
                     Back to Lobby
                   </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => void onExitGame()}
+                    disabled={isBusy}
+                  >
+                    Main Menu
+                  </button>
                 </>
               ) : (
-                <p className="game-over-wait">
-                  {isBusy ? 'Rematch starting…' : 'Waiting for host to rematch or return to lobby…'}
-                </p>
+                <>
+                  <p className="game-over-wait">
+                    {isBusy
+                      ? 'Rematch starting…'
+                      : 'Waiting for host to rematch or return to lobby…'}
+                  </p>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => void onExitGame()}
+                    disabled={isBusy}
+                  >
+                    Main Menu
+                  </button>
+                </>
               )}
-              <button type="button" className="secondary-button" onClick={() => void onExitGame()}>
-                Exit Game
-              </button>
             </div>
           </div>
         </div>

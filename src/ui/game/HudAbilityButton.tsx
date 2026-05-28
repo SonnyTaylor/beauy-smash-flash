@@ -69,26 +69,14 @@ export function HudAbilityButton({
           ? '65 dmg'
           : 'Stillness';
 
+  const showIsaakStacks =
+    character.id === 'isaak' && !casting && !inBoat;
+
   return (
     <div
-      className={`hud-ability-wrap ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''} ${noAbility ? 'is-no-ability' : ''}`}
+      className={`hud-ability-wrap ${showIsaakStacks ? 'hud-ability-wrap--isaak' : ''} ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''} ${noAbility ? 'is-no-ability' : ''}`}
       style={{ '--accent': rgbCss(character.color) } as React.CSSProperties}
     >
-      {character.id === 'isaak' && !casting && !inBoat && (
-        <div
-          className={`hud-ability-stacks ${(stillnessStacks ?? 0) >= 3 ? 'is-full' : ''}`}
-          aria-label={`${stillnessStacks ?? 0} of 3 stillness stacks — ${isaakStackLabel}`}
-        >
-          {[0, 1, 2].map((index) => (
-            <span
-              key={index}
-              className={index < (stillnessStacks ?? 0) ? 'hud-ability-stack is-filled' : 'hud-ability-stack'}
-              aria-hidden
-            />
-          ))}
-          <span className="hud-ability-stack-label">{isaakStackLabel}</span>
-        </div>
-      )}
       <div className="hud-ability">
         <div className="hud-ability-ring" style={ringStyle} aria-hidden />
         <div className="hud-ability-core">
@@ -116,6 +104,25 @@ export function HudAbilityButton({
         <div className="hud-ability-key" aria-hidden>E</div>
         <div className="hud-ability-name">{statusLabel}</div>
       </div>
+      {showIsaakStacks && (
+        <div
+          className={`hud-ability-stacks ${(stillnessStacks ?? 0) >= 3 ? 'is-full' : ''}`}
+          aria-label={`${stillnessStacks ?? 0} of 3 stillness stacks — ${isaakStackLabel}`}
+        >
+          {[0, 1, 2].map((index) => (
+            <span
+              key={index}
+              className={
+                index < (stillnessStacks ?? 0)
+                  ? 'hud-ability-stack is-filled'
+                  : 'hud-ability-stack'
+              }
+              aria-hidden
+            />
+          ))}
+          <span className="hud-ability-stack-label">{isaakStackLabel}</span>
+        </div>
+      )}
     </div>
   );
 }

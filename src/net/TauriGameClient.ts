@@ -124,6 +124,10 @@ export class TauriGameClient {
     await invoke('rematch');
   }
 
+  async setMatchPaused(paused: boolean): Promise<void> {
+    await invoke('set_match_paused', { paused });
+  }
+
   async stopSession(): Promise<void> {
     await invoke('stop_session');
   }

@@ -564,7 +564,10 @@ pub fn process_projectile_effects(world: &mut GameWorld, dt: f32) {
     let mut reel_hits: Vec<(u8, f32, f32, u8)> = Vec::new();
     for (effect_id, owner_id, x, y, dir_x, dir_y, already_hit) in reel_snapshots {
         for victim_id in find_reel_post_contacts(world, owner_id, x, y, &already_hit) {
-            if let Some(effect) = world.effects.iter_mut().find(|effect| effect.id == effect_id)
+            if let Some(effect) = world
+                .effects
+                .iter_mut()
+                .find(|effect| effect.id == effect_id)
             {
                 effect.hit_players.push(victim_id);
             }

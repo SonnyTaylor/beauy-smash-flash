@@ -297,6 +297,7 @@ pub async fn start_match(
             config.wave_goal,
         );
         st.match_started = true;
+        st.match_paused = false;
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
     };
 
@@ -401,6 +402,7 @@ pub async fn return_to_lobby(
             return Err("No match is in progress".to_string());
         }
         st.match_started = false;
+        st.match_paused = false;
         st.match_end_emitted = false;
         st.ready_players.clear();
         st.world.reset_for_lobby();
@@ -437,6 +439,7 @@ pub async fn rematch(
         let config = st.lobby_config.clone();
         validate_match_config(&config)?;
         st.match_end_emitted = false;
+        st.match_paused = false;
         let map_id = config.map_id.clone();
         st.world.set_map(&map_id);
         st.world.reset_for_match(
@@ -460,6 +463,22 @@ pub async fn rematch(
 
     let _ = window.emit("match_started", snapshot.clone());
     let _ = window.emit("state", snapshot);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_match_paused(
+    paused: bool,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let mut st = state.lock().await;
+    if st.mode != SessionMode::Host {
+        return Err("Only the host can pause the match".to_string());
+    }
+    if !st.match_started || st.world.match_ended {
+        return Ok(());
+    }
+    st.match_paused = paused;
     Ok(())
 }
 

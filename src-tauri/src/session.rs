@@ -39,6 +39,7 @@ pub struct AppState {
     pub peers: Vec<Peer>,
     pub ready_players: HashSet<u8>,
     pub match_started: bool,
+    pub match_paused: bool,
     pub match_end_emitted: bool,
     pub my_id: u8,
     pub host_addr: Option<SocketAddr>,
@@ -58,6 +59,7 @@ impl Default for AppState {
             peers: Vec::new(),
             ready_players: HashSet::new(),
             match_started: false,
+            match_paused: false,
             match_end_emitted: false,
             my_id: 0,
             host_addr: None,
@@ -87,6 +89,7 @@ pub async fn shutdown_session(state: &SharedState) {
     st.peers.clear();
     st.ready_players.clear();
     st.match_started = false;
+    st.match_paused = false;
     st.match_end_emitted = false;
     st.host_addr = None;
     st.my_id = 0;
@@ -205,7 +208,7 @@ pub async fn host_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri
         tokio::select! {
             _ = sim_tick.tick() => {
                 let mut st = state.lock().await;
-                if st.match_started && !st.world.match_ended {
+                if st.match_started && !st.world.match_ended && !st.match_paused {
                     let bot_ids = st.bot_ids.clone();
                     crate::bots::update_bot_inputs(&mut st.world, &bot_ids, 1.0 / SIM_HZ);
                     st.world.tick(1.0 / SIM_HZ);

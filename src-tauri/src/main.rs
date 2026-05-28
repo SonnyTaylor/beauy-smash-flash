@@ -43,6 +43,7 @@ fn main() {
             commands::start_match,
             commands::return_to_lobby,
             commands::rematch,
+            commands::set_match_paused,
             commands::send_input,
             commands::set_bot_count
         ])

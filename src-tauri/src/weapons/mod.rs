@@ -4,6 +4,8 @@ use std::f32::consts::PI;
 pub const DEFAULT_WEAPON_ID: &str = "glock";
 pub const PICKUP_RADIUS: f32 = 48.0;
 pub const DROP_FORWARD_OFFSET: f32 = 34.0;
+/// Ground weapons (manual drop or death loot) despawn after this many seconds.
+pub const WEAPON_PICKUP_LIFETIME_SECS: f32 = 25.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WeaponKind {

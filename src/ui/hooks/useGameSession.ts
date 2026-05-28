@@ -83,6 +83,28 @@ export function useGameSession() {
     matchEndedRef.current = matchEnded;
   }, [matchEnded]);
 
+  function releaseGamePointer() {
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }
+
+  function setPausedWithSync(next: boolean) {
+    setPaused(next);
+    if (next) {
+      releaseGamePointer();
+    }
+  }
+
+  useEffect(() => {
+    if (screen !== 'game' || sessionKind !== 'host' || !sessionInfo) {
+      return;
+    }
+    void client.setMatchPaused(paused).catch(() => {
+      /* host pause sync is best-effort */
+    });
+  }, [client, paused, screen, sessionKind, sessionInfo]);
+
   useEffect(() => {
     screenRef.current = screen;
   }, [screen]);
@@ -133,6 +155,9 @@ export function useGameSession() {
       latestStateRef.current = state;
       setLatestState(state);
       setMatchEnded(state.match_ended);
+      if (state.match_ended) {
+        releaseGamePointer();
+      }
       input.setWorld(state.world);
       if (screenRef.current === 'game') {
         renderer.applyState(state);
@@ -163,6 +188,7 @@ export function useGameSession() {
       setLatestState(state);
       setMatchEnded(true);
       setPaused(false);
+      releaseGamePointer();
       renderer.applyState(state);
       gameAudio.applyState(state, myIdRef.current);
     });
@@ -589,7 +615,7 @@ export function useGameSession() {
     localIp,
     players,
     paused,
-    setPaused,
+    setPaused: setPausedWithSync,
     arenaLoading,
     backdropClass,
     scanForServers,
