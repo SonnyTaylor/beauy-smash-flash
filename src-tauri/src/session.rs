@@ -12,7 +12,8 @@ use crate::net::{
     decode_client, decode_server, encode_server, BROADCAST_HZ, GAME_PORT, MAX_PLAYERS, SIM_HZ,
 };
 use crate::protocol::{
-    ClientMessage, InputSnapshot, LobbyPlayerSnapshot, LobbySnapshot, ServerMessage, SessionInfo,
+    ClientMessage, InputSnapshot, LobbyConfig, LobbyPlayerSnapshot, LobbySnapshot, ServerMessage,
+    SessionInfo,
 };
 
 pub type SharedState = Arc<Mutex<AppState>>;
@@ -40,6 +41,7 @@ pub struct AppState {
     pub match_started: bool,
     pub my_id: u8,
     pub host_addr: Option<SocketAddr>,
+    pub lobby_config: LobbyConfig,
 }
 
 impl Default for AppState {
@@ -53,6 +55,7 @@ impl Default for AppState {
             match_started: false,
             my_id: 0,
             host_addr: None,
+            lobby_config: LobbyConfig::default(),
         }
     }
 }
@@ -74,7 +77,7 @@ impl AppState {
                 id: player.id,
                 name: player.name.clone(),
                 character_id: player.character_id.clone(),
-                ready: player.id == 0 || self.ready_players.contains(&player.id),
+                ready: self.ready_players.contains(&player.id),
                 is_host: player.id == 0,
             })
             .collect();
@@ -82,10 +85,23 @@ impl AppState {
 
         LobbySnapshot {
             players,
-            max_players: MAX_PLAYERS,
+            max_players: self.lobby_config.max_players as usize,
             match_started: self.match_started,
             network_note: "Discovery uses UDP broadcast on 5554 and gameplay uses UDP 5555. If school WiFi blocks peer traffic, use manual IP or a hotspot.".to_string(),
+            config: self.lobby_config.clone(),
         }
+    }
+
+    /// Returns true when every player in the world (including the host) has
+    /// readied up. Used to gate the host's Start Match action.
+    pub fn all_players_ready(&self) -> bool {
+        if self.world.players.is_empty() {
+            return false;
+        }
+        self.world
+            .players
+            .keys()
+            .all(|id| self.ready_players.contains(id))
     }
 }
 
@@ -160,7 +176,7 @@ async fn handle_host_message(
                         map: st.world.map.snapshot(),
                         players: st.world.snapshot().players,
                     }
-                } else if st.world.players.len() >= MAX_PLAYERS {
+                } else if st.world.players.len() >= effective_max_players(&st) {
                     ServerMessage::Error {
                         message: "Game is full".to_string(),
                     }
@@ -220,6 +236,30 @@ async fn handle_host_message(
                 }
             }
         }
+        ClientMessage::SetName { name } => {
+            let cleaned = clean_name(&name);
+            let mut st = state.lock().await;
+            let player_id = st
+                .peers
+                .iter_mut()
+                .find(|peer| peer.addr == addr)
+                .map(|peer| {
+                    peer.last_seen = Instant::now();
+                    peer.id
+                });
+            if let Some(player_id) = player_id {
+                if let Some(player) = st.world.players.get_mut(&player_id) {
+                    if !cleaned.is_empty() {
+                        player.name = cleaned;
+                    }
+                }
+            }
+        }
+        ClientMessage::UpdateConfig { config: _ } => {
+            // Only the host can update the lobby config, and the host updates
+            // its own state via the Tauri command (not via the wire). Ignore
+            // any peer claiming to push config.
+        }
         ClientMessage::Input(input) => {
             let mut st = state.lock().await;
             let player_id = st
@@ -249,6 +289,14 @@ fn next_player_id(state: &AppState) -> u8 {
     (1..=u8::MAX)
         .find(|id| !state.world.players.contains_key(id))
         .unwrap_or(u8::MAX)
+}
+
+fn effective_max_players(state: &AppState) -> usize {
+    (state.lobby_config.max_players as usize).min(MAX_PLAYERS)
+}
+
+fn clean_name(name: &str) -> String {
+    name.trim().chars().take(24).collect()
 }
 
 pub async fn client_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri::Window) {

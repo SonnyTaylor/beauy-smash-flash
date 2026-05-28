@@ -21,12 +21,42 @@ pub struct LobbyPlayerSnapshot {
     pub is_host: bool,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Gamemode {
+    Deathmatch,
+    TeamDeathmatch,
+    LastMateStanding,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LobbyConfig {
+    pub map_id: String,
+    pub gamemode: Gamemode,
+    pub max_players: u8,
+    pub score_limit: u16,
+    pub friendly_fire: bool,
+}
+
+impl Default for LobbyConfig {
+    fn default() -> Self {
+        Self {
+            map_id: "warehouse".to_string(),
+            gamemode: Gamemode::Deathmatch,
+            max_players: 8,
+            score_limit: 20,
+            friendly_fire: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LobbySnapshot {
     pub players: Vec<LobbyPlayerSnapshot>,
     pub max_players: usize,
     pub match_started: bool,
     pub network_note: String,
+    pub config: LobbyConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -98,6 +128,8 @@ pub enum ClientMessage {
     Join { name: String, character_id: String },
     SetReady { ready: bool },
     SelectCharacter { character_id: String },
+    SetName { name: String },
+    UpdateConfig { config: LobbyConfig },
     Input(InputSnapshot),
     Leave,
 }

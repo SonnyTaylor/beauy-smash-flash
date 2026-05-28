@@ -40,11 +40,30 @@ export interface LobbyPlayerSnapshot {
   is_host: boolean;
 }
 
+export type Gamemode = 'deathmatch' | 'team_deathmatch' | 'last_mate_standing';
+
+export interface LobbyConfig {
+  map_id: string;
+  gamemode: Gamemode;
+  max_players: number;
+  score_limit: number;
+  friendly_fire: boolean;
+}
+
+export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
+  map_id: 'warehouse',
+  gamemode: 'deathmatch',
+  max_players: 8,
+  score_limit: 20,
+  friendly_fire: true,
+};
+
 export interface LobbySnapshot {
   players: LobbyPlayerSnapshot[];
   max_players: number;
   match_started: boolean;
   network_note: string;
+  config: LobbyConfig;
 }
 
 export interface InputSnapshot {

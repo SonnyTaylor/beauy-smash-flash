@@ -7,7 +7,9 @@ use tokio::net::UdpSocket;
 use crate::discovery::{discovery_loop, scan_servers as scan_lan_servers};
 use crate::game::GameWorld;
 use crate::net::{decode_server, encode_client, encode_server, GAME_PORT};
-use crate::protocol::{ClientMessage, InputSnapshot, ServerInfo, ServerMessage, SessionInfo};
+use crate::protocol::{
+    ClientMessage, InputSnapshot, LobbyConfig, ServerInfo, ServerMessage, SessionInfo,
+};
 use crate::session::{client_loop, game_addr, host_loop, input_message, SessionMode, SharedState};
 
 #[tauri::command]
@@ -33,6 +35,7 @@ pub async fn start_host(
         st.host_addr = None;
         st.my_id = 0;
         st.world = GameWorld::default();
+        st.lobby_config = LobbyConfig::default();
         st.world.add_player(
             0,
             clean_player_name(player_name).unwrap_or_else(|| "Host".to_string()),
@@ -129,6 +132,30 @@ pub async fn scan_servers(timeout_ms: Option<u64>) -> Result<Vec<ServerInfo>, St
 }
 
 #[tauri::command]
+pub async fn local_ip() -> Result<String, String> {
+    let socket = UdpSocket::bind("0.0.0.0:0")
+        .await
+        .map_err(|error| error.to_string())?;
+
+    // UDP connect just installs a peer in the kernel and resolves the local
+    // interface for the route — no packets are sent. Try a few well-known
+    // addresses so we still resolve a sensible LAN IP without internet.
+    let candidates = ["8.8.8.8:80", "192.168.1.1:80", "10.0.0.1:80"];
+    for candidate in candidates {
+        if socket.connect(candidate).await.is_ok() {
+            if let Ok(addr) = socket.local_addr() {
+                let ip = addr.ip().to_string();
+                if ip != "0.0.0.0" && !ip.starts_with("::") {
+                    return Ok(ip);
+                }
+            }
+        }
+    }
+
+    Err("Could not determine local IP".to_string())
+}
+
+#[tauri::command]
 pub async fn set_ready(ready: bool, state: tauri::State<'_, SharedState>) -> Result<(), String> {
     let (socket, host_addr, mode, my_id) = {
         let mut st = state.lock().await;
@@ -200,6 +227,12 @@ pub async fn start_match(
         if st.mode != SessionMode::Host {
             return Err("Only the host can start the match".to_string());
         }
+        if st.world.players.len() < 2 {
+            return Err("Need at least 2 players to start".to_string());
+        }
+        if !st.all_players_ready() {
+            return Err("All players must be ready".to_string());
+        }
         st.match_started = true;
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
     };
@@ -213,6 +246,52 @@ pub async fn start_match(
 
     let _ = window.emit("match_started", snapshot.clone());
     let _ = window.emit("state", snapshot);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_name(name: String, state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let cleaned: String = name.trim().chars().take(24).collect();
+    if cleaned.is_empty() {
+        return Err("Name cannot be empty".to_string());
+    }
+
+    let (socket, host_addr, mode, my_id) = {
+        let mut st = state.lock().await;
+        if st.mode == SessionMode::Host {
+            let my_id = st.my_id;
+            if let Some(player) = st.world.players.get_mut(&my_id) {
+                player.name = cleaned.clone();
+            }
+        }
+        (st.socket.clone(), st.host_addr, st.mode.clone(), st.my_id)
+    };
+
+    if mode == SessionMode::Client {
+        if let (Some(socket), Some(host_addr)) = (socket, host_addr) {
+            let bytes = encode_client(&ClientMessage::SetName { name: cleaned })?;
+            socket
+                .send_to(&bytes, host_addr)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
+    } else if mode == SessionMode::Host {
+        let _ = my_id;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_lobby_config(
+    config: LobbyConfig,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let mut st = state.lock().await;
+    if st.mode != SessionMode::Host {
+        return Err("Only the host can change lobby settings".to_string());
+    }
+    st.lobby_config = config;
     Ok(())
 }
 

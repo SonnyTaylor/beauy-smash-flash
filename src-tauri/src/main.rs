@@ -17,8 +17,11 @@ fn main() {
             commands::start_host,
             commands::join_game,
             commands::scan_servers,
+            commands::local_ip,
             commands::set_ready,
             commands::select_character,
+            commands::set_name,
+            commands::update_lobby_config,
             commands::start_match,
             commands::send_input
         ])

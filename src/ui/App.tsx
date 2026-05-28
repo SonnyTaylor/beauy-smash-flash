@@ -1,18 +1,31 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { CHARACTERS } from '../content/characters';
+import { MAPS } from '../content/maps';
 import { ArenaRenderer } from '../game/ArenaRenderer';
 import { InputController } from '../input/InputController';
 import { TauriGameClient } from '../net/TauriGameClient';
-import type {
-  CharacterDefinition,
-  LobbySnapshot,
-  ServerInfo,
-  SessionInfo,
-  StateSnapshot,
+import {
+  DEFAULT_LOBBY_CONFIG,
+  type CharacterDefinition,
+  type Gamemode,
+  type LobbyConfig,
+  type LobbySnapshot,
+  type ServerInfo,
+  type SessionInfo,
+  type StateSnapshot,
 } from '../shared/types';
 
-type Screen = 'main-menu' | 'server-select' | 'character-select' | 'lobby' | 'game';
+type Screen = 'main-menu' | 'server-select' | 'lobby' | 'game';
 type SessionKind = 'host' | 'join';
+
+const GAMEMODE_OPTIONS: Array<{ id: Gamemode; label: string; available: boolean }> = [
+  { id: 'deathmatch', label: 'Deathmatch', available: true },
+  { id: 'team_deathmatch', label: 'Team Deathmatch', available: false },
+  { id: 'last_mate_standing', label: 'Last Mate Standing', available: false },
+];
+
+const SCORE_LIMIT_OPTIONS = [10, 15, 20, 30, 50];
+const MAX_PLAYERS_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12];
 type FloatingHeadPosition = {
   x: number;
   y: number;
@@ -35,9 +48,9 @@ export function App() {
 
   const [screen, setScreen] = useState<Screen>('main-menu');
   const [sessionKind, setSessionKind] = useState<SessionKind>('host');
-  const [playerName, setPlayerName] = useState('Sonny');
+  const [playerName, setPlayerName] = useState(readStoredName);
   const [joinIp, setJoinIp] = useState('127.0.0.1');
-  const [selectedCharacterId, setSelectedCharacterId] = useState(CHARACTERS[0].id);
+  const [selectedCharacterId, setSelectedCharacterId] = useState(readStoredCharacterId);
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [servers, setServers] = useState<ServerInfo[]>([]);
@@ -48,6 +61,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [myId, setMyId] = useState(0);
   const [latestState, setLatestState] = useState<StateSnapshot | null>(null);
+  const [localIp, setLocalIp] = useState<string | null>(null);
 
   const selectedCharacter = getCharacter(selectedCharacterId);
   const players = latestState?.players ?? [];
@@ -77,6 +91,29 @@ export function App() {
     };
   }, [client, input, renderer]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void client
+      .localIp()
+      .then((ip) => {
+        if (!cancelled) setLocalIp(ip);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalIp(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  useEffect(() => {
+    writeStoredName(playerName);
+  }, [playerName]);
+
+  useEffect(() => {
+    writeStoredCharacterId(selectedCharacterId);
+  }, [selectedCharacterId]);
+
   async function scanForServers() {
     setIsScanning(true);
     setScanMessage('Scanning LAN broadcast on UDP 5554...');
@@ -95,21 +132,22 @@ export function App() {
     }
   }
 
-  async function createLobbySession() {
+  async function createLobbySession(kind: SessionKind, ip?: string) {
     setIsBusy(true);
     setError(null);
+    setSessionKind(kind);
     try {
       const session =
-        sessionKind === 'host'
+        kind === 'host'
           ? await client.host(playerName, selectedCharacterId)
-          : await client.join(joinIp.trim() || '127.0.0.1', playerName, selectedCharacterId);
+          : await client.join((ip ?? joinIp).trim() || '127.0.0.1', playerName, selectedCharacterId);
       setSessionInfo(session);
       sessionInfoRef.current = session;
       setMyId(session.player_id);
       myIdRef.current = session.player_id;
-      setIsReady(sessionKind === 'host');
+      setIsReady(false);
       setScreen('lobby');
-      await client.setReady(sessionKind === 'host');
+      await client.setReady(false);
     } catch (caught) {
       setError(String(caught));
     } finally {
@@ -119,13 +157,39 @@ export function App() {
 
   async function updateReady(nextReady: boolean) {
     setIsReady(nextReady);
-    await client.setReady(nextReady);
+    try {
+      await client.setReady(nextReady);
+    } catch (caught) {
+      setError(String(caught));
+    }
   }
 
   async function updateCharacter(characterId: string) {
     setSelectedCharacterId(characterId);
     if (sessionInfo) {
       await client.selectCharacter(characterId);
+    }
+  }
+
+  async function updateName(nextName: string) {
+    const trimmed = nextName.trim().slice(0, 24);
+    if (!trimmed || trimmed === playerName) return;
+    setPlayerName(trimmed);
+    if (sessionInfo) {
+      try {
+        await client.setName(trimmed);
+      } catch (caught) {
+        setError(String(caught));
+      }
+    }
+  }
+
+  async function updateLobbyConfig(nextConfig: LobbyConfig) {
+    if (sessionKind !== 'host') return;
+    try {
+      await client.updateLobbyConfig(nextConfig);
+    } catch (caught) {
+      setError(String(caught));
     }
   }
 
@@ -139,6 +203,18 @@ export function App() {
     } finally {
       setIsBusy(false);
     }
+  }
+
+  function leaveLobby() {
+    // The Rust session stays alive on the host machine; starting a new
+    // host/join will reset its state on the next call. We just navigate the
+    // UI back so the user can pick a different flow.
+    setScreen('main-menu');
+    setSessionInfo(null);
+    sessionInfoRef.current = null;
+    setLobby(null);
+    setIsReady(false);
+    setError(null);
   }
 
   async function enterGame(initialState: StateSnapshot) {
@@ -167,79 +243,77 @@ export function App() {
       <div ref={gameContainerRef} className="game-container" />
 
       {screen !== 'game' && (
-        <div className={`screen-backdrop ${screen === 'main-menu' ? 'landing-screen' : 'flow-screen'}`}>
-          {screen === 'main-menu' ? (
+        <div
+          className={`screen-backdrop ${
+            screen === 'main-menu'
+              ? 'landing-screen'
+              : screen === 'lobby'
+                ? 'lobby-screen'
+                : 'flow-screen'
+          }`}
+        >
+          {screen === 'main-menu' && (
             <>
               <FloatingHeads />
-              <div className="landing-card">
-                <MainMenu
-                  playerName={playerName}
-                  onPlayerNameChange={setPlayerName}
-                  onHost={() => {
-                    setSessionKind('host');
-                    setScreen('character-select');
-                  }}
-                  onJoin={() => {
-                    setSessionKind('join');
-                    setScreen('server-select');
-                  }}
-                />
-              </div>
+              <MainMenu
+                onHost={() => void createLobbySession('host')}
+                onJoin={() => {
+                  setSessionKind('join');
+                  setScreen('server-select');
+                }}
+                isBusy={isBusy}
+                error={error}
+              />
+              {localIp && <span className="lan-ip">Your IP: {localIp}</span>}
             </>
-          ) : (
+          )}
+
+          {screen === 'server-select' && (
             <>
               <div className="brand-panel">
-                <p className="eyebrow">Beauy Smash Flash</p>
+                <p className="eyebrow">Join LAN</p>
                 <h1>
-                  LAN
-                  <span>Party</span>
+                  Pick
+                  <span>A Host</span>
                 </h1>
-                <p className="tagline">Pick your mate, ready up, and get everyone onto the same WiFi.</p>
+                <p className="tagline">Scan the LAN for hosts, or punch in an IP directly.</p>
               </div>
 
               <div className="screen-card">
-                {screen === 'server-select' && (
-                  <ServerSelect
-                    servers={servers}
-                    joinIp={joinIp}
-                    isScanning={isScanning}
-                    scanMessage={scanMessage}
-                    onJoinIpChange={setJoinIp}
-                    onScan={scanForServers}
-                    onBack={() => setScreen('main-menu')}
-                    onContinue={() => setScreen('character-select')}
-                  />
-                )}
-
-                {screen === 'character-select' && (
-                  <CharacterSelect
-                    selectedCharacter={selectedCharacter}
-                    selectedCharacterId={selectedCharacterId}
-                    onSelect={(id) => void updateCharacter(id)}
-                    onBack={() => setScreen(sessionKind === 'join' ? 'server-select' : 'main-menu')}
-                    onContinue={createLobbySession}
-                    isBusy={isBusy}
-                  />
-                )}
-
-                {screen === 'lobby' && (
-                  <Lobby
-                    sessionKind={sessionKind}
-                    selectedCharacter={selectedCharacter}
-                    lobby={lobby}
-                    fallbackPlayers={players}
-                    isReady={isReady}
-                    isBusy={isBusy}
-                    error={error}
-                    myId={myId}
-                    networkNote={lobby?.network_note}
-                    onReadyChange={(ready) => void updateReady(ready)}
-                    onBack={() => setScreen('character-select')}
-                    onStart={startMatch}
-                  />
-                )}
+                <ServerSelect
+                  servers={servers}
+                  joinIp={joinIp}
+                  isScanning={isScanning}
+                  scanMessage={scanMessage}
+                  isBusy={isBusy}
+                  onJoinIpChange={setJoinIp}
+                  onScan={scanForServers}
+                  onBack={() => setScreen('main-menu')}
+                  onContinue={(ip) => void createLobbySession('join', ip)}
+                />
               </div>
             </>
+          )}
+
+          {screen === 'lobby' && (
+            <Lobby
+              sessionKind={sessionKind}
+              lobby={lobby}
+              fallbackPlayers={players}
+              isReady={isReady}
+              isBusy={isBusy}
+              error={error}
+              myId={myId}
+              localIp={localIp}
+              playerName={playerName}
+              selectedCharacterId={selectedCharacterId}
+              onReadyChange={(ready) => void updateReady(ready)}
+              onNameChange={(name) => void updateName(name)}
+              onCharacterChange={(id) => void updateCharacter(id)}
+              onConfigChange={(config) => void updateLobbyConfig(config)}
+              onLeave={leaveLobby}
+              onStart={() => void startMatch()}
+            />
           )}
         </div>
       )}
@@ -257,42 +331,33 @@ export function App() {
 }
 
 function MainMenu({
-  playerName,
-  onPlayerNameChange,
   onHost,
   onJoin,
+  isBusy,
+  error,
 }: {
-  playerName: string;
-  onPlayerNameChange: (value: string) => void;
   onHost: () => void;
   onJoin: () => void;
+  isBusy: boolean;
+  error: string | null;
 }) {
   return (
-    <section className="main-menu-panel">
+    <section className="menu-zone">
       <div className="title-stack">
-        <p className="eyebrow">Same WiFi. No accounts. Just chaos.</p>
-        <h1>Beauy Smash Flash</h1>
-        <p className="tagline">Shoot your mates. Pick a ridiculous power. Keep it local.</p>
+        <h1 className="menu-title">Beauy Smash Flash</h1>
+        <p className="tagline">Shoot your mates. No internet required.</p>
       </div>
 
-      <label className="field-label">
-        Your name
-        <input value={playerName} onChange={(event) => onPlayerNameChange(event.currentTarget.value)} />
-      </label>
-
-      <div className="button-grid menu-actions">
-        <button className="primary-action" onClick={onHost}>
-          Host Game
+      <div className="menu-actions">
+        <button className="primary-action" onClick={onHost} disabled={isBusy}>
+          {isBusy ? 'Starting…' : 'Host Game'}
         </button>
-        <button className="secondary-button" onClick={onJoin}>
+        <button className="secondary-button" onClick={onJoin} disabled={isBusy}>
           Join Game
         </button>
       </div>
 
-      <div className="quick-note">
-        <span>LAN discovery</span>
-        <span>Manual IP fallback</span>
-      </div>
+      {error && <p className="error-text">{error}</p>}
     </section>
   );
 }
@@ -302,7 +367,7 @@ function FloatingHeads() {
   const dragRef = useRef<{ index: number; pointerId: number; lastX: number; lastY: number; lastTime: number } | null>(null);
   const positionsRef = useRef<FloatingHeadPosition[]>([]);
   const initialPositions = useMemo(
-    () => CHARACTERS.map((_, index) => createFloatingHeadPosition(index)),
+    () => createFloatingHeadPositions(CHARACTERS.length),
     [],
   );
   const [positions, setPositions] = useState(initialPositions);
@@ -319,9 +384,14 @@ function FloatingHeads() {
       lastTime = now;
 
       if (bounds) {
-        const cardBounds = document.querySelector('.landing-card')?.getBoundingClientRect() ?? null;
+        const cardBounds = document.querySelector('.menu-zone')?.getBoundingClientRect() ?? null;
         positionsRef.current = positionsRef.current.map((position, index) =>
           dragRef.current?.index === index ? position : stepFloatingHead(position, bounds, cardBounds, dt),
+        );
+        positionsRef.current = resolveHeadCollisions(
+          positionsRef.current,
+          bounds,
+          dragRef.current?.index ?? null,
         );
         setPositions([...positionsRef.current]);
       }
@@ -437,26 +507,34 @@ function FloatingHeads() {
   );
 }
 
-function createFloatingHeadPosition(index: number): FloatingHeadPosition {
-  const safeZones = [
-    { x: [8, 18], y: [13, 27] },
-    { x: [82, 92], y: [13, 27] },
-    { x: [7, 17], y: [42, 58] },
-    { x: [83, 93], y: [42, 58] },
-    { x: [9, 20], y: [72, 88] },
-    { x: [80, 91], y: [72, 88] },
-  ] as const;
-  const zone = safeZones[index % safeZones.length];
+function createFloatingHeadPositions(count: number): FloatingHeadPosition[] {
+  if (count <= 0) return [];
 
-  return {
-    x: randomBetween(zone.x[0], zone.x[1]),
-    y: randomBetween(zone.y[0], zone.y[1]),
-    size: randomBetween(72, 118),
-    delay: randomBetween(-6, 0),
-    drift: randomBetween(7, 16),
-    vx: randomSignedBetween(5, 13),
-    vy: randomSignedBetween(4, 10),
-  };
+  // Scale head size down as the roster grows so a dozen+ mates still fit
+  // without overlapping the menu area.
+  const baseSize = clamp(118 - count * 5, 56, 118);
+
+  // Place each head on a jittered ring around the screen center. The ring
+  // sits outside the menu zone so the title and buttons stay readable.
+  const positions: FloatingHeadPosition[] = [];
+  for (let index = 0; index < count; index++) {
+    const angle = (index / count) * Math.PI * 2 + randomBetween(-0.18, 0.18);
+    const radius = randomBetween(34, 44);
+    const cx = clamp(50 + Math.cos(angle) * radius, 7, 93);
+    const cy = clamp(50 + Math.sin(angle) * radius * 0.7, 9, 91);
+
+    positions.push({
+      x: cx,
+      y: cy,
+      size: baseSize + randomBetween(-6, 6),
+      delay: randomBetween(-6, 0),
+      drift: randomBetween(6, 14),
+      vx: randomSignedBetween(4, 10),
+      vy: randomSignedBetween(3, 8),
+    });
+  }
+
+  return positions;
 }
 
 function stepFloatingHead(
@@ -472,14 +550,24 @@ function stepFloatingHead(
   let vx = position.vx;
   let vy = position.vy;
 
-  if (x < marginX || x > 100 - marginX) {
-    x = clamp(x, marginX, 100 - marginX);
-    vx *= -1;
+  // Force velocity to point AWAY from the wall the head crossed, instead of
+  // blindly flipping the sign. This avoids a flip-flop when something else
+  // (like a head-to-head collision) has shoved a head past the wall margin
+  // while its velocity already points back into the arena.
+  if (x < marginX) {
+    x = marginX;
+    vx = Math.abs(vx);
+  } else if (x > 100 - marginX) {
+    x = 100 - marginX;
+    vx = -Math.abs(vx);
   }
 
-  if (y < marginY || y > 100 - marginY) {
-    y = clamp(y, marginY, 100 - marginY);
-    vy *= -1;
+  if (y < marginY) {
+    y = marginY;
+    vy = Math.abs(vy);
+  } else if (y > 100 - marginY) {
+    y = 100 - marginY;
+    vy = -Math.abs(vy);
   }
 
   if (cardBounds) {
@@ -523,6 +611,97 @@ function stepFloatingHead(
   };
 }
 
+// Resolve circle-circle overlap between every pair of heads so the balls
+// knock each other around. A dragged head is treated as immovable so flicking
+// one into the pack actually flings the rest.
+function resolveHeadCollisions(
+  positions: FloatingHeadPosition[],
+  bounds: DOMRect,
+  draggingIndex: number | null,
+): FloatingHeadPosition[] {
+  if (positions.length < 2) return positions;
+
+  // Work in pixel space so radii and distances share units. Velocities are
+  // stored as %-per-second, so we scale into px/sec for the bounce and back.
+  const bodies = positions.map((position) => ({
+    raw: position,
+    px: (position.x / 100) * bounds.width,
+    py: (position.y / 100) * bounds.height,
+    pvx: (position.vx / 100) * bounds.width,
+    pvy: (position.vy / 100) * bounds.height,
+    r: position.size / 2,
+  }));
+
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const a = bodies[i];
+      const b = bodies[j];
+      const dx = b.px - a.px;
+      const dy = b.py - a.py;
+      let dist = Math.hypot(dx, dy);
+      const minDist = a.r + b.r;
+      if (dist >= minDist) continue;
+
+      let nx: number;
+      let ny: number;
+      if (dist < 0.001) {
+        const angle = Math.random() * Math.PI * 2;
+        nx = Math.cos(angle);
+        ny = Math.sin(angle);
+        dist = 0.001;
+      } else {
+        nx = dx / dist;
+        ny = dy / dist;
+      }
+
+      const overlap = minDist - dist;
+      const aLocked = draggingIndex === i;
+      const bLocked = draggingIndex === j;
+      const aShare = aLocked ? 0 : bLocked ? 1 : 0.5;
+      const bShare = bLocked ? 0 : aLocked ? 1 : 0.5;
+
+      a.px -= nx * overlap * aShare;
+      a.py -= ny * overlap * aShare;
+      b.px += nx * overlap * bShare;
+      b.py += ny * overlap * bShare;
+
+      const rvx = b.pvx - a.pvx;
+      const rvy = b.pvy - a.pvy;
+      const velAlongNormal = rvx * nx + rvy * ny;
+      if (velAlongNormal > 0) continue;
+
+      const restitution = 0.9;
+      const impulse = (-(1 + restitution) * velAlongNormal) / 2;
+      const impulseX = impulse * nx;
+      const impulseY = impulse * ny;
+
+      if (!aLocked) {
+        a.pvx -= impulseX;
+        a.pvy -= impulseY;
+      }
+      if (!bLocked) {
+        b.pvx += impulseX;
+        b.pvy += impulseY;
+      }
+    }
+  }
+
+  // Clamp positions using each head's own wall margin so the resolver never
+  // parks a head past the wall — otherwise stepFloatingHead would keep
+  // re-flipping its velocity every frame and bleed the momentum away.
+  return bodies.map(({ raw, px, py, pvx, pvy }) => {
+    const marginX = (raw.size / bounds.width) * 50;
+    const marginY = (raw.size / bounds.height) * 50;
+    return {
+      ...raw,
+      x: clamp((px / bounds.width) * 100, marginX, 100 - marginX),
+      y: clamp((py / bounds.height) * 100, marginY, 100 - marginY),
+      vx: clamp((pvx / bounds.width) * 100, -30, 30),
+      vy: clamp((pvy / bounds.height) * 100, -30, 30),
+    };
+  });
+}
+
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
 }
@@ -541,6 +720,7 @@ function ServerSelect({
   joinIp,
   isScanning,
   scanMessage,
+  isBusy,
   onJoinIpChange,
   onScan,
   onBack,
@@ -550,10 +730,11 @@ function ServerSelect({
   joinIp: string;
   isScanning: boolean;
   scanMessage: string;
+  isBusy: boolean;
   onJoinIpChange: (value: string) => void;
   onScan: () => void;
   onBack: () => void;
-  onContinue: () => void;
+  onContinue: (ip: string) => void;
 }) {
   return (
     <section className="flow-stack">
@@ -565,7 +746,7 @@ function ServerSelect({
             className="server-row"
             onClick={() => {
               onJoinIpChange(server.address);
-              onContinue();
+              onContinue(server.address);
             }}
           >
             <span>
@@ -587,149 +768,525 @@ function ServerSelect({
         <input value={joinIp} onChange={(event) => onJoinIpChange(event.currentTarget.value)} inputMode="decimal" />
       </label>
       <button className="secondary-button" onClick={onScan} disabled={isScanning}>
-        {isScanning ? 'Scanning...' : 'Scan LAN'}
+        {isScanning ? 'Scanning…' : 'Scan LAN'}
       </button>
       <div className="button-grid">
         <button className="secondary-button" onClick={onBack}>
           Back
         </button>
-        <button onClick={onContinue}>Continue</button>
+        <button onClick={() => onContinue(joinIp)} disabled={isBusy}>
+          {isBusy ? 'Joining…' : 'Join'}
+        </button>
       </div>
     </section>
   );
 }
 
-function CharacterSelect({
-  selectedCharacter,
-  selectedCharacterId,
-  onSelect,
-  onBack,
-  onContinue,
-  isBusy,
-}: {
-  selectedCharacter: CharacterDefinition;
-  selectedCharacterId: string;
-  onSelect: (id: string) => void;
-  onBack: () => void;
-  onContinue: () => void;
-  isBusy: boolean;
-}) {
-  return (
-    <section className="flow-stack">
-      <ScreenHeader kicker="Character Select" title="Choose your mate" />
-      <div className="character-grid">
-        {CHARACTERS.map((character) => (
-          <button
-            key={character.id}
-            className={`character-card ${character.id === selectedCharacterId ? 'selected' : ''}`}
-            style={{ '--accent': rgbCss(character.color) } as CSSProperties & Record<'--accent', string>}
-            onClick={() => onSelect(character.id)}
-          >
-            <span className="head-placeholder">
-              <img
-                src={`/assets/${character.sprite}`}
-                alt=""
-                onError={(event) => {
-                  event.currentTarget.style.display = 'none';
-                }}
-              />
-              <span>{character.initials}</span>
-            </span>
-            <strong>{character.name}</strong>
-            <small>{character.abilityName}</small>
-          </button>
-        ))}
-      </div>
-      <aside className="ability-preview">
-        <strong>{selectedCharacter.abilityName}</strong>
-        <p>{selectedCharacter.abilityDescription}</p>
-      </aside>
-      <div className="button-grid">
-        <button className="secondary-button" onClick={onBack}>
-          Back
-        </button>
-        <button onClick={onContinue} disabled={isBusy}>
-          {isBusy ? 'Creating...' : 'Lock In'}
-        </button>
-      </div>
-    </section>
-  );
-}
+type LobbyPlayerView = {
+  id: number;
+  name: string;
+  character_id: string;
+  ready: boolean;
+  is_host: boolean;
+};
 
 function Lobby({
   sessionKind,
-  selectedCharacter,
   lobby,
   fallbackPlayers,
   isReady,
   isBusy,
   error,
   myId,
-  networkNote,
+  localIp,
+  playerName,
+  selectedCharacterId,
   onReadyChange,
-  onBack,
+  onNameChange,
+  onCharacterChange,
+  onConfigChange,
+  onLeave,
   onStart,
 }: {
   sessionKind: SessionKind;
-  selectedCharacter: CharacterDefinition;
   lobby: LobbySnapshot | null;
   fallbackPlayers: StateSnapshot['players'];
   isReady: boolean;
   isBusy: boolean;
   error: string | null;
   myId: number;
-  networkNote: string | undefined;
+  localIp: string | null;
+  playerName: string;
+  selectedCharacterId: string;
   onReadyChange: (ready: boolean) => void;
-  onBack: () => void;
+  onNameChange: (name: string) => void;
+  onCharacterChange: (characterId: string) => void;
+  onConfigChange: (config: LobbyConfig) => void;
+  onLeave: () => void;
   onStart: () => void;
 }) {
-  const lobbyPlayers =
-    lobby?.players ??
-    fallbackPlayers.map((player) => ({
-      id: player.id,
-      name: player.name,
-      character_id: player.character_id,
-      ready: player.id === myId,
-      is_host: player.id === 0,
-    }));
-  const displayPlayers = lobbyPlayers.length
-    ? lobbyPlayers
-    : [{ id: myId, name: 'You', character_id: selectedCharacter.id, ready: isReady, is_host: sessionKind === 'host' }];
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const isHost = sessionKind === 'host';
+  const config = lobby?.config ?? DEFAULT_LOBBY_CONFIG;
+
+  const lobbyPlayers: LobbyPlayerView[] = lobby?.players ?? [
+    {
+      id: myId,
+      name: playerName,
+      character_id: selectedCharacterId,
+      ready: isReady,
+      is_host: isHost,
+    },
+    ...fallbackPlayers
+      .filter((player) => player.id !== myId)
+      .map((player) => ({
+        id: player.id,
+        name: player.name,
+        character_id: player.character_id,
+        ready: false,
+        is_host: player.id === 0,
+      })),
+  ];
+
+  const me = lobbyPlayers.find((player) => player.id === myId);
+  const myCharacterId = me?.character_id ?? selectedCharacterId;
+  const notReadyCount = lobbyPlayers.filter((player) => !player.ready).length;
+  const allReady = lobbyPlayers.length >= 2 && notReadyCount === 0;
+  const emptySlotCount = Math.max(0, config.max_players - lobbyPlayers.length);
+
+  let startLabel: string;
+  if (isHost) {
+    if (isBusy) startLabel = 'Starting…';
+    else if (lobbyPlayers.length < 2) startLabel = 'Need 2+ mates';
+    else if (!allReady) startLabel = `Waiting on ${notReadyCount} mate${notReadyCount === 1 ? '' : 's'}`;
+    else startLabel = 'Start Match';
+  } else {
+    startLabel = allReady ? 'Waiting for host…' : 'Ready up to start';
+  }
 
   return (
-    <section className="flow-stack">
-      <ScreenHeader kicker="Lobby" title={sessionKind === 'host' ? 'Host lobby' : 'Joined lobby'} />
-      <div className="lobby-list">
-        {displayPlayers.map((player) => {
-          const character = getCharacter(player.character_id);
-          return (
-            <div key={player.id} className="lobby-player">
-              <span className="status-dot" style={{ background: rgbCss(character.color) }} />
-              <span>
-                <strong>
-                  {player.name} {player.is_host ? '(Host)' : ''}
-                </strong>
-                <small>{character.name}</small>
+    <>
+      <div className="lobby-shell">
+        <header className="lobby-header">
+          <div>
+            <p className="screen-kicker">{isHost ? 'Hosting' : 'Joined'}</p>
+            <h2 className="lobby-title">{isHost ? `${playerName}'s Game` : 'LAN Game'}</h2>
+          </div>
+          <div className="lobby-meta">
+            {isHost && localIp && (
+              <span className="meta-chip">
+                <span className="meta-label">Share IP</span>
+                <strong>{localIp}</strong>
               </span>
-              <em>{player.ready ? 'Ready' : 'Not ready'}</em>
+            )}
+            <span className="meta-chip">
+              <span className="meta-label">Mates</span>
+              <strong>
+                {lobbyPlayers.length}/{config.max_players}
+              </strong>
+            </span>
+          </div>
+        </header>
+
+        <div className="lobby-body">
+          <LobbySettingsPanel
+            config={config}
+            isHost={isHost}
+            playerCount={lobbyPlayers.length}
+            onConfigChange={onConfigChange}
+          />
+
+          <section className="lobby-slots">
+            <header className="panel-heading">
+              <h3>Mates</h3>
+              <span>Click your slot to change character or name</span>
+            </header>
+            <div className="slot-list">
+              {lobbyPlayers.map((player) => (
+                <PlayerSlot
+                  key={player.id}
+                  player={player}
+                  isMe={player.id === myId}
+                  onCharacterClick={() => setDrawerOpen(true)}
+                  onNameSubmit={(next) => onNameChange(next)}
+                  onReadyToggle={() => onReadyChange(!isReady)}
+                />
+              ))}
+              {Array.from({ length: emptySlotCount }).map((_, index) => (
+                <div key={`empty-${index}`} className="slot slot-empty">
+                  <span className="slot-empty-dot" />
+                  <span>Waiting for a mate…</span>
+                </div>
+              ))}
             </div>
-          );
-        })}
+          </section>
+        </div>
+
+        {error && <p className="error-text lobby-error">{error}</p>}
+
+        <footer className="lobby-footer">
+          <button className="ghost-button" onClick={onLeave}>
+            Leave
+          </button>
+          {isHost ? (
+            <button
+              className="primary-action"
+              onClick={onStart}
+              disabled={isBusy || !allReady || lobbyPlayers.length < 2}
+            >
+              {startLabel}
+            </button>
+          ) : (
+            <button className="primary-action" disabled>
+              {startLabel}
+            </button>
+          )}
+        </footer>
       </div>
-      {networkNote && <p className="network-note">{networkNote}</p>}
-      {error && <p className="error-text">{error}</p>}
-      <button className="secondary-button" onClick={() => onReadyChange(!isReady)}>
-        {isReady ? 'Mark Not Ready' : 'Mark Ready'}
-      </button>
-      <div className="button-grid">
-        <button className="secondary-button" onClick={onBack}>
-          Back
+
+      <CharacterDrawer
+        open={drawerOpen}
+        selectedCharacterId={myCharacterId}
+        onSelect={(id) => {
+          onCharacterChange(id);
+          setDrawerOpen(false);
+        }}
+        onClose={() => setDrawerOpen(false)}
+      />
+    </>
+  );
+}
+
+function LobbySettingsPanel({
+  config,
+  isHost,
+  playerCount,
+  onConfigChange,
+}: {
+  config: LobbyConfig;
+  isHost: boolean;
+  playerCount: number;
+  onConfigChange: (config: LobbyConfig) => void;
+}) {
+  function patch(partial: Partial<LobbyConfig>) {
+    onConfigChange({ ...config, ...partial });
+  }
+
+  const mapName = MAPS.find((map) => map.id === config.map_id)?.name ?? config.map_id;
+  const gamemodeName =
+    GAMEMODE_OPTIONS.find((option) => option.id === config.gamemode)?.label ?? config.gamemode;
+
+  return (
+    <section className="lobby-settings">
+      <header className="panel-heading">
+        <h3>Server Settings</h3>
+        <span>{isHost ? 'Host-only — changes broadcast live' : 'Set by the host'}</span>
+      </header>
+
+      <SettingRow label="Map">
+        <Cycle
+          value={config.map_id}
+          values={MAPS.map((map) => ({ id: map.id, label: map.name }))}
+          disabled={!isHost || MAPS.length <= 1}
+          onChange={(id) => patch({ map_id: id })}
+          fallback={mapName}
+        />
+      </SettingRow>
+
+      <SettingRow label="Gamemode">
+        <Cycle
+          value={config.gamemode}
+          values={GAMEMODE_OPTIONS.filter((option) => option.available).map((option) => ({
+            id: option.id,
+            label: option.label,
+          }))}
+          disabled={!isHost || GAMEMODE_OPTIONS.filter((option) => option.available).length <= 1}
+          onChange={(id) => patch({ gamemode: id as Gamemode })}
+          fallback={gamemodeName}
+        />
+      </SettingRow>
+
+      <SettingRow label="Max Players">
+        <Cycle
+          value={String(config.max_players)}
+          values={MAX_PLAYERS_OPTIONS.filter((count) => count >= playerCount).map((count) => ({
+            id: String(count),
+            label: String(count),
+          }))}
+          disabled={!isHost}
+          onChange={(id) => patch({ max_players: Number(id) })}
+          fallback={String(config.max_players)}
+        />
+      </SettingRow>
+
+      <SettingRow label="Score Limit">
+        <Cycle
+          value={String(config.score_limit)}
+          values={SCORE_LIMIT_OPTIONS.map((value) => ({
+            id: String(value),
+            label: `${value} kills`,
+          }))}
+          disabled={!isHost}
+          onChange={(id) => patch({ score_limit: Number(id) })}
+          fallback={`${config.score_limit} kills`}
+        />
+      </SettingRow>
+
+      <SettingRow label="Friendly Fire">
+        <button
+          type="button"
+          className={`toggle-pill ${config.friendly_fire ? 'on' : 'off'}`}
+          disabled={!isHost}
+          onClick={() => patch({ friendly_fire: !config.friendly_fire })}
+        >
+          {config.friendly_fire ? 'On' : 'Off'}
         </button>
-        <button onClick={onStart} disabled={isBusy || sessionKind !== 'host'}>
-          {sessionKind !== 'host' ? 'Waiting for Host' : isBusy ? 'Starting...' : 'Start Match'}
-        </button>
-      </div>
+      </SettingRow>
     </section>
+  );
+}
+
+function SettingRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="setting-row">
+      <span className="setting-label">{label}</span>
+      <div className="setting-control">{children}</div>
+    </div>
+  );
+}
+
+function Cycle({
+  value,
+  values,
+  disabled,
+  onChange,
+  fallback,
+}: {
+  value: string;
+  values: Array<{ id: string; label: string }>;
+  disabled?: boolean;
+  onChange: (id: string) => void;
+  fallback?: string;
+}) {
+  if (disabled || values.length <= 1) {
+    const current = values.find((option) => option.id === value)?.label ?? fallback ?? value;
+    return <span className="cycle-static">{current}</span>;
+  }
+
+  const currentIndex = Math.max(
+    0,
+    values.findIndex((option) => option.id === value),
+  );
+
+  function step(delta: number) {
+    const nextIndex = (currentIndex + delta + values.length) % values.length;
+    onChange(values[nextIndex].id);
+  }
+
+  return (
+    <div className="cycle">
+      <button type="button" className="cycle-arrow" onClick={() => step(-1)} aria-label="Previous">
+        ‹
+      </button>
+      <span className="cycle-value">{values[currentIndex].label}</span>
+      <button type="button" className="cycle-arrow" onClick={() => step(1)} aria-label="Next">
+        ›
+      </button>
+    </div>
+  );
+}
+
+function PlayerSlot({
+  player,
+  isMe,
+  onCharacterClick,
+  onNameSubmit,
+  onReadyToggle,
+}: {
+  player: LobbyPlayerView;
+  isMe: boolean;
+  onCharacterClick: () => void;
+  onNameSubmit: (name: string) => void;
+  onReadyToggle: () => void;
+}) {
+  const character = getCharacter(player.character_id);
+  const accent = rgbCss(character.color);
+
+  return (
+    <div
+      className={`slot ${isMe ? 'slot-me' : ''} ${player.ready ? 'slot-ready' : ''}`}
+      style={{ '--accent': accent } as CSSProperties & Record<'--accent', string>}
+    >
+      <button
+        type="button"
+        className="slot-avatar"
+        onClick={onCharacterClick}
+        disabled={!isMe}
+        aria-label={isMe ? 'Change character' : `${player.name}'s character`}
+      >
+        <img
+          src={`/assets/${character.sprite}`}
+          alt=""
+          onError={(event) => {
+            event.currentTarget.style.display = 'none';
+          }}
+        />
+        <span>{character.initials}</span>
+        {isMe && <span className="slot-avatar-hint">Change</span>}
+      </button>
+
+      <div className="slot-text">
+        {isMe ? (
+          <EditableName value={player.name} onSubmit={onNameSubmit} />
+        ) : (
+          <strong className="slot-name">
+            {player.name}
+            {player.is_host ? <span className="host-tag">Host</span> : null}
+          </strong>
+        )}
+        <span className="slot-ability">{character.abilityName}</span>
+      </div>
+
+      {isMe ? (
+        <button
+          type="button"
+          className={`ready-toggle ${player.ready ? 'ready' : ''}`}
+          onClick={onReadyToggle}
+        >
+          {player.ready ? 'Ready' : 'Ready Up'}
+        </button>
+      ) : (
+        <span className={`ready-pill ${player.ready ? 'ready' : ''}`}>
+          {player.ready ? 'Ready' : 'Not ready'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function EditableName({ value, onSubmit }: { value: string; onSubmit: (name: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [editing, value]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  function commit() {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value) {
+      onSubmit(trimmed);
+    } else {
+      setDraft(value);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button type="button" className="slot-name-edit" onClick={() => setEditing(true)}>
+        <strong className="slot-name">{value}</strong>
+        <span className="edit-hint" aria-hidden>
+          edit
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      className="slot-name-input"
+      value={draft}
+      maxLength={24}
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.currentTarget.blur();
+        } else if (event.key === 'Escape') {
+          setDraft(value);
+          setEditing(false);
+        }
+      }}
+    />
+  );
+}
+
+function CharacterDrawer({
+  open,
+  selectedCharacterId,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  selectedCharacterId: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="drawer-overlay" onClick={onClose}>
+      <div
+        className="drawer-panel"
+        role="dialog"
+        aria-label="Pick a character"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="drawer-header">
+          <div>
+            <p className="screen-kicker">Pick your mate</p>
+            <h2>Character</h2>
+          </div>
+          <button type="button" className="ghost-button" onClick={onClose}>
+            Close
+          </button>
+        </header>
+        <div className="character-grid">
+          {CHARACTERS.map((character) => (
+            <button
+              key={character.id}
+              className={`character-card ${character.id === selectedCharacterId ? 'selected' : ''}`}
+              style={{ '--accent': rgbCss(character.color) } as CSSProperties & Record<'--accent', string>}
+              onClick={() => onSelect(character.id)}
+            >
+              <span className="head-placeholder">
+                <img
+                  src={`/assets/${character.sprite}`}
+                  alt=""
+                  onError={(event) => {
+                    event.currentTarget.style.display = 'none';
+                  }}
+                />
+                <span>{character.initials}</span>
+              </span>
+              <strong>{character.name}</strong>
+              <span className="ability-name">{character.abilityName}</span>
+              <span className="ability-desc">{character.abilityDescription}</span>
+              <span className="selected-tag">Selected</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -777,4 +1334,43 @@ function getCharacter(id: string): CharacterDefinition {
 
 function rgbCss([r, g, b]: [number, number, number]) {
   return `rgb(${r} ${g} ${b})`;
+}
+
+const STORAGE_KEY_NAME = 'beauy:name';
+const STORAGE_KEY_CHARACTER = 'beauy:character';
+
+function readStoredName(): string {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY_NAME) ?? 'Sonny';
+  } catch {
+    return 'Sonny';
+  }
+}
+
+function writeStoredName(value: string): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY_NAME, value);
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
+function readStoredCharacterId(): string {
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY_CHARACTER);
+    if (stored && CHARACTERS.some((character) => character.id === stored)) {
+      return stored;
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return CHARACTERS[0].id;
+}
+
+function writeStoredCharacterId(value: string): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY_CHARACTER, value);
+  } catch {
+    /* localStorage unavailable */
+  }
 }

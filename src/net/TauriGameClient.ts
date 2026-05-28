@@ -1,6 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { InputSnapshot, LobbySnapshot, ServerInfo, SessionInfo, StateSnapshot } from '../shared/types';
+import type {
+  InputSnapshot,
+  LobbyConfig,
+  LobbySnapshot,
+  ServerInfo,
+  SessionInfo,
+  StateSnapshot,
+} from '../shared/types';
 
 type StateHandler = (state: StateSnapshot) => void;
 type LobbyHandler = (lobby: LobbySnapshot) => void;
@@ -48,12 +55,24 @@ export class TauriGameClient {
     return invoke<ServerInfo[]>('scan_servers', { timeoutMs });
   }
 
+  async localIp(): Promise<string> {
+    return invoke<string>('local_ip');
+  }
+
   async setReady(ready: boolean): Promise<void> {
     await invoke('set_ready', { ready });
   }
 
   async selectCharacter(characterId: string): Promise<void> {
     await invoke('select_character', { characterId });
+  }
+
+  async setName(name: string): Promise<void> {
+    await invoke('set_name', { name });
+  }
+
+  async updateLobbyConfig(config: LobbyConfig): Promise<void> {
+    await invoke('update_lobby_config', { config });
   }
 
   async startMatch(): Promise<void> {
