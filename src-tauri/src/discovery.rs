@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use tokio::net::UdpSocket;
 
-use crate::net::{decode_discovery, encode_discovery, DISCOVERY_PORT, GAME_PORT, MAX_PLAYERS};
+use crate::net::{decode_discovery, encode_discovery, DISCOVERY_PORT, GAME_PORT};
 use crate::protocol::{DiscoveryMessage, ServerInfo, PROTOCOL_VERSION};
 use crate::session::{SessionMode, SharedState};
 
@@ -85,7 +85,7 @@ async fn server_info(state: &SharedState, requester_ip: IpAddr) -> Option<Server
         address: requester_ip.to_string(),
         game_port: GAME_PORT,
         player_count: st.world.players.len(),
-        max_players: MAX_PLAYERS,
+        max_players: st.lobby_config.max_players as usize,
         version: PROTOCOL_VERSION,
     })
 }

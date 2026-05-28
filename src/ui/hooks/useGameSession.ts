@@ -281,6 +281,22 @@ export function useGameSession() {
     }
   }
 
+  async function rematch() {
+    setIsBusy(true);
+    setError(null);
+    try {
+      if (sessionKind === 'host') {
+        await client.rematch();
+      }
+      setMatchEnded(false);
+      setPaused(false);
+    } catch (caught) {
+      setError(String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function enterGame(initialState: StateSnapshot) {
     const container = gameContainerRef.current;
     if (!container) return;
@@ -349,6 +365,7 @@ export function useGameSession() {
     leaveLobby,
     leaveGame: leaveLobby,
     returnToLobby,
+    rematch,
     goToServerSelect,
     setScreen,
   };

@@ -306,7 +306,11 @@ mod tests {
 
     #[test]
     fn default_map_loads_at_runtime_resolution() {
-        let map = load_map(DEFAULT_MAP_ID, crate::game::DEFAULT_WORLD_WIDTH, crate::game::DEFAULT_WORLD_HEIGHT);
+        let map = load_map(
+            DEFAULT_MAP_ID,
+            crate::game::DEFAULT_WORLD_WIDTH,
+            crate::game::DEFAULT_WORLD_HEIGHT,
+        );
         assert_eq!(map.id, DEFAULT_MAP_ID);
         assert!(map.spawns[0].0 > 0.0);
     }

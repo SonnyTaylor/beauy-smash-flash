@@ -70,6 +70,7 @@ export function Lobby({
   ];
 
   const me = lobbyPlayers.find((player) => player.id === myId);
+  const hostPlayer = lobbyPlayers.find((player) => player.is_host) ?? null;
   const myCharacterId = me?.character_id ?? selectedCharacterId;
   const notReadyCount = lobbyPlayers.filter((player) => !player.ready).length;
   const allReady = lobbyPlayers.length >= 1 && notReadyCount === 0;
@@ -116,6 +117,7 @@ export function Lobby({
           <LobbySettingsPanel
             config={config}
             isHost={isHost}
+            hostName={hostPlayer?.name ?? null}
             playerCount={lobbyPlayers.length}
             onConfigChange={onConfigChange}
           />

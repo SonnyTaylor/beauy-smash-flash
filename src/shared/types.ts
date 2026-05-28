@@ -42,11 +42,17 @@ export interface LobbyPlayerSnapshot {
 
 export type Gamemode = 'deathmatch' | 'team_deathmatch' | 'last_mate_standing';
 
+export type WinCondition = 'kills' | 'time' | 'either';
+
+export type MatchEndReason = 'score' | 'time';
+
 export interface LobbyConfig {
   map_id: string;
   gamemode: Gamemode;
   max_players: number;
   score_limit: number;
+  time_limit_secs: number;
+  win_condition: WinCondition;
   friendly_fire: boolean;
 }
 
@@ -55,6 +61,8 @@ export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
   gamemode: 'deathmatch',
   max_players: 8,
   score_limit: 20,
+  time_limit_secs: 300,
+  win_condition: 'kills',
   friendly_fire: true,
 };
 
@@ -109,6 +117,7 @@ export interface PlayerSnapshot {
   deaths: number;
   alive: boolean;
   reloading: boolean;
+  reload_remaining: number;
   spawn_protected: boolean;
   respawn_in: number;
 }
@@ -124,6 +133,10 @@ export interface StateSnapshot {
   match_ended: boolean;
   winner_id: number | null;
   score_limit: number;
+  time_limit_secs: number;
+  match_elapsed_secs: number;
+  win_condition: WinCondition;
+  match_end_reason: MatchEndReason | null;
 }
 
 export interface CharacterDefinition {

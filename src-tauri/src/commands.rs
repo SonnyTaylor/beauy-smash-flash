@@ -5,7 +5,7 @@ use tauri::Emitter;
 use tokio::net::UdpSocket;
 
 use crate::discovery::{discovery_loop, scan_servers as scan_lan_servers};
-use crate::game::GameWorld;
+use crate::game::{validate_match_config, GameWorld};
 use crate::net::{decode_server, encode_client, encode_server, GAME_PORT};
 use crate::protocol::{
     ClientMessage, InputSnapshot, LobbyConfig, ServerInfo, ServerMessage, SessionInfo,
@@ -120,7 +120,7 @@ pub async fn join_game(
             st.host_addr = Some(host_addr);
             st.my_id = id;
             st.world = GameWorld::new(world.clone());
-            let score_limit = st.lobby_config.score_limit;
+            let lobby_config = st.lobby_config.clone();
             st.world
                 .sync_from_snapshot(&crate::protocol::StateSnapshot {
                     version: crate::protocol::PROTOCOL_VERSION,
@@ -132,7 +132,11 @@ pub async fn join_game(
                     kill_feed: Vec::new(),
                     match_ended: false,
                     winner_id: None,
-                    score_limit,
+                    score_limit: lobby_config.score_limit,
+                    time_limit_secs: lobby_config.time_limit_secs,
+                    match_elapsed_secs: 0.0,
+                    win_condition: lobby_config.win_condition,
+                    match_end_reason: None,
                 });
             (id, world)
         }
@@ -263,11 +267,17 @@ pub async fn start_match(
         if !st.all_players_ready() {
             return Err("All players must be ready".to_string());
         }
+        let config = st.lobby_config.clone();
+        validate_match_config(&config)?;
         st.match_end_emitted = false;
-        let score_limit = st.lobby_config.score_limit;
-        let map_id = st.lobby_config.map_id.clone();
+        let map_id = config.map_id.clone();
         st.world.set_map(&map_id);
-        st.world.reset_for_match(score_limit);
+        st.world.reset_for_match(
+            config.score_limit,
+            config.time_limit_secs,
+            config.win_condition,
+            config.friendly_fire,
+        );
         st.match_started = true;
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
     };
@@ -362,6 +372,48 @@ pub async fn return_to_lobby(
     }
 
     let _ = window.emit("lobby", lobby);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rematch(
+    window: tauri::Window,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let (socket, peers, snapshot) = {
+        let mut st = state.lock().await;
+        if st.mode != SessionMode::Host {
+            return Err("Only the host can start a rematch".to_string());
+        }
+        if !st.match_started {
+            return Err("No match is in progress".to_string());
+        }
+        if !st.world.match_ended {
+            return Err("Match has not ended yet".to_string());
+        }
+        let config = st.lobby_config.clone();
+        validate_match_config(&config)?;
+        st.match_end_emitted = false;
+        let map_id = config.map_id.clone();
+        st.world.set_map(&map_id);
+        st.world.reset_for_match(
+            config.score_limit,
+            config.time_limit_secs,
+            config.win_condition,
+            config.friendly_fire,
+        );
+        (st.socket.clone(), st.peers.clone(), st.world.snapshot())
+    };
+
+    if let Some(socket) = socket {
+        let bytes = encode_server(&ServerMessage::MatchStarted(snapshot.clone()))?;
+        for peer in peers {
+            let _ = socket.send_to(&bytes, peer.addr).await;
+        }
+    }
+
+    let _ = window.emit("match_started", snapshot.clone());
+    let _ = window.emit("state", snapshot);
     Ok(())
 }
 

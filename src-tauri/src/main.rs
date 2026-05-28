@@ -26,6 +26,7 @@ fn main() {
             commands::update_lobby_config,
             commands::start_match,
             commands::return_to_lobby,
+            commands::rematch,
             commands::send_input
         ])
         .run(tauri::generate_context!())

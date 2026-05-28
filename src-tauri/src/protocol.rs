@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 2;
+pub const PROTOCOL_VERSION: u16 = 3;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -29,12 +29,30 @@ pub enum Gamemode {
     LastMateStanding,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WinCondition {
+    #[default]
+    Kills,
+    Time,
+    Either,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchEndReason {
+    Score,
+    Time,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LobbyConfig {
     pub map_id: String,
     pub gamemode: Gamemode,
     pub max_players: u8,
     pub score_limit: u16,
+    pub time_limit_secs: u16,
+    pub win_condition: WinCondition,
     pub friendly_fire: bool,
 }
 
@@ -45,6 +63,8 @@ impl Default for LobbyConfig {
             gamemode: Gamemode::Deathmatch,
             max_players: 8,
             score_limit: 20,
+            time_limit_secs: 300,
+            win_condition: WinCondition::Kills,
             friendly_fire: true,
         }
     }
@@ -136,6 +156,8 @@ pub struct PlayerSnapshot {
     pub deaths: u16,
     pub alive: bool,
     pub reloading: bool,
+    #[serde(default)]
+    pub reload_remaining: f32,
     pub spawn_protected: bool,
     pub respawn_in: f32,
 }
@@ -156,6 +178,13 @@ pub struct StateSnapshot {
     pub winner_id: Option<u8>,
     #[serde(default)]
     pub score_limit: u16,
+    #[serde(default)]
+    pub time_limit_secs: u16,
+    #[serde(default)]
+    pub match_elapsed_secs: f32,
+    #[serde(default)]
+    pub win_condition: WinCondition,
+    pub match_end_reason: Option<MatchEndReason>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -92,6 +92,10 @@ export class TauriGameClient {
     await invoke('return_to_lobby');
   }
 
+  async rematch(): Promise<void> {
+    await invoke('rematch');
+  }
+
   async stopSession(): Promise<void> {
     await invoke('stop_session');
   }

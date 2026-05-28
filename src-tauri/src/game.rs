@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::protocol::{
-    BulletSnapshot, InputSnapshot, KillFeedEntry, MapSnapshot, PlayerSnapshot, RectSnapshot,
-    StateSnapshot, WorldConfig, PROTOCOL_VERSION,
+    BulletSnapshot, InputSnapshot, KillFeedEntry, LobbyConfig, MapSnapshot, MatchEndReason,
+    PlayerSnapshot, RectSnapshot, StateSnapshot, WinCondition, WorldConfig, PROTOCOL_VERSION,
 };
 
 pub const DEFAULT_WORLD_WIDTH: f32 = 1920.0;
@@ -174,6 +174,7 @@ impl Player {
             deaths: self.deaths,
             alive: self.alive,
             reloading: self.reloading(),
+            reload_remaining: self.reload_timer.max(0.0),
             spawn_protected: self.spawn_protected(),
             respawn_in: if self.alive {
                 0.0
@@ -198,7 +199,9 @@ impl Player {
         self.kills = snapshot.kills;
         self.deaths = snapshot.deaths;
         self.alive = snapshot.alive;
-        self.reload_timer = if snapshot.reloading {
+        self.reload_timer = if snapshot.reload_remaining > 0.0 {
+            snapshot.reload_remaining
+        } else if snapshot.reloading {
             GLOCK_RELOAD_TIME
         } else {
             0.0
@@ -223,8 +226,36 @@ pub struct GameWorld {
     pub next_bullet_id: u32,
     pub kill_feed: Vec<KillFeedEntry>,
     pub score_limit: u16,
+    pub time_limit_secs: u16,
+    pub match_elapsed: f32,
+    pub win_condition: WinCondition,
+    pub friendly_fire: bool,
     pub match_ended: bool,
     pub winner_id: Option<u8>,
+    pub match_end_reason: Option<MatchEndReason>,
+}
+
+pub fn validate_match_config(config: &LobbyConfig) -> Result<(), String> {
+    match config.win_condition {
+        WinCondition::Kills => {
+            if config.score_limit == 0 {
+                return Err("Set a score limit above 0 for kill-based matches.".to_string());
+            }
+        }
+        WinCondition::Time => {
+            if config.time_limit_secs == 0 {
+                return Err("Set a time limit for time-based matches.".to_string());
+            }
+        }
+        WinCondition::Either => {
+            if config.score_limit == 0 && config.time_limit_secs == 0 {
+                return Err(
+                    "Set a score limit, time limit, or both for Either win condition.".to_string(),
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 impl Default for GameWorld {
@@ -248,8 +279,13 @@ impl GameWorld {
             next_bullet_id: 1,
             kill_feed: Vec::new(),
             score_limit: 20,
+            time_limit_secs: 0,
+            match_elapsed: 0.0,
+            win_condition: WinCondition::Kills,
+            friendly_fire: true,
             match_ended: false,
             winner_id: None,
+            match_end_reason: None,
         }
     }
 
@@ -290,17 +326,33 @@ impl GameWorld {
         self.inputs.insert(id, input);
     }
 
-    pub fn reset_for_match(&mut self, score_limit: u16) {
+    pub fn reset_for_match(
+        &mut self,
+        score_limit: u16,
+        time_limit_secs: u16,
+        win_condition: WinCondition,
+        friendly_fire: bool,
+    ) {
         self.tick = 0;
         self.bullets.clear();
         self.kill_feed.clear();
         self.score_limit = score_limit;
+        self.time_limit_secs = time_limit_secs;
+        self.match_elapsed = 0.0;
+        self.win_condition = win_condition;
+        self.friendly_fire = friendly_fire;
         self.match_ended = false;
         self.winner_id = None;
+        self.match_end_reason = None;
         self.next_bullet_id = 1;
 
         let ids: Vec<u8> = self.players.keys().copied().collect();
         for id in ids {
+            if let Some(player) = self.players.get_mut(&id) {
+                player.score = 0;
+                player.kills = 0;
+                player.deaths = 0;
+            }
             self.reset_player_for_spawn(id, SPAWN_PROTECTION_TIME);
         }
     }
@@ -309,8 +361,10 @@ impl GameWorld {
         self.tick = 0;
         self.bullets.clear();
         self.kill_feed.clear();
+        self.match_elapsed = 0.0;
         self.match_ended = false;
         self.winner_id = None;
+        self.match_end_reason = None;
         self.next_bullet_id = 1;
 
         let ids: Vec<u8> = self.players.keys().copied().collect();
@@ -353,6 +407,10 @@ impl GameWorld {
         self.match_ended = snapshot.match_ended;
         self.winner_id = snapshot.winner_id;
         self.score_limit = snapshot.score_limit;
+        self.time_limit_secs = snapshot.time_limit_secs;
+        self.match_elapsed = snapshot.match_elapsed_secs;
+        self.win_condition = snapshot.win_condition;
+        self.match_end_reason = snapshot.match_end_reason;
         self.kill_feed = snapshot.kill_feed.clone();
         self.bullets = snapshot
             .bullets
@@ -395,6 +453,7 @@ impl GameWorld {
         }
 
         self.tick += 1;
+        self.match_elapsed += dt;
 
         for player in self.players.values_mut() {
             if player.spawn_protection > 0.0 {
@@ -553,6 +612,9 @@ impl GameWorld {
                 if !player.alive || player.spawn_protected() || player.id == bullet.owner_id {
                     continue;
                 }
+                if !self.friendly_fire {
+                    continue;
+                }
 
                 if circle_hits_circle(
                     bullet.x,
@@ -642,15 +704,49 @@ impl GameWorld {
             return;
         }
 
-        if let Some((winner_id, _)) = self
-            .players
-            .values()
-            .find(|player| player.score >= self.score_limit)
-            .map(|player| (player.id, player.score))
-        {
-            self.match_ended = true;
-            self.winner_id = Some(winner_id);
+        let score_win = self.score_limit > 0
+            && self
+                .players
+                .values()
+                .any(|player| player.score >= self.score_limit);
+
+        let time_win =
+            self.time_limit_secs > 0 && self.match_elapsed >= self.time_limit_secs as f32;
+
+        let (should_end, reason) = match self.win_condition {
+            WinCondition::Kills => (score_win, score_win.then_some(MatchEndReason::Score)),
+            WinCondition::Time => (time_win, time_win.then_some(MatchEndReason::Time)),
+            WinCondition::Either => {
+                if score_win {
+                    (true, Some(MatchEndReason::Score))
+                } else if time_win {
+                    (true, Some(MatchEndReason::Time))
+                } else {
+                    (false, None)
+                }
+            }
+        };
+
+        if !should_end {
+            return;
         }
+
+        self.match_ended = true;
+        self.match_end_reason = reason;
+        self.winner_id = self.leading_player_id();
+    }
+
+    fn leading_player_id(&self) -> Option<u8> {
+        self.players
+            .values()
+            .max_by(|a, b| {
+                a.score
+                    .cmp(&b.score)
+                    .then(a.kills.cmp(&b.kills))
+                    .then(b.deaths.cmp(&a.deaths))
+                    .then(a.id.cmp(&b.id))
+            })
+            .map(|player| player.id)
     }
 
     pub fn snapshot(&self) -> StateSnapshot {
@@ -668,6 +764,10 @@ impl GameWorld {
             match_ended: self.match_ended,
             winner_id: self.winner_id,
             score_limit: self.score_limit,
+            time_limit_secs: self.time_limit_secs,
+            match_elapsed_secs: self.match_elapsed,
+            win_condition: self.win_condition,
+            match_end_reason: self.match_end_reason,
         }
     }
 }
@@ -711,7 +811,7 @@ mod tests {
         let mut world = GameWorld::default();
         world.add_player(0, "Host".to_string(), "sonny".to_string());
         world.add_player(1, "Guest".to_string(), "bailey".to_string());
-        world.reset_for_match(20);
+        world.reset_for_match(20, 0, WinCondition::Kills, true);
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
         }
@@ -871,6 +971,65 @@ mod tests {
 
         assert!(world.match_ended);
         assert_eq!(world.winner_id, Some(0));
+        assert_eq!(world.match_end_reason, Some(MatchEndReason::Score));
         assert_eq!(world.players.get(&0).unwrap().score, 3);
+    }
+
+    #[test]
+    fn friendly_fire_off_prevents_bullet_damage() {
+        let mut world = test_world_with_two_players();
+        world.friendly_fire = false;
+        let victim_pos = {
+            let victim = world.players.get(&1).unwrap();
+            (victim.x, victim.y)
+        };
+
+        world.bullets.push(Bullet {
+            id: 1,
+            owner_id: 0,
+            x: victim_pos.0 - 20.0,
+            y: victim_pos.1,
+            vx: GLOCK_BULLET_SPEED,
+            vy: 0.0,
+            life: GLOCK_BULLET_LIFE,
+        });
+
+        world.process_bullets(1.0 / 60.0);
+
+        let victim = world.players.get(&1).unwrap();
+        assert_eq!(victim.hp, PLAYER_MAX_HP);
+        assert!(victim.alive);
+    }
+
+    #[test]
+    fn validate_rejects_time_mode_without_limit() {
+        let mut config = LobbyConfig::default();
+        config.win_condition = WinCondition::Time;
+        config.time_limit_secs = 0;
+        assert!(validate_match_config(&config).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_kills_mode_without_score_limit() {
+        let mut config = LobbyConfig::default();
+        config.win_condition = WinCondition::Kills;
+        config.score_limit = 0;
+        assert!(validate_match_config(&config).is_err());
+    }
+
+    #[test]
+    fn time_limit_ends_the_match_with_highest_score_winner() {
+        let mut world = test_world_with_two_players();
+        world.win_condition = WinCondition::Time;
+        world.time_limit_secs = 1;
+        world.match_elapsed = 1.0;
+        world.players.get_mut(&0).unwrap().score = 5;
+        world.players.get_mut(&1).unwrap().score = 2;
+
+        world.check_match_end();
+
+        assert!(world.match_ended);
+        assert_eq!(world.winner_id, Some(0));
+        assert_eq!(world.match_end_reason, Some(MatchEndReason::Time));
     }
 }

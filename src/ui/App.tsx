@@ -68,9 +68,11 @@ export function App() {
           sessionKind={session.sessionKind}
           selectedCharacter={session.selectedCharacter}
           paused={session.paused}
+          isBusy={session.isBusy}
           onPauseChange={session.setPaused}
           onLeaveToMenu={() => void session.leaveGame()}
           onReturnToLobby={() => void session.returnToLobby()}
+          onRematch={() => void session.rematch()}
         />
       )}
     </div>

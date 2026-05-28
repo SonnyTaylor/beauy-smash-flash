@@ -43,14 +43,14 @@ export function PlayerSlot({
       </button>
 
       <div className="slot-text">
-        {isMe ? (
-          <EditableName value={player.name} onSubmit={onNameSubmit} />
-        ) : (
-          <strong className="slot-name">
-            {player.name}
-            {player.is_host ? <span className="host-tag">Host</span> : null}
-          </strong>
-        )}
+        <strong className="slot-name">
+          {isMe ? (
+            <EditableName value={player.name} onSubmit={onNameSubmit} />
+          ) : (
+            player.name
+          )}
+          {player.is_host ? <span className="host-tag">Host</span> : null}
+        </strong>
         <span className="slot-ability">{character.abilityName}</span>
       </div>
 

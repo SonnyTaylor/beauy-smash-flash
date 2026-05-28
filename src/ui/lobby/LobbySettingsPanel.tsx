@@ -1,17 +1,25 @@
 import { MAPS } from '../../content/maps';
-import type { Gamemode, LobbyConfig } from '../../shared/types';
+import type { Gamemode, LobbyConfig, WinCondition } from '../../shared/types';
 import { Cycle, SettingRow } from '../components/CycleControl';
-import { GAMEMODE_OPTIONS, MAX_PLAYERS_OPTIONS, SCORE_LIMIT_OPTIONS } from '../constants';
+import {
+  GAMEMODE_OPTIONS,
+  MAX_PLAYERS_OPTIONS,
+  SCORE_LIMIT_OPTIONS,
+  TIME_LIMIT_OPTIONS,
+  WIN_CONDITION_OPTIONS,
+} from '../constants';
 import { MapPreview } from './MapPreview';
 
 export function LobbySettingsPanel({
   config,
   isHost,
+  hostName,
   playerCount,
   onConfigChange,
 }: {
   config: LobbyConfig;
   isHost: boolean;
+  hostName: string | null;
   playerCount: number;
   onConfigChange: (config: LobbyConfig) => void;
 }) {
@@ -19,9 +27,25 @@ export function LobbySettingsPanel({
     onConfigChange({ ...config, ...partial });
   }
 
+  function patchWinCondition(next: WinCondition) {
+    const nextConfig: LobbyConfig = { ...config, win_condition: next };
+    if (next !== 'kills' && nextConfig.time_limit_secs === 0) {
+      nextConfig.time_limit_secs = 300;
+    }
+    onConfigChange(nextConfig);
+  }
+
   const mapName = MAPS.find((map) => map.id === config.map_id)?.name ?? config.map_id;
   const gamemodeName =
     GAMEMODE_OPTIONS.find((option) => option.id === config.gamemode)?.label ?? config.gamemode;
+  const winCondition =
+    WIN_CONDITION_OPTIONS.find((option) => option.id === config.win_condition) ??
+    WIN_CONDITION_OPTIONS[0];
+  const timeLimitLabel =
+    TIME_LIMIT_OPTIONS.find((option) => option.secs === config.time_limit_secs)?.label ??
+    (config.time_limit_secs === 0 ? 'Off' : `${Math.round(config.time_limit_secs / 60)} min`);
+  const showScoreLimit = config.win_condition !== 'time';
+  const showTimeLimit = config.win_condition !== 'kills';
 
   return (
     <section className="lobby-settings">
@@ -29,6 +53,11 @@ export function LobbySettingsPanel({
         <h3>Server Settings</h3>
         <span>{isHost ? 'Host-only — changes broadcast live' : 'Set by the host'}</span>
       </header>
+
+      <div className="lobby-host-banner">
+        <span className="lobby-host-label">Host</span>
+        <strong>{hostName ?? 'Waiting…'}</strong>
+      </div>
 
       <div className="lobby-settings-scroll">
         <div className="map-setting-block">
@@ -57,6 +86,20 @@ export function LobbySettingsPanel({
           />
         </SettingRow>
 
+        <SettingRow label="Win Condition">
+          <Cycle
+            value={config.win_condition}
+            values={WIN_CONDITION_OPTIONS.map((option) => ({
+              id: option.id,
+              label: option.label,
+            }))}
+            disabled={!isHost}
+            onChange={(id) => patchWinCondition(id as WinCondition)}
+            fallback={winCondition.label}
+          />
+        </SettingRow>
+        <p className="setting-hint">{winCondition.hint}</p>
+
         <SettingRow label="Max Players">
           <Cycle
             value={String(config.max_players)}
@@ -70,18 +113,37 @@ export function LobbySettingsPanel({
           />
         </SettingRow>
 
-        <SettingRow label="Score Limit">
-          <Cycle
-            value={String(config.score_limit)}
-            values={SCORE_LIMIT_OPTIONS.map((value) => ({
-              id: String(value),
-              label: `${value} kills`,
-            }))}
-            disabled={!isHost}
-            onChange={(id) => patch({ score_limit: Number(id) })}
-            fallback={`${config.score_limit} kills`}
-          />
-        </SettingRow>
+        {showScoreLimit && (
+          <SettingRow label="Score Limit">
+            <Cycle
+              value={String(config.score_limit)}
+              values={SCORE_LIMIT_OPTIONS.map((value) => ({
+                id: String(value),
+                label: `${value} kills`,
+              }))}
+              disabled={!isHost}
+              onChange={(id) => patch({ score_limit: Number(id) })}
+              fallback={`${config.score_limit} kills`}
+            />
+          </SettingRow>
+        )}
+
+        {showTimeLimit && (
+          <SettingRow label="Time Limit">
+            <Cycle
+              value={String(config.time_limit_secs)}
+              values={TIME_LIMIT_OPTIONS.filter(
+                (option) => option.secs > 0 || config.win_condition === 'either',
+              ).map((option) => ({
+                id: String(option.secs),
+                label: option.label,
+              }))}
+              disabled={!isHost}
+              onChange={(id) => patch({ time_limit_secs: Number(id) })}
+              fallback={timeLimitLabel}
+            />
+          </SettingRow>
+        )}
 
         <SettingRow label="Friendly Fire">
           <button
@@ -93,6 +155,11 @@ export function LobbySettingsPanel({
             {config.friendly_fire ? 'On' : 'Off'}
           </button>
         </SettingRow>
+        <p className="setting-hint">
+          {config.friendly_fire
+            ? 'Bullets damage other players.'
+            : 'Bullets hit walls only — no player damage.'}
+        </p>
       </div>
     </section>
   );
