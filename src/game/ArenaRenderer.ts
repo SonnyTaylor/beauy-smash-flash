@@ -63,7 +63,7 @@ const BULLET_RADIUS_BY_WEAPON: Record<string, number> = {
   jarate: 4,
   feces: 5,
   yoghurt_effect: 6,
-  popcorn: 5,
+  popcorn: 8,
 };
 const RELOAD_GUN_TILT = Math.PI * 0.42;
 const MELEE_SWING_DURATION = 0.18;
@@ -858,8 +858,8 @@ export class ArenaRenderer {
       }
 
       if (state.weaponId === 'popcorn') {
-        this.bullets.circle(state.x, state.y, bulletRadius * 1.15);
-        this.bullets.fill({ color: 0xffffff, alpha: 0.55 });
+        this.bullets.circle(state.x, state.y, bulletRadius * 1.28);
+        this.bullets.fill({ color: 0xffffff, alpha: 0.6 });
       }
 
       this.bullets.circle(state.x, state.y, bulletRadius);

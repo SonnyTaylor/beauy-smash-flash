@@ -35,7 +35,7 @@ All characters share:
 |-----------|-------|------|--------------|----------------|
 | Sonny | Reverse Shell | Disruption | Standard | 4s inverted controls on nearest enemy |
 | Bailey | Truth Nuke | Burst AoE | Slow passive | 60 dmg blast, aim windup |
-| Jacob | Director's Cut | Tempo / mark | Standard | 30s speed mode + 15 popcorn shots |
+| Jacob | Director's Cut | Tempo / mark | Standard | 30s speed mode + 24 popcorn shots |
 | Isaak | Chi Blast | Skillshot | Standard + stillness | 75 dmg beam, optional slow |
 | Taj | Story Shield | Defense / poke | Faster when idle | Block front arc, post for dmg + slow |
 | Finn | Cheeky Dinghy | Initiation | Standard | 4s speedboat ram, no shooting |
@@ -118,12 +118,13 @@ Slowest baseline recharge — pays for reliable teamfight burst.
 |------|-------|
 | Mode duration | 30.0s |
 | Speed multiplier | 1.67× (601 px/s) |
-| Popcorn shots | 15 |
+| Popcorn shots | 24 |
 | Popcorn damage | 14 per hit |
 | Popcorn fire rate | 0.11s between shots |
-| Popcorn speed | 684 px/s |
+| Popcorn speed | 920 px/s |
+| Popcorn hit radius | 8 px |
 | Popcorn bounces | 12 |
-| Popcorn spread | 20° initial, 50° on bounce |
+| Popcorn spread | 6° initial (±), 40° on bounce |
 | Mark duration | 3.0s |
 | Mark damage mult | 1.4× from other sources |
 
@@ -142,7 +143,7 @@ One charge buys a long window — effective cooldown is mostly the 30s mode plus
 - Total popcorn damage potential is high but spread over time and bounces — not a single burst.
 - Mark multiplies team focus fire; strong in FFA clusters.
 - Speed helps reposition between popcorn waves.
-- **Counterplay:** Space out during mode, don't eat repeated bounces in corridors, kill before 15 shots expire.
+- **Counterplay:** Space out during mode, don't eat repeated bounces in corridors, kill before 24 shots expire.
 
 ---
 
@@ -274,7 +275,7 @@ Approximate direct damage from a full charge at ideal execution:
 |-----------|----------------|-------|
 | Sonny | 0 | Control only |
 | Bailey | 21–60 | Radius + falloff |
-| Jacob | Up to ~210 | 15 × 14 if all popcorn hit (rare) |
+| Jacob | Up to ~336 | 24 × 14 if all popcorn hit (rare) |
 | Isaak | 75 | Single target beam |
 | Taj (post) | 32 | Optional follow-up after block |
 | Finn (ram) | 35 | Single enemy per boat |

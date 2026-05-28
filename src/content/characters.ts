@@ -30,7 +30,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     abilityId: 'directors_cut',
     abilityName: "Director's Cut",
     abilityDescription:
-      "30s cinematic mode — 1.67× speed, 15 bouncing popcorn shots that mark targets for 3s.",
+      "30s cinematic mode — 1.67× speed, 24 fast popcorn shots (tight aim) that mark targets for 3s.",
   },
   {
     id: 'isaak',

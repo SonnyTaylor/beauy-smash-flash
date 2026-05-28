@@ -1,4 +1,5 @@
 import type { CharacterDefinition } from '../../shared/types';
+import { JACOB_DIRECTORS_CUT_SHOTS } from '../../content/jacob-directors-cut';
 import { TAJ_SHIELD_DURATION_SECS } from '../../content/reels';
 import { rgbCss } from '../character';
 
@@ -36,7 +37,7 @@ export function HudAbilityButton({
     ? Math.max(0, Math.min(1, 1 - windup / windupTotal))
     : 0;
   const popcornRatio = inDirectorsCut
-    ? Math.max(0, Math.min(1, (directorsCutShots ?? 0) / 15))
+    ? Math.max(0, Math.min(1, (directorsCutShots ?? 0) / JACOB_DIRECTORS_CUT_SHOTS))
     : 0;
   const shieldRatio = hasShield
     ? Math.max(0, Math.min(1, (reelShieldRemaining ?? 0) / TAJ_SHIELD_DURATION_SECS))
