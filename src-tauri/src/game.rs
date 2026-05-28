@@ -242,13 +242,18 @@ impl Player {
         }
     }
 
+    fn has_active_weapon(&self) -> bool {
+        self.slot_state(self.active_slot).is_some()
+    }
+
     fn apply_active_slot_to_combat_state(&mut self) {
-        let weapon = self.active_weapon();
-        if let Some(slot) = self.slot_state(self.active_slot) {
-            self.ammo = slot.ammo;
-        } else {
+        let Some(slot) = self.slot_state(self.active_slot) else {
             self.ammo = 0;
-        }
+            self.max_ammo = 0;
+            return;
+        };
+        let weapon = weapons::get_or_default(&slot.weapon_id);
+        self.ammo = slot.ammo;
         self.max_ammo = weapon.max_ammo;
     }
 
@@ -262,7 +267,13 @@ impl Player {
     }
 
     fn snapshot(&self) -> PlayerSnapshot {
-        let weapon = self.active_weapon();
+        let (active_weapon, reload_duration) = if let Some(slot) = self.slot_state(self.active_slot)
+        {
+            let weapon = weapons::get_or_default(&slot.weapon_id);
+            (weapon.id.to_string(), weapon.reload_time)
+        } else {
+            (String::new(), 0.0)
+        };
         PlayerSnapshot {
             id: self.id,
             x: self.x,
@@ -290,9 +301,9 @@ impl Player {
             ability_charge: self.ability_charge,
             ability_windup: self.ability_windup.max(0.0),
             hacked_remaining: self.controls_inverted_until.max(0.0),
-            active_weapon: weapon.id.to_string(),
+            active_weapon,
             active_slot: self.active_slot as u8,
-            reload_duration: weapon.reload_time,
+            reload_duration,
             primary_weapon: self.primary.as_ref().map(Self::slot_snapshot),
             secondary_weapon: self.secondary.as_ref().map(Self::slot_snapshot),
         }
@@ -359,10 +370,6 @@ impl Player {
                 self.primary = Some(secondary);
                 self.active_slot = ActiveSlot::Primary;
             }
-        }
-        if self.primary.is_none() {
-            self.primary = Some(weapons::default_primary_slot());
-            self.active_slot = ActiveSlot::Primary;
         }
         if self.slot_state(self.active_slot).is_none() {
             self.active_slot = if self.primary.is_some() {
@@ -912,7 +919,7 @@ impl GameWorld {
         let mut reload_requests: Vec<(u8, f32)> = Vec::new();
 
         for player in self.players.values_mut() {
-            if !player.alive || is_casting(player) {
+            if !player.alive || is_casting(player) || !player.has_active_weapon() {
                 continue;
             }
 
@@ -1557,6 +1564,19 @@ mod tests {
         let victim = world.players.get(&1).unwrap();
         assert!(victim.controls_inverted_until > 0.0);
         assert_eq!(world.players.get(&0).unwrap().ability_charge, 0.0);
+    }
+
+    #[test]
+    fn drop_only_weapon_leaves_player_unarmed() {
+        let mut world = test_world_with_two_players();
+        world.try_drop_weapon(0);
+
+        assert_eq!(world.weapon_pickups.len(), 1);
+        let player = world.players.get(&0).unwrap();
+        assert!(player.primary.is_none());
+        assert!(player.secondary.is_none());
+        assert_eq!(player.ammo, 0);
+        assert_eq!(player.max_ammo, 0);
     }
 
     #[test]

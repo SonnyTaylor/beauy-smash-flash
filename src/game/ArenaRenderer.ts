@@ -309,7 +309,7 @@ export class ArenaRenderer {
       view.wasSpawnProtected = player.spawn_protected;
 
       this.updatePlayerVisuals(view, player);
-      this.syncPlayerWeapon(view, player.active_weapon ?? 'glock');
+      this.syncPlayerWeapon(view, player.active_weapon ?? '');
 
       view.targetX = player.x;
       view.targetY = player.y;
@@ -597,10 +597,10 @@ export class ArenaRenderer {
     container.addChild(avatar);
 
     let gun: Sprite | null = null;
-    const weaponId = player.active_weapon ?? 'glock';
-    const weaponDef = getWeapon(weaponId);
-    const weaponTexture = this.weaponTextures.get(weaponId);
-    if (weaponTexture) {
+    const weaponId = player.active_weapon ?? '';
+    const weaponDef = weaponId ? getWeapon(weaponId) : null;
+    const weaponTexture = weaponId ? this.weaponTextures.get(weaponId) : undefined;
+    if (weaponDef && weaponTexture) {
       gun = new Sprite(weaponTexture);
       gun.anchor.set(weaponDef.meta.pivot.x, weaponDef.meta.pivot.y);
       gun.scale.set(weaponDef.meta.displayScale);
