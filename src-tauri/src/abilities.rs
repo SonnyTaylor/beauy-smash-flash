@@ -143,7 +143,14 @@ pub fn passive_charge_tick(
 ) {
     if dev_mode {
         for player in players.values_mut() {
-            if player.alive && player.ability_windup <= 0.0 {
+            if !player.alive || player.ability_windup > 0.0 {
+                continue;
+            }
+            // Isaak stillness needs time standing still between blasts — keep normal charge in dev.
+            if player.character_id == "isaak" {
+                let rate = passive_charge_rate(player, inputs);
+                add_charge(player, rate * dt);
+            } else {
                 player.ability_charge = ABILITY_CHARGE_MAX;
             }
         }

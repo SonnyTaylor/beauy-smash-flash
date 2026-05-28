@@ -82,14 +82,26 @@ export function HudAbilityButton({
         {hasShield && (
           <div className="hud-ability-percent">{Math.ceil(reelShieldRemaining ?? 0)}s</div>
         )}
-        {character.id === 'isaak' && stillnessStacks != null && stillnessStacks > 0 && !casting && (
-          <div className="hud-ability-stacks" aria-label={`${stillnessStacks} stillness stacks`}>
-            {'●'.repeat(stillnessStacks)}
-          </div>
-        )}
       </div>
       <div className="hud-ability-key" aria-hidden>E</div>
       <div className="hud-ability-name">{statusLabel}</div>
+      {character.id === 'isaak' && !casting && !inBoat && (
+        <div
+          className={`hud-ability-stacks ${(stillnessStacks ?? 0) >= 3 ? 'is-full' : ''}`}
+          aria-label={`${stillnessStacks ?? 0} of 3 stillness stacks${(stillnessStacks ?? 0) >= 3 ? ', slow on hit' : ''}`}
+        >
+          {[0, 1, 2].map((index) => (
+            <span
+              key={index}
+              className={index < (stillnessStacks ?? 0) ? 'hud-ability-stack is-filled' : 'hud-ability-stack'}
+              aria-hidden
+            />
+          ))}
+          <span className="hud-ability-stack-label">
+            {(stillnessStacks ?? 0) >= 3 ? 'Slow on hit' : 'Stillness'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -141,6 +141,8 @@ export class GameAudio {
         this.audio.playTruthExplosion(pan, 0.95, distance, maxDistance);
       } else if (effect.kind === 'aim_reticle') {
         this.audio.playAbilityCharge(pan, 0.34, distance, maxDistance);
+      } else if (effect.kind === 'chi_beam') {
+        this.audio.playIsaakChiBlast(pan, 0.9, distance, maxDistance);
       }
     }
 

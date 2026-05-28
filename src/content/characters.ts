@@ -41,7 +41,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     abilityId: 'chi_blast',
     abilityName: 'Chi Blast',
     abilityDescription:
-      'Stand still to build stillness stacks. Channel a golden beam — 3 stacks add a slow on hit.',
+      'Stand still to build stillness (●●●). At 3 stacks, Chi Blast also slows enemies it hits.',
   },
   {
     id: 'taj',

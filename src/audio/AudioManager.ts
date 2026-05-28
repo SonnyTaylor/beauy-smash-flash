@@ -45,6 +45,7 @@ export class AudioManager {
   private noiseBuffer: AudioBuffer | null = null;
   private gunshotBuffer: AudioBuffer | null = null;
   private truthNukeBuffer: AudioBuffer | null = null;
+  private isaakChiBlastBuffer: AudioBuffer | null = null;
   private assetsPromise: Promise<void> | null = null;
   private musicSequencer: MusicSequencer | null = null;
   private musicSessionGain: GainNode | null = null;
@@ -140,6 +141,7 @@ export class AudioManager {
     this.noiseBuffer = null;
     this.gunshotBuffer = null;
     this.truthNukeBuffer = null;
+    this.isaakChiBlastBuffer = null;
     this.musicSequencer = null;
     this.musicSessionGain = null;
     this.assetsPromise = null;
@@ -357,6 +359,23 @@ export class AudioManager {
     }, 160);
   }
 
+  playIsaakChiBlast(pan = 0, volume = 0.85, distance = 0, maxDistance = 900) {
+    const attenuation = distanceAttenuation(distance, maxDistance);
+    if (attenuation <= 0.02) return;
+
+    if (this.isaakChiBlastBuffer) {
+      void this.playSample({
+        buffer: this.isaakChiBlastBuffer,
+        volume: volume * attenuation,
+        pan,
+        lowpassHz: lowpassForDistance(distance, maxDistance),
+      });
+      return;
+    }
+
+    this.playAbilityCharge(pan, volume * 0.5, distance, maxDistance);
+  }
+
   playAbilityCharge(pan = 0, volume = 0.3, distance = 0, maxDistance = 900) {
     const attenuation = distanceAttenuation(distance, maxDistance);
     if (attenuation <= 0.02) return;
@@ -400,6 +419,11 @@ export class AudioManager {
         this.truthNukeBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.truthNuke);
       } catch (error) {
         console.warn('[audio] truth nuke sample failed to load', error);
+      }
+      try {
+        this.isaakChiBlastBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.isaakChiBlast);
+      } catch (error) {
+        console.warn('[audio] isaak chi blast sample failed to load', error);
       }
     })();
 

@@ -752,8 +752,12 @@ export class ArenaRenderer {
 
   private updatePlayerVisuals(view: PlayerView, player: PlayerSnapshot) {
     const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
+    const stillnessStacks = player.stillness_stacks ?? 0;
     if (label) {
       label.text = player.name || getCharacter(player.character_id).initials;
+      const stackLift =
+        player.character_id === 'isaak' && stillnessStacks > 0 ? 14 : 0;
+      label.y = -PLAYER_RADIUS - 18 - stackLift;
     }
 
     view.container.alpha = player.spawn_protected ? 0.85 : 1;
@@ -1135,9 +1139,9 @@ export class ArenaRenderer {
     aura.circle(0, 0, PLAYER_RADIUS + 10 + pulse * 4)
       .stroke({ color: 0xffcc00, width: 2.5, alpha: 0.35 + pulse * 0.35 });
     for (let i = 0; i < view.stillnessStacks; i += 1) {
-      const angle = (i / 3) * Math.PI * 2 - Math.PI / 2;
-      const dist = PLAYER_RADIUS + 18;
-      aura.circle(Math.cos(angle) * dist, Math.sin(angle) * dist, 4)
+      const x = (i - (view.stillnessStacks - 1) / 2) * 10;
+      const y = -PLAYER_RADIUS - 10;
+      aura.circle(x, y, 4)
         .fill({ color: 0xffe066, alpha: 0.85 });
     }
   }
