@@ -8,6 +8,7 @@ use tokio::net::UdpSocket;
 use crate::net::{decode_discovery, encode_discovery, DISCOVERY_PORT, GAME_PORT};
 use crate::protocol::{DiscoveryMessage, ServerInfo, PROTOCOL_VERSION};
 use crate::session::{SessionMode, SharedState};
+use crate::version::APP_VERSION;
 
 pub async fn discovery_loop(state: SharedState) {
     let Ok(socket) = UdpSocket::bind(format!("0.0.0.0:{DISCOVERY_PORT}")).await else {
@@ -20,12 +21,9 @@ pub async fn discovery_loop(state: SharedState) {
         let Ok((n, addr)) = socket.recv_from(&mut buf).await else {
             continue;
         };
-        let Ok(DiscoveryMessage::Query { version }) = decode_discovery(&buf[..n]) else {
+        let Ok(DiscoveryMessage::Query { .. }) = decode_discovery(&buf[..n]) else {
             continue;
         };
-        if version != PROTOCOL_VERSION {
-            continue;
-        }
 
         let Some(info) = server_info(&state, addr.ip()).await else {
             continue;
@@ -87,5 +85,6 @@ async fn server_info(state: &SharedState, requester_ip: IpAddr) -> Option<Server
         player_count: st.world.players.len(),
         max_players: st.lobby_config.max_players as usize,
         version: PROTOCOL_VERSION,
+        app_version: APP_VERSION.to_string(),
     })
 }

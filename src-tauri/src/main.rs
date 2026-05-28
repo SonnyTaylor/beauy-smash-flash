@@ -11,12 +11,23 @@ mod maps;
 mod net;
 mod protocol;
 mod session;
+mod version;
 mod weapons;
+
+use crate::version::AppInfo;
+
+#[tauri::command]
+fn get_app_info() -> AppInfo {
+    AppInfo::current()
+}
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Arc::new(Mutex::new(session::AppState::default())))
         .invoke_handler(tauri::generate_handler![
+            get_app_info,
             commands::stop_session,
             commands::start_host,
             commands::join_game,

@@ -25,6 +25,24 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCNTdDRkFEMzkyODc1RkMKUldUOGRTZzVyYzlYdTBBZWR5RStTZW5tZ1lObnJGYWlEVFRjTUhmRFRmcllzTlpoMzlHL1BrYk0K",
+      "endpoints": [
+        "https://github.com/SonnyTaylor/beauy-smash-flash/releases/latest/download/latest.json"
+      ],
+      "dialog": false
+    }
   }
 }

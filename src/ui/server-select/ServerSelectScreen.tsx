@@ -1,4 +1,5 @@
-import type { ServerInfo } from '../../shared/types';
+import type { AppInfo, ServerInfo } from '../../shared/types';
+import { describeHostCompatibility } from '../../shared/compatibility';
 import { ServerSelect } from './ServerSelect';
 
 export function ServerSelectScreen({
@@ -8,6 +9,7 @@ export function ServerSelectScreen({
   scanMessage,
   isBusy,
   localIp,
+  appInfo,
   onJoinIpChange,
   onScan,
   onBack,
@@ -19,6 +21,7 @@ export function ServerSelectScreen({
   scanMessage: string;
   isBusy: boolean;
   localIp?: string | null;
+  appInfo: AppInfo;
   onJoinIpChange: (value: string) => void;
   onScan: () => void;
   onBack: () => void;
@@ -33,6 +36,7 @@ export function ServerSelectScreen({
           <span>Your Host</span>
         </h1>
         <p className="tagline">Hop on a mate&apos;s LAN game or punch in their IP if school WiFi blocks discovery.</p>
+        <p className="join-version-note">Your build: v{appInfo.app_version} · protocol {appInfo.protocol_version}</p>
         <ul className="join-tips">
           <li>
             <span className="join-tip-label">Scan</span>
@@ -58,6 +62,7 @@ export function ServerSelectScreen({
           isScanning={isScanning}
           scanMessage={scanMessage}
           isBusy={isBusy}
+          appInfo={appInfo}
           onJoinIpChange={onJoinIpChange}
           onScan={onScan}
           onBack={onBack}

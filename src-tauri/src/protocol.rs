@@ -9,7 +9,10 @@ pub struct ServerInfo {
     pub game_port: u16,
     pub player_count: usize,
     pub max_players: usize,
+    /// LAN wire protocol version — must match between host and clients.
     pub version: u16,
+    #[serde(default)]
+    pub app_version: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -329,6 +332,8 @@ pub enum ClientMessage {
         character_id: String,
         #[serde(default = "default_primary_weapon_id")]
         primary_weapon_id: String,
+        #[serde(default)]
+        protocol_version: u16,
     },
     SetReady {
         ready: bool,

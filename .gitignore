@@ -8,6 +8,9 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 
+# Updater signing keys (public key lives in tauri.conf.json)
+.tauri/
+
 # IDE
 .vscode/
 .idea/

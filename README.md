@@ -32,3 +32,9 @@ cd src-tauri; cargo check; cargo test
 4. Character heads, abilities, audio, and polished UI.
 
 The original Python version and game guide live in `C:\Users\Sonny Taylor\Code\local-game` and should be treated as reference material, not a strict technical limit.
+
+## Releases & updates
+
+Windows installers are built with `bun run tauri:build`. Tagged pushes to GitHub publish signed releases and feed the in-app update prompt. See [docs/RELEASES.md](docs/RELEASES.md).
+
+Repository: https://github.com/SonnyTaylor/beauy-smash-flash

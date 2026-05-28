@@ -29,7 +29,14 @@ export interface ServerInfo {
   game_port: number;
   player_count: number;
   max_players: number;
+  /** LAN wire protocol version */
   version: number;
+  app_version?: string;
+}
+
+export interface AppInfo {
+  app_version: string;
+  protocol_version: number;
 }
 
 export interface LobbyPlayerSnapshot {

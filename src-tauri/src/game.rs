@@ -1858,8 +1858,8 @@ impl GameWorld {
                 }
             }
 
-            let time_win = self.time_limit_secs > 0
-                && self.match_elapsed >= self.time_limit_secs as f32;
+            let time_win =
+                self.time_limit_secs > 0 && self.match_elapsed >= self.time_limit_secs as f32;
             if time_win {
                 self.match_ended = true;
                 self.match_end_reason = Some(MatchEndReason::Time);

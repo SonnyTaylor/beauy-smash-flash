@@ -678,6 +678,108 @@ button:disabled {
   gap: 10px;
 }
 
+.app-version-chip {
+  position: fixed;
+  left: 18px;
+  bottom: 14px;
+  z-index: 4;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(8, 11, 22, 0.72);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+}
+
+.update-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 6, 14, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.update-prompt-panel {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 24px 28px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(12, 16, 30, 0.96);
+}
+
+.update-prompt-notes {
+  margin: 0;
+  color: var(--mute-strong);
+  line-height: 1.5;
+}
+
+.update-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.update-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.update-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cyan), #7af);
+  transition: width 120ms ease;
+}
+
+.join-version-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.host-version-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 255, 255, 0.12);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+}
+
+.host-version-badge.bad {
+  background: rgba(255, 80, 80, 0.14);
+  color: #ff9d9d;
+}
+
+.host-card-incompatible {
+  opacity: 0.72;
+}
+
+.host-card-warning {
+  display: block;
+  margin-top: 4px;
+  color: #ff9d9d;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.host-card-warning.soft {
+  color: var(--muted);
+}
+
 .copy-chip-button {
   padding: 4px 10px;
   border: 1px solid var(--line);

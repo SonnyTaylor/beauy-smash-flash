@@ -101,6 +101,7 @@ pub async fn join_game(
         name: clean_player_name(player_name).unwrap_or_else(|| "Player".to_string()),
         character_id: clean_character_id(character_id),
         primary_weapon_id: clean_weapon_id(primary_weapon_id),
+        protocol_version: crate::protocol::PROTOCOL_VERSION,
     };
     let bytes = encode_client(&join)?;
     socket

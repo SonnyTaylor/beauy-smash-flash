@@ -218,7 +218,19 @@ async fn handle_host_message(
             name,
             character_id,
             primary_weapon_id,
+            protocol_version,
         } => {
+            if protocol_version != crate::protocol::PROTOCOL_VERSION {
+                let message = crate::version::protocol_mismatch_message(
+                    crate::protocol::PROTOCOL_VERSION,
+                    protocol_version,
+                );
+                if let Ok(bytes) = encode_server(&ServerMessage::Error { message }) {
+                    let _ = socket.send_to(&bytes, addr).await;
+                }
+                return;
+            }
+
             let response = {
                 let mut st = state.lock().await;
                 if let Some(peer) = st.peers.iter_mut().find(|peer| peer.addr == addr) {

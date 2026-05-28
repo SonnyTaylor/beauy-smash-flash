@@ -1,4 +1,5 @@
-import type { ServerInfo } from '../../shared/types';
+import type { AppInfo, ServerInfo } from '../../shared/types';
+import { describeHostCompatibility } from '../../shared/compatibility';
 
 function playerFillRatio(count: number, max: number) {
   if (max <= 0) return 0;
@@ -11,6 +12,7 @@ export function ServerSelect({
   isScanning,
   scanMessage,
   isBusy,
+  appInfo,
   onJoinIpChange,
   onScan,
   onBack,
@@ -21,6 +23,7 @@ export function ServerSelect({
   isScanning: boolean;
   scanMessage: string;
   isBusy: boolean;
+  appInfo: AppInfo;
   onJoinIpChange: (value: string) => void;
   onScan: () => void;
   onBack: () => void;
@@ -53,12 +56,17 @@ export function ServerSelect({
             {servers.map((server) => {
               const fill = playerFillRatio(server.player_count, server.max_players);
               const isFull = server.player_count >= server.max_players;
+              const compatibility = describeHostCompatibility(appInfo, server);
+              const blocked = !compatibility.ok || isFull;
+              const hostVersion = server.app_version ? `v${server.app_version}` : `protocol ${server.version}`;
+
               return (
                 <li key={`${server.address}:${server.game_port}`}>
                   <button
                     type="button"
-                    className="host-card"
-                    disabled={isBusy || isFull}
+                    className={`host-card ${!compatibility.ok ? 'host-card-incompatible' : ''}`}
+                    disabled={isBusy || blocked}
+                    title={!compatibility.ok ? compatibility.reason : compatibility.warning}
                     onClick={() => {
                       onJoinIpChange(server.address);
                       onContinue(server.address);
@@ -68,10 +76,19 @@ export function ServerSelect({
                       <span className="host-card-title">
                         <strong>{server.name}</strong>
                         <span className="lan-badge">LAN</span>
+                        <span className={`host-version-badge ${!compatibility.ok ? 'bad' : ''}`}>
+                          {hostVersion}
+                        </span>
                       </span>
                       <span className="host-card-address">
                         {server.address}:{server.game_port}
                       </span>
+                      {!compatibility.ok && (
+                        <span className="host-card-warning">{compatibility.reason}</span>
+                      )}
+                      {compatibility.ok && compatibility.warning && (
+                        <span className="host-card-warning soft">{compatibility.warning}</span>
+                      )}
                     </span>
 
                     <span className="host-card-meta">
@@ -84,7 +101,9 @@ export function ServerSelect({
                           <span className="host-slots-fill" style={{ width: `${fill * 100}%` }} />
                         </span>
                       </span>
-                      <span className="host-join-label">{isFull ? 'Full' : 'Join'}</span>
+                      <span className="host-join-label">
+                        {!compatibility.ok ? 'Update' : isFull ? 'Full' : 'Join'}
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -130,6 +149,9 @@ export function ServerSelect({
             spellCheck={false}
           />
         </label>
+        <p className="setting-hint">
+          Direct connect still requires matching protocol {appInfo.protocol_version}. Update if join fails.
+        </p>
       </section>
 
       <footer className="join-footer">

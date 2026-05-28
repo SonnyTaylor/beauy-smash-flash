@@ -1,5 +1,6 @@
 import { ArenaLoadingOverlay } from './components/ArenaLoadingOverlay';
 import { GameOverlay } from './game/GameOverlay';
+import { useAppInfo } from './hooks/useAppInfo';
 import { useGameSession } from './hooks/useGameSession';
 import { Lobby } from './lobby/Lobby';
 import { LoadoutScreen } from './loadout/LoadoutScreen';
@@ -9,6 +10,7 @@ import { SettingsScreen } from './settings/SettingsScreen';
 
 export function App() {
   const session = useGameSession();
+  const appInfo = useAppInfo();
 
   return (
     <div className="app-shell">
@@ -48,6 +50,7 @@ export function App() {
               scanMessage={session.scanMessage}
               isBusy={session.isBusy}
               localIp={session.localIp}
+              appInfo={appInfo}
               onJoinIpChange={session.setJoinIp}
               onScan={() => void session.scanForServers()}
               onBack={() => void session.leaveLobby()}
