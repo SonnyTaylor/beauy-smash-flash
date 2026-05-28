@@ -10,6 +10,20 @@ export type FloatingHeadPosition = {
   vy: number;
 };
 
+/** Keep heads bouncing even after many collisions or float rounding. */
+const MIN_SPEED = 3;
+
+function enforceMinSpeed(vx: number, vy: number): { vx: number; vy: number } {
+  const speed = Math.hypot(vx, vy);
+  if (speed >= MIN_SPEED) return { vx, vy };
+  if (speed > 0.0001) {
+    const scale = MIN_SPEED / speed;
+    return { vx: vx * scale, vy: vy * scale };
+  }
+  const angle = Math.random() * Math.PI * 2;
+  return { vx: Math.cos(angle) * MIN_SPEED, vy: Math.sin(angle) * MIN_SPEED };
+}
+
 export function createFloatingHeadPositions(count: number): FloatingHeadPosition[] {
   if (count <= 0) return [];
 
@@ -96,12 +110,14 @@ export function stepFloatingHead(
     }
   }
 
+  const { vx: nextVx, vy: nextVy } = enforceMinSpeed(vx, vy);
+
   return {
     ...position,
     x,
     y,
-    vx: clamp(vx * 0.999, -18, 18),
-    vy: clamp(vy * 0.999, -18, 18),
+    vx: clamp(nextVx, -18, 18),
+    vy: clamp(nextVy, -18, 18),
   };
 }
 
@@ -159,7 +175,7 @@ export function resolveHeadCollisions(
       const velAlongNormal = rvx * nx + rvy * ny;
       if (velAlongNormal > 0) continue;
 
-      const restitution = 0.9;
+      const restitution = 1;
       const impulse = (-(1 + restitution) * velAlongNormal) / 2;
       const impulseX = impulse * nx;
       const impulseY = impulse * ny;
@@ -178,12 +194,15 @@ export function resolveHeadCollisions(
   return bodies.map(({ raw, px, py, pvx, pvy }) => {
     const marginX = (raw.size / bounds.width) * 50;
     const marginY = (raw.size / bounds.height) * 50;
+    const vxPct = (pvx / bounds.width) * 100;
+    const vyPct = (pvy / bounds.height) * 100;
+    const { vx, vy } = enforceMinSpeed(vxPct, vyPct);
     return {
       ...raw,
       x: clamp((px / bounds.width) * 100, marginX, 100 - marginX),
       y: clamp((py / bounds.height) * 100, marginY, 100 - marginY),
-      vx: clamp((pvx / bounds.width) * 100, -30, 30),
-      vy: clamp((pvy / bounds.height) * 100, -30, 30),
+      vx: clamp(vx, -30, 30),
+      vy: clamp(vy, -30, 30),
     };
   });
 }
