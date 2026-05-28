@@ -1841,20 +1841,31 @@ impl GameWorld {
             return;
         }
 
-        if self.gamemode == Gamemode::LastMateStanding && self.players.len() >= 2 {
-            let any_eliminated = self.players.values().any(|player| !player.alive);
-            let alive: Vec<u8> = self
-                .players
-                .values()
-                .filter(|player| player.alive)
-                .map(|player| player.id)
-                .collect();
-            if any_eliminated && alive.len() <= 1 {
-                self.match_ended = true;
-                self.winner_id = alive.first().copied();
-                self.match_end_reason = Some(MatchEndReason::Score);
-                return;
+        if self.gamemode == Gamemode::LastMateStanding {
+            if self.players.len() >= 2 {
+                let any_eliminated = self.players.values().any(|player| !player.alive);
+                let alive: Vec<u8> = self
+                    .players
+                    .values()
+                    .filter(|player| player.alive)
+                    .map(|player| player.id)
+                    .collect();
+                if any_eliminated && alive.len() <= 1 {
+                    self.match_ended = true;
+                    self.winner_id = alive.first().copied();
+                    self.match_end_reason = Some(MatchEndReason::Score);
+                    return;
+                }
             }
+
+            let time_win = self.time_limit_secs > 0
+                && self.match_elapsed >= self.time_limit_secs as f32;
+            if time_win {
+                self.match_ended = true;
+                self.match_end_reason = Some(MatchEndReason::Time);
+                self.winner_id = self.leading_player_id();
+            }
+            return;
         }
 
         let score_win = self.score_limit > 0
@@ -2466,6 +2477,19 @@ mod tests {
         world.process_respawns(1.0);
 
         assert!(!world.players.get(&0).unwrap().alive);
+    }
+
+    #[test]
+    fn last_mate_standing_ignores_score_limit() {
+        let mut world = test_world_with_two_players();
+        world.gamemode = Gamemode::LastMateStanding;
+        world.score_limit = 3;
+        world.win_condition = WinCondition::Kills;
+        world.players.get_mut(&0).unwrap().score = 5;
+
+        world.check_match_end();
+
+        assert!(!world.match_ended);
     }
 
     #[test]

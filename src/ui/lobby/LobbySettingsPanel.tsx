@@ -42,8 +42,10 @@ export function LobbySettingsPanel({
   const timeLimitLabel =
     TIME_LIMIT_OPTIONS.find((option) => option.secs === config.time_limit_secs)?.label ??
     (config.time_limit_secs === 0 ? 'Off' : `${Math.round(config.time_limit_secs / 60)} min`);
-  const showScoreLimit = config.win_condition !== 'time';
-  const showTimeLimit = config.win_condition !== 'kills';
+  const isLms = config.gamemode === 'last_mate_standing';
+  const showWinCondition = !isLms;
+  const showScoreLimit = !isLms && config.win_condition !== 'time';
+  const showTimeLimit = isLms || config.win_condition !== 'kills';
 
   return (
     <section className="lobby-settings">
@@ -90,23 +92,29 @@ export function LobbySettingsPanel({
             fallback={gamemodeName}
           />
         </SettingRow>
-        {config.gamemode === 'last_mate_standing' && (
-          <p className="setting-hint">No respawns — last player standing wins.</p>
-        )}
+        {isLms ? (
+          <p className="setting-hint">
+            No respawns — last player standing wins. Optional time limit breaks ties by score.
+          </p>
+        ) : null}
 
-        <SettingRow label="Win Condition">
-          <Cycle
-            value={config.win_condition}
-            values={WIN_CONDITION_OPTIONS.map((option) => ({
-              id: option.id,
-              label: option.label,
-            }))}
-            disabled={!isHost}
-            onChange={(id) => patchWinCondition(id as WinCondition)}
-            fallback={winCondition.label}
-          />
-        </SettingRow>
-        <p className="setting-hint">{winCondition.hint}</p>
+        {showWinCondition && (
+          <>
+            <SettingRow label="Win Condition">
+              <Cycle
+                value={config.win_condition}
+                values={WIN_CONDITION_OPTIONS.map((option) => ({
+                  id: option.id,
+                  label: option.label,
+                }))}
+                disabled={!isHost}
+                onChange={(id) => patchWinCondition(id as WinCondition)}
+                fallback={winCondition.label}
+              />
+            </SettingRow>
+            <p className="setting-hint">{winCondition.hint}</p>
+          </>
+        )}
 
         <SettingRow label="Max Players">
           <Cycle
@@ -137,11 +145,11 @@ export function LobbySettingsPanel({
         )}
 
         {showTimeLimit && (
-          <SettingRow label="Time Limit">
+          <SettingRow label={isLms ? 'Time Limit (optional)' : 'Time Limit'}>
             <Cycle
               value={String(config.time_limit_secs)}
               values={TIME_LIMIT_OPTIONS.filter(
-                (option) => option.secs > 0 || config.win_condition === 'either',
+                (option) => option.secs > 0 || config.win_condition === 'either' || isLms,
               ).map((option) => ({
                 id: String(option.secs),
                 label: option.label,
@@ -151,6 +159,9 @@ export function LobbySettingsPanel({
               fallback={timeLimitLabel}
             />
           </SettingRow>
+        )}
+        {isLms && showTimeLimit && (
+          <p className="setting-hint">Leave off for a pure last-standing match.</p>
         )}
 
         <SettingRow label="Fog of War">

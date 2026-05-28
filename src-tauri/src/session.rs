@@ -120,7 +120,7 @@ impl AppState {
             players,
             max_players: self.lobby_config.max_players as usize,
             match_started: self.match_started,
-            network_note: "Discovery uses UDP broadcast on 5554 and gameplay uses UDP 5555. If school WiFi blocks peer traffic, use manual IP or a hotspot.".to_string(),
+            network_note: String::new(),
             config: self.lobby_config.clone(),
         }
     }

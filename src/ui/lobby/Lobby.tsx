@@ -109,12 +109,6 @@ export function Lobby({
         </div>
       </header>
 
-      {lobby?.network_note && (
-        <p className="lobby-network-note" role="note">
-          {lobby.network_note}
-        </p>
-      )}
-
       <div className="lobby-body">
         <LobbySettingsPanel
           config={config}

@@ -26,6 +26,9 @@ const CONTROLS_HINT_VISIBLE_MS = 6500;
 function matchGoalLabel(state: StateSnapshot | null): string {
   if (!state) return '';
   if (state.gamemode === 'last_mate_standing') {
+    if (state.time_limit_secs > 0) {
+      return `Last standing wins · ${formatMatchTime(state.time_limit_secs)} tiebreaker`;
+    }
     return 'Last mate standing — no respawns';
   }
   if (state.win_condition === 'time') {
