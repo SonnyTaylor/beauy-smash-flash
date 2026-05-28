@@ -45,9 +45,7 @@ pub fn navigate_toward(
 
     let direction = if nav.recover_secs > 0.0 {
         nav.recover_secs = (nav.recover_secs - dt).max(0.0);
-        if nav.recover_secs > 0.0
-            && direction_clear(world, x, y, nav.recover_dx, nav.recover_dy)
-        {
+        if nav.recover_secs > 0.0 && direction_clear(world, x, y, nav.recover_dx, nav.recover_dy) {
             (nav.recover_dx, nav.recover_dy)
         } else {
             nav.recover_secs = 0.0;
