@@ -108,6 +108,10 @@ export class TauriGameClient {
     await invoke('update_lobby_config', { config });
   }
 
+  async setBotCount(count: number): Promise<void> {
+    await invoke('set_bot_count', { count });
+  }
+
   async startMatch(): Promise<void> {
     await invoke('start_match');
   }

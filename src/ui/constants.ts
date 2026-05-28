@@ -4,6 +4,16 @@ export const GAMEMODE_OPTIONS: Array<{ id: Gamemode; label: string; available: b
   { id: 'deathmatch', label: 'Deathmatch', available: true },
   { id: 'team_deathmatch', label: 'Team Deathmatch', available: false },
   { id: 'last_mate_standing', label: 'Last Mate Standing', available: true },
+  { id: 'zombie_horde', label: 'Zombie Horde', available: true },
+];
+
+export const BOT_COUNT_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
+export const WAVE_GOAL_OPTIONS = [
+  { value: 0, label: 'Endless' },
+  { value: 5, label: '5 waves' },
+  { value: 10, label: '10 waves' },
+  { value: 15, label: '15 waves' },
+  { value: 20, label: '20 waves' },
 ];
 
 export const GLOCK_RELOAD_SECS = 1.2;

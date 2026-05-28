@@ -43,6 +43,7 @@ export function PlayerSlot({
             player.name
           )}
           {player.is_host ? <span className="host-tag">Host</span> : null}
+          {player.is_bot ? <span className="host-tag">Bot</span> : null}
         </strong>
         <span className="slot-ability">{character.abilityName}</span>
         <span className="slot-ability-desc">{character.abilityDescription}</span>

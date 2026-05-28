@@ -70,6 +70,7 @@ export function Lobby({
   ]).map((player) => ({
     ...player,
     primary_weapon_id: player.primary_weapon_id ?? DEFAULT_WEAPON_ID,
+    is_bot: player.is_bot ?? false,
   }));
 
   const notReadyCount = lobbyPlayers.filter((player) => !player.ready).length;

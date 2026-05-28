@@ -2,10 +2,12 @@ import { MAPS } from '../../content/maps';
 import type { Gamemode, LobbyConfig, WinCondition } from '../../shared/types';
 import { Cycle, SettingRow } from '../components/CycleControl';
 import {
+  BOT_COUNT_OPTIONS,
   GAMEMODE_OPTIONS,
   MAX_PLAYERS_OPTIONS,
   SCORE_LIMIT_OPTIONS,
   TIME_LIMIT_OPTIONS,
+  WAVE_GOAL_OPTIONS,
   WIN_CONDITION_OPTIONS,
 } from '../constants';
 import { MapPreview } from './MapPreview';
@@ -23,6 +25,19 @@ export function LobbySettingsPanel({
 }) {
   function patch(partial: Partial<LobbyConfig>) {
     onConfigChange({ ...config, ...partial });
+  }
+
+  function patchGamemode(next: Gamemode) {
+    if (next === 'zombie_horde') {
+      onConfigChange({
+        ...config,
+        gamemode: next,
+        bot_count: 0,
+        friendly_fire: false,
+      });
+      return;
+    }
+    onConfigChange({ ...config, gamemode: next });
   }
 
   function patchWinCondition(next: WinCondition) {
@@ -43,9 +58,12 @@ export function LobbySettingsPanel({
     TIME_LIMIT_OPTIONS.find((option) => option.secs === config.time_limit_secs)?.label ??
     (config.time_limit_secs === 0 ? 'Off' : `${Math.round(config.time_limit_secs / 60)} min`);
   const isLms = config.gamemode === 'last_mate_standing';
-  const showWinCondition = !isLms;
-  const showScoreLimit = !isLms && config.win_condition !== 'time';
-  const showTimeLimit = isLms || config.win_condition !== 'kills';
+  const isHorde = config.gamemode === 'zombie_horde';
+  const showWinCondition = !isLms && !isHorde;
+  const showScoreLimit = !isLms && !isHorde && config.win_condition !== 'time';
+  const showTimeLimit = isLms || isHorde || config.win_condition !== 'kills';
+  const showBotMates = !isHorde;
+  const maxBots = Math.max(0, config.max_players - playerCount + (config.bot_count ?? 0));
 
   return (
     <section className="lobby-settings">
@@ -88,7 +106,7 @@ export function LobbySettingsPanel({
               disabled: !option.available,
             }))}
             disabled={!isHost || GAMEMODE_OPTIONS.filter((option) => option.available).length <= 1}
-            onChange={(id) => patch({ gamemode: id as Gamemode })}
+            onChange={(id) => patchGamemode(id as Gamemode)}
             fallback={gamemodeName}
           />
         </SettingRow>
@@ -97,6 +115,49 @@ export function LobbySettingsPanel({
             No respawns — last player standing wins. Optional time limit breaks ties by score.
           </p>
         ) : null}
+        {isHorde ? (
+          <p className="setting-hint">
+            Co-op survival — waves of zombies chase human players. Works solo or with friends.
+          </p>
+        ) : null}
+
+        {showBotMates && (
+          <>
+            <SettingRow label="Bot Mates">
+              <Cycle
+                value={String(config.bot_count ?? 0)}
+                values={BOT_COUNT_OPTIONS.filter((count) => count <= maxBots).map((count) => ({
+                  id: String(count),
+                  label: count === 0 ? 'None' : String(count),
+                }))}
+                disabled={!isHost}
+                onChange={(id) => patch({ bot_count: Number(id) })}
+                fallback={String(config.bot_count ?? 0)}
+              />
+            </SettingRow>
+            <p className="setting-hint">
+              AI fill empty slots — ready up solo or mix bots with LAN mates.
+            </p>
+          </>
+        )}
+
+        {isHorde && (
+          <SettingRow label="Wave Goal">
+            <Cycle
+              value={String(config.wave_goal ?? 0)}
+              values={WAVE_GOAL_OPTIONS.map((option) => ({
+                id: String(option.value),
+                label: option.label,
+              }))}
+              disabled={!isHost}
+              onChange={(id) => patch({ wave_goal: Number(id) })}
+              fallback={
+                WAVE_GOAL_OPTIONS.find((option) => option.value === (config.wave_goal ?? 0))
+                  ?.label ?? 'Endless'
+              }
+            />
+          </SettingRow>
+        )}
 
         {showWinCondition && (
           <>
@@ -145,11 +206,12 @@ export function LobbySettingsPanel({
         )}
 
         {showTimeLimit && (
-          <SettingRow label={isLms ? 'Time Limit (optional)' : 'Time Limit'}>
+          <SettingRow label={isLms || isHorde ? 'Time Limit (optional)' : 'Time Limit'}>
             <Cycle
               value={String(config.time_limit_secs)}
               values={TIME_LIMIT_OPTIONS.filter(
-                (option) => option.secs > 0 || config.win_condition === 'either' || isLms,
+                (option) =>
+                  option.secs > 0 || config.win_condition === 'either' || isLms || isHorde,
               ).map((option) => ({
                 id: String(option.secs),
                 label: option.label,
@@ -162,6 +224,9 @@ export function LobbySettingsPanel({
         )}
         {isLms && showTimeLimit && (
           <p className="setting-hint">Leave off for a pure last-standing match.</p>
+        )}
+        {isHorde && showTimeLimit && (
+          <p className="setting-hint">Optional timed run — highest zombie kills wins.</p>
         )}
 
         <SettingRow label="Fog of War">
@@ -180,21 +245,25 @@ export function LobbySettingsPanel({
             : 'Full arena visibility — everyone sees the whole map.'}
         </p>
 
-        <SettingRow label="Friendly Fire">
-          <button
-            type="button"
-            className={`toggle-pill ${config.friendly_fire ? 'on' : 'off'}`}
-            disabled={!isHost}
-            onClick={() => patch({ friendly_fire: !config.friendly_fire })}
-          >
-            {config.friendly_fire ? 'On' : 'Off'}
-          </button>
-        </SettingRow>
-        <p className="setting-hint">
-          {config.friendly_fire
-            ? 'Bullets damage other players.'
-            : 'Bullets hit walls only — no player damage.'}
-        </p>
+        {!isHorde && (
+          <>
+            <SettingRow label="Friendly Fire">
+              <button
+                type="button"
+                className={`toggle-pill ${config.friendly_fire ? 'on' : 'off'}`}
+                disabled={!isHost}
+                onClick={() => patch({ friendly_fire: !config.friendly_fire })}
+              >
+                {config.friendly_fire ? 'On' : 'Off'}
+              </button>
+            </SettingRow>
+            <p className="setting-hint">
+              {config.friendly_fire
+                ? 'Bullets damage other players.'
+                : 'Bullets hit walls only — no player damage.'}
+            </p>
+          </>
+        )}
       </div>
     </section>
   );

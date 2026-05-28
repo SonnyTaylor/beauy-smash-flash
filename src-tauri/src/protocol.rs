@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 9;
+pub const PROTOCOL_VERSION: u16 = 10;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -24,6 +24,8 @@ pub struct LobbyPlayerSnapshot {
     pub primary_weapon_id: String,
     pub ready: bool,
     pub is_host: bool,
+    #[serde(default)]
+    pub is_bot: bool,
 }
 
 fn default_primary_weapon_id() -> String {
@@ -37,6 +39,15 @@ pub enum Gamemode {
     Deathmatch,
     TeamDeathmatch,
     LastMateStanding,
+    ZombieHorde,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WaveState {
+    #[default]
+    Intermission,
+    Active,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -67,6 +78,10 @@ pub struct LobbyConfig {
     pub friendly_fire: bool,
     #[serde(default)]
     pub fog_of_war: bool,
+    #[serde(default)]
+    pub bot_count: u8,
+    #[serde(default)]
+    pub wave_goal: u16,
 }
 
 impl Default for LobbyConfig {
@@ -81,6 +96,8 @@ impl Default for LobbyConfig {
             win_condition: WinCondition::Kills,
             friendly_fire: true,
             fog_of_war: false,
+            bot_count: 0,
+            wave_goal: 0,
         }
     }
 }
@@ -289,6 +306,10 @@ pub struct PlayerSnapshot {
     pub primary_weapon: Option<WeaponSlotSnapshot>,
     #[serde(default)]
     pub secondary_weapon: Option<WeaponSlotSnapshot>,
+    #[serde(default)]
+    pub is_bot: bool,
+    #[serde(default)]
+    pub is_zombie: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -322,6 +343,16 @@ pub struct StateSnapshot {
     pub gamemode: Gamemode,
     #[serde(default)]
     pub weapon_pickups: Vec<WeaponPickupSnapshot>,
+    #[serde(default)]
+    pub wave: u16,
+    #[serde(default)]
+    pub zombies_remaining: u16,
+    #[serde(default)]
+    pub wave_state: WaveState,
+    #[serde(default)]
+    pub wave_intermission_secs: f32,
+    #[serde(default)]
+    pub wave_goal: u16,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

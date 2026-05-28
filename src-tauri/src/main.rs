@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 mod abilities;
+mod bots;
 mod commands;
 mod discovery;
 mod game;
@@ -41,7 +42,8 @@ fn main() {
             commands::start_match,
             commands::return_to_lobby,
             commands::rematch,
-            commands::send_input
+            commands::send_input,
+            commands::set_bot_count
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

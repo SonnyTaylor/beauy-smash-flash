@@ -67,6 +67,16 @@ export const CHARACTERS: CharacterDefinition[] = [
     abilityDescription:
       'Speedboat for 4s — ram for 40 dmg (refunds charge). Cannot shoot; shorter hangover after.',
   },
+  {
+    id: 'zombie',
+    name: 'Zombie',
+    color: [80, 200, 60],
+    sprite: 'heads/finn.png',
+    initials: 'Z',
+    abilityId: 'none',
+    abilityName: 'Shamble',
+    abilityDescription: 'Slow, hungry, and armed with claws.',
+  },
 ];
 
 const CHARACTER_BY_ID = new Map(CHARACTERS.map((character) => [character.id, character]));

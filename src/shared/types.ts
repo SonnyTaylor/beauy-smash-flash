@@ -46,9 +46,16 @@ export interface LobbyPlayerSnapshot {
   primary_weapon_id?: string;
   ready: boolean;
   is_host: boolean;
+  is_bot?: boolean;
 }
 
-export type Gamemode = 'deathmatch' | 'team_deathmatch' | 'last_mate_standing';
+export type Gamemode =
+  | 'deathmatch'
+  | 'team_deathmatch'
+  | 'last_mate_standing'
+  | 'zombie_horde';
+
+export type WaveState = 'intermission' | 'active';
 
 export type WinCondition = 'kills' | 'time' | 'either';
 
@@ -64,6 +71,8 @@ export interface LobbyConfig {
   win_condition: WinCondition;
   friendly_fire: boolean;
   fog_of_war: boolean;
+  bot_count: number;
+  wave_goal: number;
 }
 
 export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
@@ -76,6 +85,8 @@ export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
   win_condition: 'kills',
   friendly_fire: true,
   fog_of_war: false,
+  bot_count: 0,
+  wave_goal: 0,
 };
 
 export interface GameSettings {
@@ -220,6 +231,8 @@ export interface PlayerSnapshot {
   reload_duration?: number;
   primary_weapon?: WeaponSlotSnapshot | null;
   secondary_weapon?: WeaponSlotSnapshot | null;
+  is_bot?: boolean;
+  is_zombie?: boolean;
 }
 
 export interface StateSnapshot {
@@ -241,6 +254,11 @@ export interface StateSnapshot {
   fog_of_war?: boolean;
   gamemode?: Gamemode;
   weapon_pickups?: WeaponPickupSnapshot[];
+  wave?: number;
+  zombies_remaining?: number;
+  wave_state?: WaveState;
+  wave_intermission_secs?: number;
+  wave_goal?: number;
 }
 
 export interface CharacterDefinition {

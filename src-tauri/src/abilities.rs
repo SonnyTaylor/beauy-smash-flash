@@ -1382,6 +1382,7 @@ mod tests {
             crate::protocol::Gamemode::Deathmatch,
             true,
             false,
+            0,
         );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;
@@ -1417,6 +1418,7 @@ mod tests {
             crate::protocol::Gamemode::Deathmatch,
             true,
             false,
+            0,
         );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;

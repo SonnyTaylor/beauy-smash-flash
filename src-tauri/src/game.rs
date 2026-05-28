@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::abilities::{self, is_casting};
 use crate::protocol::{
     BulletSnapshot, EffectKind, Gamemode, InputSnapshot, KillFeedEntry, LobbyConfig, MapSnapshot,
-    MatchEndReason, PlayerSnapshot, RectSnapshot, StateSnapshot, WeaponPickupSnapshot,
+    MatchEndReason, PlayerSnapshot, RectSnapshot, StateSnapshot, WaveState, WeaponPickupSnapshot,
     WeaponSlotSnapshot, WinCondition, WorldConfig, PROTOCOL_VERSION,
 };
 use crate::weapons::{
@@ -20,6 +20,26 @@ pub const BULLET_RADIUS: f32 = 4.0;
 pub const RESPAWN_TIME: f32 = 2.5;
 pub const SPAWN_PROTECTION_TIME: f32 = 1.5;
 pub const KILL_FEED_LIMIT: usize = 5;
+
+pub const ZOMBIE_ID_START: u8 = 200;
+pub const ZOMBIE_SPEED_MULT: f32 = 0.48;
+pub const HORDE_INTERMISSION_SECS: f32 = 5.0;
+pub const HORDE_INITIAL_DELAY: f32 = 4.0;
+pub const HORDE_BASE_ZOMBIES: u16 = 3;
+pub const HORDE_WAVE_SCALE: u16 = 1;
+pub const HORDE_SPAWN_STAGGER_SECS: f32 = 0.65;
+
+const BOT_CHARACTERS: [&str; 6] = ["sonny", "bailey", "jacob", "isaak", "taj", "finn"];
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BotNavState {
+    pub last_x: f32,
+    pub last_y: f32,
+    pub stuck_secs: f32,
+    pub recover_secs: f32,
+    pub recover_dx: f32,
+    pub recover_dy: f32,
+}
 
 const PALETTE: [[u8; 3]; 8] = [
     [0, 255, 255],
@@ -214,6 +234,8 @@ pub struct Player {
     pub boat_rammed: Vec<u8>,
     pub hangover_until: f32,
     pub reel_index: u8,
+    pub is_bot: bool,
+    pub is_zombie: bool,
 }
 
 impl Player {
@@ -279,6 +301,8 @@ impl Player {
             boat_rammed: Vec::new(),
             hangover_until: 0.0,
             reel_index: 0,
+            is_bot: false,
+            is_zombie: false,
         }
     }
 
@@ -414,6 +438,8 @@ impl Player {
             reload_duration,
             primary_weapon: self.primary.as_ref().map(Self::slot_snapshot),
             secondary_weapon: self.secondary.as_ref().map(Self::slot_snapshot),
+            is_bot: self.is_bot,
+            is_zombie: self.is_zombie,
         }
     }
 
@@ -476,6 +502,8 @@ impl Player {
         self.directors_cut_until = snapshot.directors_cut_remaining;
         self.directors_cut_shots = snapshot.directors_cut_shots;
         self.poison_until = snapshot.poison_remaining;
+        self.is_bot = snapshot.is_bot;
+        self.is_zombie = snapshot.is_zombie;
     }
 
     pub fn apply_loadout(
@@ -573,9 +601,21 @@ pub struct GameWorld {
     pub next_reel_index: u8,
     pub dev_mode: bool,
     input_prev: HashMap<u8, InputSnapshot>,
+    pub wave: u16,
+    pub zombies_remaining: u16,
+    pub wave_state: WaveState,
+    pub wave_intermission_timer: f32,
+    horde_spawn_queue: Vec<(f32, usize)>,
+    pub next_zombie_id: u8,
+    pub wave_goal: u16,
+    pub bot_nav: HashMap<u8, BotNavState>,
 }
 
 pub fn validate_match_config(config: &LobbyConfig) -> Result<(), String> {
+    if config.gamemode == Gamemode::ZombieHorde {
+        return Ok(());
+    }
+
     match config.win_condition {
         WinCondition::Kills => {
             if config.score_limit == 0 {
@@ -636,6 +676,14 @@ impl GameWorld {
             next_reel_index: 0,
             dev_mode: cfg!(debug_assertions),
             input_prev: HashMap::new(),
+            wave: 0,
+            zombies_remaining: 0,
+            wave_state: WaveState::Intermission,
+            wave_intermission_timer: 0.0,
+            horde_spawn_queue: Vec::new(),
+            next_zombie_id: ZOMBIE_ID_START,
+            wave_goal: 0,
+            bot_nav: HashMap::new(),
         }
     }
 
@@ -680,9 +728,68 @@ impl GameWorld {
         self.inputs.entry(id).or_default();
     }
 
+    pub fn add_bot_player(
+        &mut self,
+        id: u8,
+        name: String,
+        character_id: String,
+        primary_weapon_id: String,
+    ) {
+        self.add_player(id, name, character_id, primary_weapon_id);
+        if let Some(player) = self.players.get_mut(&id) {
+            player.is_bot = true;
+            player.is_zombie = false;
+        }
+    }
+
+    pub fn spawn_zombie(&mut self, id: u8, spawn_index: usize, wave: u16) {
+        let spawn = self.map.spawns[spawn_index % self.map.spawns.len()];
+        let max_hp = 65 + wave.saturating_mul(10);
+        self.add_player(
+            id,
+            "Zombie".to_string(),
+            "zombie".to_string(),
+            "zombie_claws".to_string(),
+        );
+        if let Some(player) = self.players.get_mut(&id) {
+            player.is_bot = true;
+            player.is_zombie = true;
+            player.color = [80, 200, 60];
+            player.spawn_index = spawn_index;
+            player.x = spawn
+                .0
+                .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
+            player.y = spawn
+                .1
+                .clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
+            player.max_hp = max_hp;
+            player.hp = max_hp;
+            player.secondary = None;
+            player.active_slot = ActiveSlot::Primary;
+            player.apply_active_slot_to_combat_state();
+        }
+    }
+
+    pub fn remove_zombies(&mut self) {
+        let zombie_ids: Vec<u8> = self
+            .players
+            .values()
+            .filter(|player| player.is_zombie)
+            .map(|player| player.id)
+            .collect();
+        for id in zombie_ids {
+            self.remove_player(id);
+        }
+    }
+
+    pub fn bot_character_for_index(index: usize) -> &'static str {
+        BOT_CHARACTERS[index % BOT_CHARACTERS.len()]
+    }
+
     pub fn remove_player(&mut self, id: u8) {
         self.players.remove(&id);
         self.inputs.remove(&id);
+        self.bot_nav.remove(&id);
     }
 
     pub fn set_input(&mut self, id: u8, input: InputSnapshot) {
@@ -697,7 +804,9 @@ impl GameWorld {
         gamemode: Gamemode,
         friendly_fire: bool,
         fog_of_war: bool,
+        wave_goal: u16,
     ) {
+        self.remove_zombies();
         self.tick = 0;
         self.bullets.clear();
         self.effects.clear();
@@ -708,7 +817,11 @@ impl GameWorld {
         self.match_elapsed = 0.0;
         self.win_condition = win_condition;
         self.gamemode = gamemode;
-        self.friendly_fire = friendly_fire;
+        self.friendly_fire = if gamemode == Gamemode::ZombieHorde {
+            false
+        } else {
+            friendly_fire
+        };
         self.fog_of_war = fog_of_war;
         self.match_ended = false;
         self.winner_id = None;
@@ -717,8 +830,20 @@ impl GameWorld {
         self.weapon_pickups.clear();
         self.next_pickup_id = 1;
         self.input_prev.clear();
+        self.wave = 0;
+        self.zombies_remaining = 0;
+        self.wave_state = WaveState::Intermission;
+        self.horde_spawn_queue.clear();
+        self.next_zombie_id = ZOMBIE_ID_START;
+        self.wave_goal = wave_goal;
+        self.bot_nav.clear();
 
-        let ids: Vec<u8> = self.players.keys().copied().collect();
+        let ids: Vec<u8> = self
+            .players
+            .keys()
+            .copied()
+            .filter(|id| !self.players[id].is_zombie)
+            .collect();
         for id in ids {
             if let Some(player) = self.players.get_mut(&id) {
                 player.score = 0;
@@ -732,9 +857,16 @@ impl GameWorld {
             }
             self.reset_player_for_spawn(id, SPAWN_PROTECTION_TIME);
         }
+
+        if gamemode == Gamemode::ZombieHorde {
+            self.wave_intermission_timer = HORDE_INITIAL_DELAY;
+        } else {
+            self.wave_intermission_timer = 0.0;
+        }
     }
 
     pub fn reset_for_lobby(&mut self) {
+        self.remove_zombies();
         self.tick = 0;
         self.bullets.clear();
         self.kill_feed.clear();
@@ -746,8 +878,21 @@ impl GameWorld {
         self.weapon_pickups.clear();
         self.next_pickup_id = 1;
         self.input_prev.clear();
+        self.wave = 0;
+        self.zombies_remaining = 0;
+        self.wave_state = WaveState::Intermission;
+        self.wave_intermission_timer = 0.0;
+        self.horde_spawn_queue.clear();
+        self.next_zombie_id = ZOMBIE_ID_START;
+        self.wave_goal = 0;
+        self.bot_nav.clear();
 
-        let ids: Vec<u8> = self.players.keys().copied().collect();
+        let ids: Vec<u8> = self
+            .players
+            .keys()
+            .copied()
+            .filter(|id| !self.players[id].is_zombie)
+            .collect();
         for id in ids {
             if let Some(player) = self.players.get_mut(&id) {
                 player.pending_character_id = None;
@@ -977,6 +1122,11 @@ impl GameWorld {
         self.match_end_reason = snapshot.match_end_reason;
         self.fog_of_war = snapshot.fog_of_war;
         self.kill_feed = snapshot.kill_feed.clone();
+        self.wave = snapshot.wave;
+        self.zombies_remaining = snapshot.zombies_remaining;
+        self.wave_state = snapshot.wave_state;
+        self.wave_intermission_timer = snapshot.wave_intermission_secs;
+        self.wave_goal = snapshot.wave_goal;
         self.bullets = snapshot
             .bullets
             .iter()
@@ -1071,6 +1221,7 @@ impl GameWorld {
         abilities::process_active_modes(self, dt);
         abilities::process_projectile_effects(self, dt);
         abilities::process_effects(self, dt);
+        self.process_horde(dt);
         self.process_respawns(dt);
         self.process_movement(dt);
         self.process_weapon_interactions();
@@ -1087,7 +1238,7 @@ impl GameWorld {
         let respawning: Vec<u8> = self
             .players
             .values()
-            .filter(|player| !player.alive)
+            .filter(|player| !player.alive && !player.is_zombie)
             .map(|player| player.id)
             .collect();
 
@@ -1122,6 +1273,8 @@ impl GameWorld {
                 PLAYER_SPEED * abilities::FINN_HANGOVER_SPEED_MULT
             } else if abilities::in_directors_cut(player) {
                 PLAYER_SPEED * abilities::JACOB_DIRECTORS_CUT_SPEED
+            } else if player.is_zombie {
+                PLAYER_SPEED * ZOMBIE_SPEED_MULT
             } else {
                 PLAYER_SPEED
             };
@@ -1144,6 +1297,159 @@ impl GameWorld {
         }
 
         abilities::process_boat_rams(self);
+    }
+
+    fn process_horde(&mut self, dt: f32) {
+        if self.gamemode != Gamemode::ZombieHorde || self.match_ended {
+            return;
+        }
+
+        self.process_horde_spawns(dt);
+
+        match self.wave_state {
+            WaveState::Intermission => {
+                self.wave_intermission_timer -= dt;
+                if self.wave_intermission_timer <= 0.0 && self.horde_spawn_queue.is_empty() {
+                    self.start_next_horde_wave();
+                }
+            }
+            WaveState::Active => {
+                if self.zombies_remaining == 0
+                    && self.horde_spawn_queue.is_empty()
+                    && !self.has_living_zombies()
+                {
+                    if self.wave_goal > 0 && self.wave >= self.wave_goal {
+                        self.match_ended = true;
+                        self.winner_id = self.leading_human_id();
+                        self.match_end_reason = Some(MatchEndReason::Score);
+                        return;
+                    }
+                    self.wave_state = WaveState::Intermission;
+                    self.wave_intermission_timer = HORDE_INTERMISSION_SECS;
+                }
+            }
+        }
+    }
+
+    fn process_horde_spawns(&mut self, dt: f32) {
+        if self.horde_spawn_queue.is_empty() {
+            return;
+        }
+
+        let mut ready = Vec::new();
+        for (index, (delay, spawn_index)) in self.horde_spawn_queue.iter_mut().enumerate() {
+            *delay -= dt;
+            if *delay <= 0.0 {
+                ready.push((index, *spawn_index));
+            }
+        }
+
+        for (index, spawn_index) in ready.into_iter().rev() {
+            self.horde_spawn_queue.remove(index);
+            let id = self.next_zombie_id;
+            if id >= 250 {
+                continue;
+            }
+            self.next_zombie_id = id.saturating_add(1);
+            self.spawn_zombie(id, spawn_index, self.wave);
+        }
+    }
+
+    fn start_next_horde_wave(&mut self) {
+        self.wave = self.wave.saturating_add(1);
+        let count = HORDE_BASE_ZOMBIES + self.wave.saturating_mul(HORDE_WAVE_SCALE);
+        self.zombies_remaining = count;
+        self.wave_state = WaveState::Active;
+        self.horde_spawn_queue = (0..count)
+            .map(|index| (index as f32 * HORDE_SPAWN_STAGGER_SECS, index as usize))
+            .collect();
+    }
+
+    fn has_living_zombies(&self) -> bool {
+        self.players
+            .values()
+            .any(|player| player.is_zombie && player.alive)
+    }
+
+    fn handle_zombie_killed(&mut self, killer_id: u8, victim_id: u8) {
+        let (killer_name, victim_name) = {
+            let killer_name = self
+                .players
+                .get(&killer_id)
+                .map(|player| player.name.clone())
+                .unwrap_or_else(|| "Unknown".to_string());
+            let victim_name = self
+                .players
+                .get(&victim_id)
+                .map(|player| player.name.clone())
+                .unwrap_or_else(|| "Zombie".to_string());
+            (killer_name, victim_name)
+        };
+
+        if let Some(killer) = self.players.get_mut(&killer_id) {
+            if !killer.is_zombie {
+                killer.kills += 1;
+                killer.score += 1;
+                abilities::add_charge(killer, abilities::CHARGE_ON_KILL);
+            }
+        }
+
+        self.remove_player(victim_id);
+        self.zombies_remaining = self.zombies_remaining.saturating_sub(1);
+
+        self.kill_feed.push(KillFeedEntry {
+            killer_id,
+            killer_name,
+            victim_id,
+            victim_name,
+        });
+        if self.kill_feed.len() > KILL_FEED_LIMIT {
+            let overflow = self.kill_feed.len() - KILL_FEED_LIMIT;
+            self.kill_feed.drain(0..overflow);
+        }
+    }
+
+    fn leading_human_id(&self) -> Option<u8> {
+        self.players
+            .values()
+            .filter(|player| !player.is_zombie)
+            .max_by(|a, b| {
+                a.score
+                    .cmp(&b.score)
+                    .then(a.kills.cmp(&b.kills))
+                    .then(b.deaths.cmp(&a.deaths))
+                    .then(a.id.cmp(&b.id))
+            })
+            .map(|player| player.id)
+    }
+
+    fn humans_eliminated(&self) -> bool {
+        let humans: Vec<_> = self
+            .players
+            .values()
+            .filter(|player| !player.is_zombie)
+            .collect();
+        if humans.is_empty() {
+            return false;
+        }
+        !humans.iter().any(|player| player.alive)
+            && !humans
+                .iter()
+                .any(|player| !player.alive && player.respawn_timer > 0.0)
+    }
+
+    fn damage_allowed(&self, owner_id: u8, victim_id: u8) -> bool {
+        if self.friendly_fire {
+            return true;
+        }
+        let Some(owner) = self.players.get(&owner_id) else {
+            return false;
+        };
+        let Some(victim) = self.players.get(&victim_id) else {
+            return false;
+        };
+        // When FF is off: block human-vs-human, allow human↔zombie (horde co-op).
+        owner.is_zombie != victim.is_zombie
     }
 
     fn process_ability_input(&mut self) {
@@ -1387,7 +1693,7 @@ impl GameWorld {
                     player.alive
                         && player.id != owner_id
                         && !player.spawn_protected()
-                        && self.friendly_fire
+                        && self.damage_allowed(owner_id, player.id)
                 })
                 .map(|player| (player.id, player.x, player.y))
                 .collect();
@@ -1533,7 +1839,7 @@ impl GameWorld {
                 if !player.alive || player.spawn_protected() || player.id == bullet.owner_id {
                     continue;
                 }
-                if !self.friendly_fire {
+                if !self.damage_allowed(bullet.owner_id, player.id) {
                     continue;
                 }
 
@@ -1754,6 +2060,11 @@ impl GameWorld {
     }
 
     pub(crate) fn apply_damage(&mut self, killer_id: u8, victim_id: u8, damage: u16) {
+        let is_zombie = self
+            .players
+            .get(&victim_id)
+            .is_some_and(|player| player.is_zombie);
+
         let died = {
             let Some(victim) = self.players.get_mut(&victim_id) else {
                 return;
@@ -1782,6 +2093,11 @@ impl GameWorld {
             if let Some(killer) = self.players.get_mut(&killer_id) {
                 abilities::add_charge(killer, abilities::CHARGE_ON_DAMAGE);
             }
+            return;
+        }
+
+        if is_zombie {
+            self.handle_zombie_killed(killer_id, victim_id);
             return;
         }
 
@@ -1841,12 +2157,34 @@ impl GameWorld {
             return;
         }
 
+        if self.gamemode == Gamemode::ZombieHorde {
+            if self.humans_eliminated() {
+                self.match_ended = true;
+                self.winner_id = None;
+                self.match_end_reason = Some(MatchEndReason::Score);
+                return;
+            }
+
+            let time_win =
+                self.time_limit_secs > 0 && self.match_elapsed >= self.time_limit_secs as f32;
+            if time_win {
+                self.match_ended = true;
+                self.match_end_reason = Some(MatchEndReason::Time);
+                self.winner_id = self.leading_human_id();
+            }
+            return;
+        }
+
         if self.gamemode == Gamemode::LastMateStanding {
-            if self.players.len() >= 2 {
-                let any_eliminated = self.players.values().any(|player| !player.alive);
-                let alive: Vec<u8> = self
-                    .players
-                    .values()
+            let contenders: Vec<_> = self
+                .players
+                .values()
+                .filter(|player| !player.is_zombie)
+                .collect();
+            if contenders.len() >= 2 {
+                let any_eliminated = contenders.iter().any(|player| !player.alive);
+                let alive: Vec<u8> = contenders
+                    .iter()
                     .filter(|player| player.alive)
                     .map(|player| player.id)
                     .collect();
@@ -1872,6 +2210,7 @@ impl GameWorld {
             && self
                 .players
                 .values()
+                .filter(|player| !player.is_zombie)
                 .any(|player| player.score >= self.score_limit);
 
         let time_win =
@@ -1903,6 +2242,7 @@ impl GameWorld {
     fn leading_player_id(&self) -> Option<u8> {
         self.players
             .values()
+            .filter(|player| !player.is_zombie)
             .max_by(|a, b| {
                 a.score
                     .cmp(&b.score)
@@ -1944,6 +2284,11 @@ impl GameWorld {
                 .iter()
                 .map(WeaponPickup::snapshot)
                 .collect(),
+            wave: self.wave,
+            zombies_remaining: self.zombies_remaining,
+            wave_state: self.wave_state,
+            wave_intermission_secs: self.wave_intermission_timer.max(0.0),
+            wave_goal: self.wave_goal,
         }
     }
 }
@@ -2092,6 +2437,7 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            0,
         );
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
@@ -2131,6 +2477,7 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            0,
         );
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
@@ -2845,5 +3192,157 @@ mod tests {
         let player = world.players.get(&0).unwrap();
         assert_eq!(player.active_slot, ActiveSlot::Secondary);
         assert_eq!(player.ammo, 3);
+    }
+
+    #[test]
+    fn horde_wave_advances_when_zombies_are_cleared() {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Host".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
+        world.reset_for_match(
+            0,
+            0,
+            WinCondition::Kills,
+            Gamemode::ZombieHorde,
+            false,
+            false,
+            0,
+        );
+        world.wave_intermission_timer = 0.0;
+        world.process_horde(0.0);
+
+        assert_eq!(world.wave, 1);
+        assert_eq!(world.wave_state, WaveState::Active);
+        assert!(world.zombies_remaining > 0);
+
+        for _ in 0..300 {
+            world.process_horde(0.1);
+            if let Some(zombie_id) = world
+                .players
+                .values()
+                .find(|player| player.is_zombie && player.alive)
+                .map(|player| player.id)
+            {
+                world.apply_damage(0, zombie_id, PLAYER_MAX_HP * 2);
+            }
+            if world.zombies_remaining == 0 && !world.has_living_zombies() {
+                break;
+            }
+        }
+
+        assert_eq!(world.zombies_remaining, 0);
+        assert!(!world.has_living_zombies());
+        world.process_horde(0.0);
+        assert_eq!(world.wave_state, WaveState::Intermission);
+    }
+
+    #[test]
+    fn horde_ends_when_all_humans_are_eliminated() {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Host".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
+        world.reset_for_match(
+            0,
+            0,
+            WinCondition::Kills,
+            Gamemode::ZombieHorde,
+            false,
+            false,
+            0,
+        );
+        world.players.get_mut(&0).unwrap().alive = false;
+        world.players.get_mut(&0).unwrap().respawn_timer = 0.0;
+
+        world.check_match_end();
+
+        assert!(world.match_ended);
+        assert_eq!(world.winner_id, None);
+    }
+
+    #[test]
+    fn horde_wave_goal_ends_match_after_final_wave() {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Host".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
+        world.reset_for_match(
+            0,
+            0,
+            WinCondition::Kills,
+            Gamemode::ZombieHorde,
+            false,
+            false,
+            1,
+        );
+        world.wave = 1;
+        world.wave_state = WaveState::Active;
+        world.zombies_remaining = 0;
+        world.horde_spawn_queue.clear();
+
+        world.process_horde(0.0);
+
+        assert!(world.match_ended);
+        assert_eq!(world.winner_id, Some(0));
+    }
+
+    #[test]
+    fn zombie_melee_can_damage_humans_when_friendly_fire_is_off() {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Host".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
+        world.spawn_zombie(200, 0, 1);
+        world.friendly_fire = false;
+        let victim_hp = world.players.get(&0).unwrap().hp;
+
+        world.apply_damage(200, 0, 20);
+
+        assert!(world.players.get(&0).unwrap().hp < victim_hp);
+    }
+
+    #[test]
+    fn human_bullets_damage_zombies_when_friendly_fire_is_off() {
+        let mut world = GameWorld::default();
+        world.add_player(
+            0,
+            "Host".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
+        world.spawn_zombie(200, 0, 1);
+        world.friendly_fire = false;
+        let zombie_pos = {
+            let zombie = world.players.get(&200).unwrap();
+            (zombie.x, zombie.y)
+        };
+
+        world.bullets.push(test_glock_bullet(
+            1,
+            0,
+            zombie_pos.0 - 20.0,
+            zombie_pos.1,
+            720.0,
+            0.0,
+        ));
+
+        world.process_bullets(1.0 / 60.0);
+
+        let zombie = world.players.get(&200).unwrap();
+        assert!(zombie.hp < zombie.max_hp);
+        assert!(world.bullets.is_empty());
     }
 }

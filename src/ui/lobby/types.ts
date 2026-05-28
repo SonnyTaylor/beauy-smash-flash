@@ -5,4 +5,5 @@ export type LobbyPlayerView = {
   primary_weapon_id: string;
   ready: boolean;
   is_host: boolean;
+  is_bot?: boolean;
 };

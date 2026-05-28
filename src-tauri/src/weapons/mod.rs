@@ -268,6 +268,26 @@ const SWORD: WeaponDef = WeaponDef {
     on_hit: WeaponOnHit::None,
 };
 
+const ZOMBIE_CLAWS: WeaponDef = WeaponDef {
+    id: "zombie_claws",
+    name: "Claws",
+    kind: WeaponKind::Melee {
+        range: 72.0,
+        arc_deg: 95.0,
+    },
+    damage: 16,
+    fire_rate: 1.15,
+    bullet_speed: 0.0,
+    bullet_life: 0.0,
+    max_ammo: 1,
+    reload_time: 0.0,
+    bullet_radius: 0.0,
+    muzzle_offset: 36.0,
+    splash_radius: 0.0,
+    splash_damage: 0,
+    on_hit: WeaponOnHit::None,
+};
+
 const YOGHURT_EFFECT: WeaponDef = WeaponDef {
     id: "yoghurt_effect",
     name: "Yoghurt Effect",
@@ -298,6 +318,7 @@ static REGISTRY: &[WeaponDef] = &[
     JARATE,
     FECES,
     SWORD,
+    ZOMBIE_CLAWS,
     YOGHURT_EFFECT,
 ];
 

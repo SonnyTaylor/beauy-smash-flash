@@ -7,13 +7,13 @@ use tauri::Emitter;
 use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
 
-use crate::game::GameWorld;
+use crate::game::{GameWorld, ZOMBIE_ID_START};
 use crate::net::{
     decode_client, decode_server, encode_server, BROADCAST_HZ, GAME_PORT, MAX_PLAYERS, SIM_HZ,
 };
 use crate::protocol::{
-    ClientMessage, InputSnapshot, LobbyConfig, LobbyPlayerSnapshot, LobbySnapshot, ServerMessage,
-    SessionInfo,
+    ClientMessage, Gamemode, InputSnapshot, LobbyConfig, LobbyPlayerSnapshot, LobbySnapshot,
+    ServerMessage, SessionInfo,
 };
 
 pub type SharedState = Arc<Mutex<AppState>>;
@@ -43,6 +43,7 @@ pub struct AppState {
     pub my_id: u8,
     pub host_addr: Option<SocketAddr>,
     pub lobby_config: LobbyConfig,
+    pub bot_ids: HashSet<u8>,
     pub host_task: Option<tokio::task::JoinHandle<()>>,
     pub client_task: Option<tokio::task::JoinHandle<()>>,
     pub discovery_task: Option<tokio::task::JoinHandle<()>>,
@@ -61,6 +62,7 @@ impl Default for AppState {
             my_id: 0,
             host_addr: None,
             lobby_config: LobbyConfig::default(),
+            bot_ids: HashSet::new(),
             host_task: None,
             client_task: None,
             discovery_task: None,
@@ -90,6 +92,7 @@ pub async fn shutdown_session(state: &SharedState) {
     st.my_id = 0;
     st.world = GameWorld::default();
     st.lobby_config = LobbyConfig::default();
+    st.bot_ids.clear();
 }
 
 impl AppState {
@@ -105,13 +108,19 @@ impl AppState {
             .world
             .players
             .values()
+            .filter(|player| !player.is_zombie)
             .map(|player| LobbyPlayerSnapshot {
                 id: player.id,
                 name: player.name.clone(),
                 character_id: player.character_id.clone(),
                 primary_weapon_id: player.loadout_primary_weapon_id.clone(),
-                ready: self.ready_players.contains(&player.id),
+                ready: if self.bot_ids.contains(&player.id) {
+                    true
+                } else {
+                    self.ready_players.contains(&player.id)
+                },
                 is_host: player.id == 0,
+                is_bot: player.is_bot,
             })
             .collect();
         players.sort_by_key(|player| player.id);
@@ -131,10 +140,59 @@ impl AppState {
         if self.world.players.is_empty() {
             return false;
         }
+        self.world.players.keys().all(|id| {
+            if self.bot_ids.contains(id) {
+                true
+            } else {
+                self.ready_players.contains(id)
+            }
+        })
+    }
+
+    pub fn human_player_count(&self) -> usize {
         self.world
             .players
-            .keys()
-            .all(|id| self.ready_players.contains(id))
+            .values()
+            .filter(|player| !player.is_bot)
+            .count()
+    }
+
+    pub fn sync_bot_players(&mut self) {
+        if self.lobby_config.gamemode == Gamemode::ZombieHorde {
+            clear_bot_players(self);
+            self.lobby_config.bot_count = 0;
+            return;
+        }
+
+        let max_total = effective_max_players(self);
+        let humans = self.human_player_count();
+        let allowed_bots = max_total.saturating_sub(humans);
+        let target = (self.lobby_config.bot_count as usize).min(allowed_bots);
+        self.lobby_config.bot_count = target as u8;
+
+        let mut current: Vec<u8> = self.bot_ids.iter().copied().collect();
+        current.sort_unstable();
+
+        while current.len() > target {
+            let id = current.pop().expect("bot id");
+            self.world.remove_player(id);
+            self.bot_ids.remove(&id);
+            self.ready_players.remove(&id);
+        }
+
+        while self.bot_ids.len() < target {
+            let id = next_bot_id(self);
+            let bot_number = self.bot_ids.len() + 1;
+            let character_id = GameWorld::bot_character_for_index(self.bot_ids.len()).to_string();
+            self.world.add_bot_player(
+                id,
+                format!("Bot {bot_number}"),
+                character_id,
+                "glock".to_string(),
+            );
+            self.bot_ids.insert(id);
+            self.ready_players.insert(id);
+        }
     }
 }
 
@@ -148,6 +206,8 @@ pub async fn host_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri
             _ = sim_tick.tick() => {
                 let mut st = state.lock().await;
                 if st.match_started && !st.world.match_ended {
+                    let bot_ids = st.bot_ids.clone();
+                    crate::bots::update_bot_inputs(&mut st.world, &bot_ids, 1.0 / SIM_HZ);
                     st.world.tick(1.0 / SIM_HZ);
                 }
             }
@@ -375,9 +435,24 @@ async fn handle_host_message(
 }
 
 fn next_player_id(state: &AppState) -> u8 {
-    (1..=u8::MAX)
+    (1..ZOMBIE_ID_START)
         .find(|id| !state.world.players.contains_key(id))
-        .unwrap_or(u8::MAX)
+        .unwrap_or(ZOMBIE_ID_START - 1)
+}
+
+fn next_bot_id(state: &AppState) -> u8 {
+    (1..ZOMBIE_ID_START)
+        .find(|id| !state.world.players.contains_key(id))
+        .unwrap_or(ZOMBIE_ID_START - 1)
+}
+
+fn clear_bot_players(state: &mut AppState) {
+    let bot_ids: Vec<u8> = state.bot_ids.iter().copied().collect();
+    for id in bot_ids {
+        state.world.remove_player(id);
+        state.bot_ids.remove(&id);
+        state.ready_players.remove(&id);
+    }
 }
 
 fn effective_max_players(state: &AppState) -> usize {

@@ -25,6 +25,16 @@ const CONTROLS_HINT_VISIBLE_MS = 6500;
 
 function matchGoalLabel(state: StateSnapshot | null): string {
   if (!state) return '';
+  if (state.gamemode === 'zombie_horde') {
+    const waveGoal = state.wave_goal ?? 0;
+    if (waveGoal > 0) {
+      return `Survive ${waveGoal} waves — co-op horde`;
+    }
+    if ((state.time_limit_secs ?? 0) > 0) {
+      return `Horde survival · ${formatMatchTime(state.time_limit_secs)}`;
+    }
+    return 'Survive the zombie horde';
+  }
   if (state.gamemode === 'last_mate_standing') {
     if (state.time_limit_secs > 0) {
       return `Last standing wins · ${formatMatchTime(state.time_limit_secs)} tiebreaker`;
@@ -169,6 +179,11 @@ export function GameOverlay({
   const isSpawnProtected = (me?.spawn_protected ?? false) && (me?.alive ?? false);
   const inBoatMode = (me?.boat_mode_remaining ?? 0) > 0;
   const isLastMateStanding = state?.gamemode === 'last_mate_standing';
+  const isZombieHorde = state?.gamemode === 'zombie_horde';
+  const hordeWave = state?.wave ?? 0;
+  const hordeRemaining = state?.zombies_remaining ?? 0;
+  const hordeIntermission = state?.wave_intermission_secs ?? 0;
+  const hordeActive = state?.wave_state === 'active';
   const inDirectorsCut = (me?.directors_cut_remaining ?? 0) > 0;
   const directorsCutActive = (state?.players ?? []).some(
     (player) => (player.directors_cut_remaining ?? 0) > 0,
@@ -369,6 +384,16 @@ export function GameOverlay({
         {inDirectorsCut && !matchEnded && (
           <div className="hud-directors-banner" role="status">
             Director&apos;s Cut — {me?.directors_cut_shots ?? 0} popcorn left · kills refund 3
+          </div>
+        )}
+
+        {isZombieHorde && !matchEnded && (
+          <div className="hud-directors-banner" role="status">
+            {hordeWave === 0
+              ? `Horde incoming in ${Math.ceil(hordeIntermission)}s`
+              : hordeActive
+                ? `Wave ${hordeWave} — ${hordeRemaining} zombies left`
+                : `Wave ${hordeWave} cleared — next wave in ${Math.ceil(hordeIntermission)}s`}
           </div>
         )}
 

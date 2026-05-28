@@ -150,6 +150,11 @@ pub async fn join_game(
                     fog_of_war: lobby_config.fog_of_war,
                     gamemode: lobby_config.gamemode,
                     weapon_pickups: Vec::new(),
+                    wave: 0,
+                    zombies_remaining: 0,
+                    wave_state: crate::protocol::WaveState::Intermission,
+                    wave_intermission_secs: 0.0,
+                    wave_goal: lobby_config.wave_goal,
                 });
             (id, world)
         }
@@ -311,6 +316,7 @@ pub async fn start_match(
             config.gamemode,
             config.friendly_fire,
             config.fog_of_war,
+            config.wave_goal,
         );
         st.match_started = true;
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
@@ -325,6 +331,23 @@ pub async fn start_match(
 
     let _ = window.emit("match_started", snapshot.clone());
     let _ = window.emit("state", snapshot);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_bot_count(count: u8, state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let mut st = state.lock().await;
+    if st.mode != SessionMode::Host {
+        return Err("Only the host can change bot count".to_string());
+    }
+    if st.match_started {
+        return Err("Cannot change bots during a match".to_string());
+    }
+    if st.lobby_config.gamemode == crate::protocol::Gamemode::ZombieHorde {
+        return Err("Bot mates are not used in Zombie Horde".to_string());
+    }
+    st.lobby_config.bot_count = count;
+    st.sync_bot_players();
     Ok(())
 }
 
@@ -372,8 +395,13 @@ pub async fn update_lobby_config(
     }
     let mut config = config;
     config.server_name = clean_server_name(Some(config.server_name));
+    if config.gamemode == crate::protocol::Gamemode::ZombieHorde {
+        config.bot_count = 0;
+        config.friendly_fire = false;
+    }
     let map_id = config.map_id.clone();
     st.lobby_config = config;
+    st.sync_bot_players();
     if !st.match_started {
         st.world.set_map(&map_id);
         st.world.reposition_players_to_spawns();
@@ -440,6 +468,7 @@ pub async fn rematch(
             config.gamemode,
             config.friendly_fire,
             config.fog_of_war,
+            config.wave_goal,
         );
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
     };
@@ -525,6 +554,7 @@ fn clean_character_id(character_id: Option<String>) -> String {
         Some("isaak") => "isaak",
         Some("taj") => "taj",
         Some("finn") | Some("cheeky_dinghy") => "finn",
+        Some("zombie") => "zombie",
         _ => "sonny",
     }
     .to_string()
