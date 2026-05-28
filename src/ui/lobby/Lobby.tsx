@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type CSSProperties, useState } from 'react';
 import {
   DEFAULT_LOBBY_CONFIG,
   type LobbyConfig,
@@ -70,7 +70,6 @@ export function Lobby({
   ];
 
   const me = lobbyPlayers.find((player) => player.id === myId);
-  const hostPlayer = lobbyPlayers.find((player) => player.is_host) ?? null;
   const myCharacterId = me?.character_id ?? selectedCharacterId;
   const notReadyCount = lobbyPlayers.filter((player) => !player.ready).length;
   const allReady = lobbyPlayers.length >= 1 && notReadyCount === 0;
@@ -104,7 +103,9 @@ export function Lobby({
                 <strong>{localIp}</strong>
               </span>
             )}
-            <span className="meta-chip">
+            <span
+              className={`meta-chip ${lobbyPlayers.length < config.max_players ? 'meta-chip-open' : ''}`}
+            >
               <span className="meta-label">Mates</span>
               <strong>
                 {lobbyPlayers.length}/{config.max_players}
@@ -117,7 +118,6 @@ export function Lobby({
           <LobbySettingsPanel
             config={config}
             isHost={isHost}
-            hostName={hostPlayer?.name ?? null}
             playerCount={lobbyPlayers.length}
             onConfigChange={onConfigChange}
           />
@@ -139,9 +139,24 @@ export function Lobby({
                 />
               ))}
               {Array.from({ length: emptySlotCount }).map((_, index) => (
-                <div key={`empty-${index}`} className="slot slot-empty">
-                  <span className="slot-empty-dot" />
-                  <span>Waiting for a mate…</span>
+                <div
+                  key={`empty-${index}`}
+                  className="slot slot-empty"
+                  style={{ '--slot-delay': `${index * 0.45}s` } as CSSProperties}
+                >
+                  <span className="slot-empty-signal" aria-hidden="true">
+                    <span className="slot-empty-ring" />
+                    <span className="slot-empty-ring delay" />
+                    <span className="slot-empty-core" />
+                  </span>
+                  <span className="slot-empty-label">
+                    Waiting for a mate
+                    <span className="waiting-dots" aria-hidden="true">
+                      <span>.</span>
+                      <span>.</span>
+                      <span>.</span>
+                    </span>
+                  </span>
                 </div>
               ))}
             </div>
@@ -156,7 +171,7 @@ export function Lobby({
           </button>
           {isHost ? (
             <button
-              className="primary-action"
+              className={`primary-action ${!allReady && !isBusy ? 'lobby-action-waiting' : ''}`}
               onClick={onStart}
               disabled={isBusy || !allReady}
             >

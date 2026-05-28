@@ -26,16 +26,14 @@ export function App() {
           )}
 
           {session.screen === 'settings' && (
-            <div className="screen-card settings-card">
-              <SettingsScreen
-                settings={session.gameSettings}
-                onSave={(next) => {
-                  session.saveGameSettings(next);
-                  session.setScreen('main-menu');
-                }}
-                onBack={() => session.setScreen('main-menu')}
-              />
-            </div>
+            <SettingsScreen
+              settings={session.gameSettings}
+              onSave={(next) => {
+                session.saveGameSettings(next);
+                session.setScreen('main-menu');
+              }}
+              onBack={() => session.setScreen('main-menu')}
+            />
           )}
 
           {session.screen === 'server-select' && (

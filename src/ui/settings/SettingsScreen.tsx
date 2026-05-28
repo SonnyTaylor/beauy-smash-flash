@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { GameSettings } from '../../shared/types';
+import { SettingRow } from '../components/CycleControl';
 
 export function SettingsScreen({
   settings,
@@ -11,63 +12,101 @@ export function SettingsScreen({
   onBack: () => void;
 }) {
   const [draft, setDraft] = useState(settings);
+  const volumePercent = Math.round(draft.masterVolume * 100);
 
   return (
-    <section className="settings-screen">
-      <header className="panel-heading">
-        <h2>Settings</h2>
-        <span>Stored on this device</span>
-      </header>
-
-      <div className="settings-form">
-        <label className="settings-field">
-          <span>Default server name</span>
-          <input
-            type="text"
-            maxLength={32}
-            value={draft.serverName}
-            onChange={(event) => setDraft({ ...draft, serverName: event.target.value })}
-            placeholder="LAN Game"
-          />
-          <small>Used when you host; changeable in the lobby.</small>
-        </label>
-
-        <label className="settings-field">
-          <span>Master volume</span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={Math.round(draft.masterVolume * 100)}
-            onChange={(event) =>
-              setDraft({ ...draft, masterVolume: Number(event.target.value) / 100 })
-            }
-          />
-          <small>{Math.round(draft.masterVolume * 100)}% — audio coming soon</small>
-        </label>
-
-        <label className="settings-toggle">
-          <input
-            type="checkbox"
-            checked={draft.showControlsHint}
-            onChange={(event) => setDraft({ ...draft, showControlsHint: event.target.checked })}
-          />
-          <span>Show control hints in-game</span>
-        </label>
+    <>
+      <div className="brand-panel settings-brand">
+        <p className="eyebrow">Preferences</p>
+        <h1>
+          Your
+          <span>Setup</span>
+        </h1>
+        <p className="tagline">Saved on this device only — nothing leaves your LAN.</p>
+        <ul className="join-tips">
+          <li>
+            <span className="join-tip-label">Host</span>
+            <span>Default server name pre-fills when you create a lobby</span>
+          </li>
+          <li>
+            <span className="join-tip-label">Audio</span>
+            <span>Volume slider is ready; sound effects are coming soon</span>
+          </li>
+          <li>
+            <span className="join-tip-label">HUD</span>
+            <span>Control hints show at the bottom of the screen in matches</span>
+          </li>
+        </ul>
       </div>
 
-      <div className="settings-actions">
-        <button type="button" className="ghost-button" onClick={onBack}>
-          Back
-        </button>
-        <button
-          type="button"
-          className="primary-action"
-          onClick={() => onSave(draft)}
-        >
-          Save
-        </button>
+      <div className="screen-card settings-card">
+        <section className="settings-panel">
+          <header className="panel-heading">
+            <h2>Settings</h2>
+            <span>Stored on this device</span>
+          </header>
+
+          <div className="settings-form">
+            <div className="settings-group">
+              <SettingRow label="Default Server Name">
+                <input
+                  type="text"
+                  className="settings-text-input"
+                  maxLength={32}
+                  value={draft.serverName}
+                  onChange={(event) => setDraft({ ...draft, serverName: event.target.value })}
+                  placeholder="LAN Game"
+                />
+              </SettingRow>
+              <p className="setting-hint">Used when you host; changeable in the lobby.</p>
+            </div>
+
+            <div className="settings-group">
+              <div className="setting-row settings-volume-row">
+                <span className="setting-label">Master Volume</span>
+                <div className="setting-control settings-volume-control">
+                  <input
+                    type="range"
+                    className="settings-volume-slider"
+                    min={0}
+                    max={100}
+                    value={volumePercent}
+                    onChange={(event) =>
+                      setDraft({ ...draft, masterVolume: Number(event.target.value) / 100 })
+                    }
+                  />
+                  <span className="settings-volume-value">{volumePercent}%</span>
+                </div>
+              </div>
+              <p className="setting-hint">Audio coming soon — slider is saved for when it lands.</p>
+            </div>
+
+            <div className="settings-group">
+              <SettingRow label="Control Hints">
+                <button
+                  type="button"
+                  className={`toggle-pill ${draft.showControlsHint ? 'on' : 'off'}`}
+                  onClick={() =>
+                    setDraft({ ...draft, showControlsHint: !draft.showControlsHint })
+                  }
+                >
+                  {draft.showControlsHint ? 'On' : 'Off'}
+                </button>
+              </SettingRow>
+              <p className="setting-hint">Show WASD / mouse controls at the bottom during matches.</p>
+            </div>
+          </div>
+
+          <div className="settings-actions">
+            <button type="button" className="ghost-button" onClick={onBack}>
+              Back
+            </button>
+            <button type="button" className="primary-action" onClick={() => onSave(draft)}>
+              Save
+            </button>
+          </div>
+        </section>
       </div>
-    </section>
+    </>
   );
 }

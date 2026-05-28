@@ -382,7 +382,7 @@ export function useGameSession() {
     if (screen === 'main-menu') return 'landing-screen';
     if (screen === 'lobby') return 'lobby-screen';
     if (screen === 'server-select') return 'flow-screen join-screen';
-    if (screen === 'settings') return 'flow-screen settings-screen';
+    if (screen === 'settings') return 'flow-screen settings-flow';
     return 'flow-screen';
   }
 

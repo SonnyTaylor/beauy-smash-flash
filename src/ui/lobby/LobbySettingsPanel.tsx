@@ -13,13 +13,11 @@ import { MapPreview } from './MapPreview';
 export function LobbySettingsPanel({
   config,
   isHost,
-  hostName,
   playerCount,
   onConfigChange,
 }: {
   config: LobbyConfig;
   isHost: boolean;
-  hostName: string | null;
   playerCount: number;
   onConfigChange: (config: LobbyConfig) => void;
 }) {
@@ -53,11 +51,6 @@ export function LobbySettingsPanel({
         <h3>Server Settings</h3>
         <span>{isHost ? 'Host-only — changes broadcast live' : 'Set by the host'}</span>
       </header>
-
-      <div className="lobby-host-banner">
-        <span className="lobby-host-label">Host</span>
-        <strong>{hostName ?? 'Waiting…'}</strong>
-      </div>
 
       <div className="lobby-settings-scroll">
         <SettingRow label="Server Name">
