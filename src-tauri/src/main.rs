@@ -24,6 +24,8 @@ struct AppState {
     addrs: Vec<SocketAddr>,
     my_id: u8,
     host_addr: Option<SocketAddr>,
+    world_w: f32,
+    world_h: f32,
 }
 
 const PALETTE: [[u8; 3]; 8] = [
@@ -39,6 +41,8 @@ const PALETTE: [[u8; 3]; 8] = [
 
 #[tauri::command]
 async fn start_host(
+    width: f32,
+    height: f32,
     window: tauri::Window,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<u8, String> {
@@ -47,12 +51,14 @@ async fn start_host(
     st.socket = Some(socket.clone());
     st.is_host = true;
     st.my_id = 0;
+    st.world_w = width;
+    st.world_h = height;
     st.players.insert(
         0,
         Player {
             id: 0,
-            x: 400.0,
-            y: 300.0,
+            x: width / 2.0,
+            y: height / 2.0,
             c: PALETTE[0],
         },
     );
@@ -67,6 +73,8 @@ async fn start_host(
 #[tauri::command]
 async fn join_game(
     ip: String,
+    width: f32,
+    height: f32,
     window: tauri::Window,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<u8, String> {
@@ -107,6 +115,8 @@ async fn join_game(
     st.socket = Some(socket.clone());
     st.is_host = false;
     st.my_id = my_id;
+    st.world_w = width;
+    st.world_h = height;
     st.host_addr = Some(host_addr);
 
     let state_clone = Arc::clone(&*state);
@@ -125,13 +135,15 @@ async fn send_input(
     let st = state.lock().await;
     let is_host = st.is_host;
     let my_id = st.my_id;
+    let world_w = st.world_w;
+    let world_h = st.world_h;
     if let Some(socket) = &st.socket {
         if is_host {
             drop(st);
             let mut st = state.lock().await;
             if let Some(p) = st.players.get_mut(&my_id) {
-                p.x = (p.x + dx * 5.0).clamp(16.0, 784.0);
-                p.y = (p.y + dy * 5.0).clamp(16.0, 584.0);
+                p.x = (p.x + dx * 8.0).clamp(16.0, world_w - 16.0);
+                p.y = (p.y + dy * 8.0).clamp(16.0, world_h - 16.0);
             }
         } else if let Some(addr) = st.host_addr {
             let msg = serde_json::json!({"Input": [dx, dy]});
@@ -163,6 +175,8 @@ async fn host_loop(socket: Arc<UdpSocket>, state: Arc<Mutex<AppState>>, window: 
                     if let Ok(msg) = serde_json::from_slice::<serde_json::Value>(&buf[..n]) {
                         let mut st = state.lock().await;
                         if msg.get("Join").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            let world_w = st.world_w;
+                            let world_h = st.world_h;
                             let id = if let Some(idx) = st.addrs.iter().position(|a| a == &addr) {
                                 (idx + 1) as u8
                             } else {
@@ -170,8 +184,8 @@ async fn host_loop(socket: Arc<UdpSocket>, state: Arc<Mutex<AppState>>, window: 
                                 st.addrs.push(addr);
                                 st.players.insert(id, Player {
                                     id,
-                                    x: 400.0,
-                                    y: 300.0,
+                                    x: world_w / 2.0,
+                                    y: world_h / 2.0,
                                     c: PALETTE[id as usize % PALETTE.len()],
                                 });
                                 id
@@ -184,9 +198,11 @@ async fn host_loop(socket: Arc<UdpSocket>, state: Arc<Mutex<AppState>>, window: 
                                 let dy = arr.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                                 if let Some(idx) = st.addrs.iter().position(|a| a == &addr) {
                                     let pid = (idx + 1) as u8;
+                                    let world_w = st.world_w;
+                                    let world_h = st.world_h;
                                     if let Some(p) = st.players.get_mut(&pid) {
-                                        p.x = (p.x + dx * 5.0).clamp(16.0, 784.0);
-                                        p.y = (p.y + dy * 5.0).clamp(16.0, 584.0);
+                                        p.x = (p.x + dx * 8.0).clamp(16.0, world_w - 16.0);
+                                        p.y = (p.y + dy * 8.0).clamp(16.0, world_h - 16.0);
                                     }
                                 }
                             }

@@ -6,69 +6,78 @@
   <title>Beauy Smash Flash</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #111;
-      color: #eee;
-      font-family: system-ui, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #050505;
       overflow: hidden;
+      font-family: system-ui, sans-serif;
     }
     #menu {
+      position: absolute;
+      inset: 0;
       display: flex;
       flex-direction: column;
       gap: 12px;
       align-items: center;
+      justify-content: center;
+      z-index: 10;
+      background: rgba(5,5,5,0.92);
     }
-    h1 { font-size: 1.5rem; margin-bottom: 8px; }
+    h1 { font-size: 2rem; color: #eee; margin-bottom: 8px; letter-spacing: 2px; }
     input {
-      padding: 8px 12px;
-      border-radius: 6px;
+      padding: 10px 14px;
+      border-radius: 8px;
       border: 1px solid #444;
-      background: #222;
+      background: #1a1a1a;
       color: #eee;
       font-size: 1rem;
-      width: 220px;
+      width: 240px;
     }
     button {
-      padding: 10px 20px;
-      border-radius: 6px;
+      padding: 12px 24px;
+      border-radius: 8px;
       border: none;
       background: #3b82f6;
       color: white;
       font-size: 1rem;
       cursor: pointer;
-      width: 220px;
+      width: 240px;
+      font-weight: 600;
+      transition: background 0.15s;
     }
     button:hover { background: #2563eb; }
+    #game-container {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
     canvas {
-      border: 2px solid #333;
-      border-radius: 8px;
-      background: #0a0a0a;
-      display: none;
+      display: block;
+      width: 100%;
+      height: 100%;
     }
     #hud {
       position: absolute;
-      top: 10px;
-      left: 10px;
+      top: 12px;
+      left: 12px;
       font-size: 0.85rem;
       color: #aaa;
+      z-index: 5;
+      pointer-events: none;
       display: none;
     }
   </style>
 </head>
 <body>
   <div id="menu">
-    <h1>Beauy Smash Flash</h1>
+    <h1>BEAUY SMASH FLASH</h1>
     <button id="btn-host">Host Game</button>
     <input id="join-ip" type="text" value="127.0.0.1" placeholder="Host IP" />
     <button id="btn-join">Join Game</button>
   </div>
   <div id="hud">WASD to move</div>
-  <canvas id="game" width="800" height="600"></canvas>
+  <div id="game-container"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
