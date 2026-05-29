@@ -74,6 +74,7 @@ input {
   align-items: center;
   justify-items: center;
   padding: clamp(18px, 4vw, 48px);
+  overflow: auto;
   background:
     linear-gradient(var(--bg-grid) 1px, transparent 1px) 0 0 / 64px 64px,
     linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px) 0 0 / 64px 64px,
@@ -1112,7 +1113,7 @@ h2 {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: clamp(12px, 1.5vw, 18px);
-  min-height: min(72vh, 640px);
+  min-height: 0;
 }
 
 .join-panel-heading {
@@ -1161,6 +1162,7 @@ h2 {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.01)),
     rgba(8, 11, 22, 0.5);
+  overflow: auto;
 }
 
 .join-hosts.is-empty {
@@ -1174,8 +1176,6 @@ h2 {
   display: grid;
   gap: 9px;
   align-content: start;
-  overflow: auto;
-  max-height: min(36vh, 320px);
 }
 
 .host-card {
@@ -1183,7 +1183,7 @@ h2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
-  align-items: center;
+  align-items: start;
   padding: 13px 15px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -1218,6 +1218,7 @@ h2 {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .host-card-title strong {
@@ -1226,6 +1227,10 @@ h2 {
   font-weight: 800;
   letter-spacing: 0.01em;
   text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .lan-badge {
@@ -1283,6 +1288,7 @@ h2 {
   font-family: var(--font-mono);
   font-size: 0.95rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .host-slots-bar {
@@ -1310,6 +1316,7 @@ h2 {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .host-card:hover:not(:disabled) .host-join-label {
@@ -3444,7 +3451,9 @@ h2 {
 .slot-list,
 .loadout-sections,
 .loadout-character-scroll,
-.loadout-section-weapon .weapon-picker {
+.loadout-section-weapon .weapon-picker,
+.join-hosts,
+.host-list {
   scrollbar-width: thin;
   scrollbar-color: rgba(70, 233, 255, 0.5) rgba(255, 255, 255, 0.06);
 }
@@ -3453,7 +3462,9 @@ h2 {
 .slot-list::-webkit-scrollbar,
 .loadout-sections::-webkit-scrollbar,
 .loadout-character-scroll::-webkit-scrollbar,
-.loadout-section-weapon .weapon-picker::-webkit-scrollbar {
+.loadout-section-weapon .weapon-picker::-webkit-scrollbar,
+.join-hosts::-webkit-scrollbar,
+.host-list::-webkit-scrollbar {
   width: 10px;
 }
 
@@ -3461,7 +3472,9 @@ h2 {
 .slot-list::-webkit-scrollbar-track,
 .loadout-sections::-webkit-scrollbar-track,
 .loadout-character-scroll::-webkit-scrollbar-track,
-.loadout-section-weapon .weapon-picker::-webkit-scrollbar-track {
+.loadout-section-weapon .weapon-picker::-webkit-scrollbar-track,
+.join-hosts::-webkit-scrollbar-track,
+.host-list::-webkit-scrollbar-track {
   margin: 4px 0;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.04);
@@ -3472,7 +3485,9 @@ h2 {
 .slot-list::-webkit-scrollbar-thumb,
 .loadout-sections::-webkit-scrollbar-thumb,
 .loadout-character-scroll::-webkit-scrollbar-thumb,
-.loadout-section-weapon .weapon-picker::-webkit-scrollbar-thumb {
+.loadout-section-weapon .weapon-picker::-webkit-scrollbar-thumb,
+.join-hosts::-webkit-scrollbar-thumb,
+.host-list::-webkit-scrollbar-thumb {
   border: 2px solid rgba(8, 11, 22, 0.95);
   border-radius: 999px;
   background: linear-gradient(180deg, rgba(70, 233, 255, 0.55), rgba(46, 139, 255, 0.42));
@@ -3483,7 +3498,9 @@ h2 {
 .slot-list::-webkit-scrollbar-thumb:hover,
 .loadout-sections::-webkit-scrollbar-thumb:hover,
 .loadout-character-scroll::-webkit-scrollbar-thumb:hover,
-.loadout-section-weapon .weapon-picker::-webkit-scrollbar-thumb:hover {
+.loadout-section-weapon .weapon-picker::-webkit-scrollbar-thumb:hover,
+.join-hosts::-webkit-scrollbar-thumb:hover,
+.host-list::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, rgba(70, 233, 255, 0.78), rgba(46, 139, 255, 0.62));
 }
 
@@ -3498,6 +3515,7 @@ h2 {
   justify-content: space-between;
   gap: 12px;
   margin: 0;
+  flex-wrap: wrap;
 }
 
 .panel-heading h3 {
