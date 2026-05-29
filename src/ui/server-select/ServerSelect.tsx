@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { AppInfo, ServerInfo } from '../../shared/types';
 import { describeHostCompatibility } from '../../shared/compatibility';
+import { isValidHostAddress } from '../../shared/validation';
 
 function playerFillRatio(count: number, max: number) {
   if (max <= 0) return 0;
@@ -31,6 +33,16 @@ export function ServerSelect({
 }) {
   const hasHosts = servers.length > 0;
   const trimmedIp = joinIp.trim();
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  function handleDirectConnect(ip: string) {
+    if (!isValidHostAddress(ip)) {
+      setValidationError('Invalid host address. Use an IP like 192.168.1.42 or 192.168.1.42:5555');
+      return;
+    }
+    setValidationError(null);
+    onContinue(ip);
+  }
 
   return (
     <section className="join-panel">
@@ -137,10 +149,13 @@ export function ServerSelect({
           Host address
           <input
             value={joinIp}
-            onChange={(event) => onJoinIpChange(event.currentTarget.value)}
+            onChange={(event) => {
+              setValidationError(null);
+              onJoinIpChange(event.currentTarget.value);
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && trimmedIp && !isBusy) {
-                onContinue(trimmedIp);
+                handleDirectConnect(trimmedIp);
               }
             }}
             inputMode="decimal"
@@ -149,6 +164,9 @@ export function ServerSelect({
             spellCheck={false}
           />
         </label>
+        {validationError && (
+          <p className="error-text direct-connect-error">{validationError}</p>
+        )}
         <p className="setting-hint">
           Direct connect still requires matching protocol {appInfo.protocol_version}. Update if join fails.
         </p>
@@ -161,7 +179,7 @@ export function ServerSelect({
         <button
           type="button"
           className="primary-action"
-          onClick={() => onContinue(trimmedIp || '127.0.0.1')}
+          onClick={() => handleDirectConnect(trimmedIp || '127.0.0.1')}
           disabled={isBusy || !trimmedIp}
         >
           {isBusy ? 'Joining…' : 'Join Game'}

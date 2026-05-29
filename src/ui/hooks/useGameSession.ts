@@ -27,6 +27,7 @@ import {
 import { DEFAULT_LOBBY_CONFIG } from '../../shared/types';
 import { logGameEvent } from '../../shared/gameLog';
 import { closeApplicationWindow } from '../appClose';
+import { isValidHostAddress } from '../../shared/validation';
 
 export function useGameSession() {
   const client = useMemo(() => new TauriGameClient(), []);
@@ -545,6 +546,12 @@ export function useGameSession() {
   }
 
   function goToLoadout(kind: SessionKind, joinIpAddress?: string) {
+    if (kind === 'join' && joinIpAddress) {
+      if (!isValidHostAddress(joinIpAddress)) {
+        setError('Invalid host address. Use an IP like 192.168.1.42 or 192.168.1.42:5555');
+        return;
+      }
+    }
     loadoutReturnScreenRef.current = null;
     setSessionKind(kind);
     if (joinIpAddress) {
