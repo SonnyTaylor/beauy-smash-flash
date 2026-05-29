@@ -5,6 +5,14 @@ on:
     tags:
       - 'v*'
 
+# Repo default was "read" — job-level permissions alone cannot grant write.
+# This must match Settings → Actions → Workflow permissions (now read-write).
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
@@ -21,7 +29,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -40,7 +48,7 @@ jobs:
           cache-bin: true
 
       - name: Cache frontend dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             node_modules

@@ -37,6 +37,14 @@ Set the GitHub secret once:
 gh secret set TAURI_SIGNING_PRIVATE_KEY < "$env:USERPROFILE\.tauri\beauy-smash-flash.key"
 ```
 
+**CI release failed with "Resource not accessible by integration"?** The repo’s default `GITHUB_TOKEN` workflow permission must be **Read and write** (not read-only). Fix once:
+
+```powershell
+gh api repos/SonnyTaylor/beauy-smash-flash/actions/permissions/workflow -X PUT -f default_workflow_permissions=write
+```
+
+Or: repo **Settings → Actions → General → Workflow permissions → Read and write**.
+
 If you regenerate keys, already-installed builds cannot trust updates signed with a new key.
 
 ## Local installer build
