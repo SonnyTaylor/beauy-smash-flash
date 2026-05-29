@@ -634,6 +634,13 @@ fn clean_character_id(character_id: Option<String>) -> String {
         Some("arthur") => "arthur",
         Some("oscar") => "oscar",
         Some("vlad") => "vlad",
+        Some("mango") => "mango",
+        Some("andrew") => "andrew",
+        Some("lee") => "lee",
+        Some("martin") => "martin",
+        Some("tristan") => "tristan",
+        Some("andy") => "andy",
+        Some("xander") => "xander",
         _ => "sonny",
     }
     .to_string()

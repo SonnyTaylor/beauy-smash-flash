@@ -21,6 +21,7 @@
     "assets:head": "python scripts/import-head.py",
     "assets:isaak-ult": "python scripts/process-isaak-ult.py",
     "assets:arthur-kart": "python scripts/process-arthur-kart.py",
+    "assets:lachy": "python scripts/process-lachy.py",
     "test-mp": "pwsh -ExecutionPolicy Bypass -File scripts/test-multiplayer.ps1",
     "fw:fix": "pwsh -ExecutionPolicy Bypass -File scripts/fix-lan-firewall.ps1"
   },

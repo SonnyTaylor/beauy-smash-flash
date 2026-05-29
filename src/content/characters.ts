@@ -134,6 +134,83 @@ export const PLAYABLE_CHARACTERS: CharacterDefinition[] = [
       'Summon 3 follower drones for 7s — chip damage at range; shoot them down to stop the clout.',
   },
   {
+    id: 'mango',
+    name: 'Mango',
+    color: [255, 140, 80],
+    sprite: 'heads/mango.png',
+    initials: 'MG',
+    abilityId: 'overthink',
+    abilityName: 'Overthink',
+    abilityDescription:
+      'Skillshot roots an enemy for 1.2s — they can still aim and shoot. ~50% charge back on miss.',
+  },
+  {
+    id: 'andrew',
+    name: 'Andrew',
+    color: [120, 200, 255],
+    sprite: 'heads/andrew.png',
+    initials: 'AD',
+    abilityId: 'blur',
+    abilityName: 'Blur',
+    abilityDescription:
+      'Nearest enemy in 300px deals 40% less damage for 3.5s. Debuff only — no direct damage.',
+  },
+  {
+    id: 'lee',
+    name: 'Lee Moore',
+    color: [180, 255, 120],
+    sprite: 'heads/lee.png',
+    initials: 'LM',
+    abilityId: 'feast',
+    abilityName: 'Feast',
+    abilityDescription:
+      'Instant +20 HP, then 40% lifesteal on damage you deal for 6s. Self-heal only when FF is off.',
+  },
+  {
+    id: 'martin',
+    name: 'Martin',
+    color: [255, 90, 180],
+    sprite: 'heads/martin.png',
+    initials: 'MT',
+    abilityId: 'off_the_meds',
+    abilityName: 'Off the Meds',
+    abilityDescription:
+      '5s berserk — +30% fire rate, +20% speed, 15% lifesteal. You take 25% more damage. 90 HP.',
+  },
+  {
+    id: 'tristan',
+    name: 'Tristan',
+    color: [255, 60, 60],
+    sprite: 'heads/tristan.png',
+    initials: 'TR',
+    abilityId: 'ragebait',
+    abilityName: 'Ragebait',
+    abilityDescription:
+      '2.5s stance — 40% less damage taken and reflect 40% back to attackers. 110 HP.',
+  },
+  {
+    id: 'andy',
+    name: 'Andy',
+    color: [200, 160, 255],
+    sprite: 'heads/andy.png',
+    initials: 'AN',
+    abilityId: 'liquid_courage',
+    abilityName: 'Liquid Courage',
+    abilityDescription:
+      '5s drunk buff — 35% damage resist, 4 HP/s regen, aim sway. Lachy the dog bites nearby enemies.',
+  },
+  {
+    id: 'xander',
+    name: 'Xander',
+    color: [140, 255, 220],
+    sprite: 'heads/xander.png',
+    initials: 'XA',
+    abilityId: 'hyperfixation',
+    abilityName: 'Hyperfixation',
+    abilityDescription:
+      '0.3s windup, then 1.5s invulnerability — cleanses debuffs, can move but cannot shoot.',
+  },
+  {
     id: 'luca',
     name: 'Luca',
     color: [100, 140, 70],

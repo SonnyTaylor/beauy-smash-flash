@@ -50,6 +50,8 @@ fn max_hp_for_character(character_id: &str) -> u16 {
         "luca" => LUCA_MAX_HP,
         "jacob" => JACOB_MAX_HP,
         "arthur" => crate::roster_expansion::ARTHUR_MAX_HP,
+        "tristan" => crate::roster_expansion::TRISTAN_MAX_HP,
+        "martin" => crate::roster_expansion::MARTIN_MAX_HP,
         _ => PLAYER_MAX_HP,
     }
 }
@@ -177,6 +179,13 @@ pub struct WorldEffect {
     pub zone_heal_accum: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum FollowerDroneKind {
+    #[default]
+    OrbitRanged,
+    MeleePet,
+}
+
 #[derive(Clone, Debug)]
 pub struct FollowerDrone {
     pub id: u32,
@@ -187,6 +196,7 @@ pub struct FollowerDrone {
     pub life: f32,
     pub fire_cooldown: f32,
     pub orbit_angle: f32,
+    pub kind: FollowerDroneKind,
 }
 
 impl WorldEffect {
@@ -303,6 +313,16 @@ pub struct Player {
     pub jump_cut_boost_until: f32,
     pub kart_mode_until: f32,
     pub kart_oil_timer: f32,
+    pub rooted_until: f32,
+    pub blur_until: f32,
+    pub damage_output_multiplier: f32,
+    pub feast_until: f32,
+    pub off_the_meds_until: f32,
+    pub ragebait_until: f32,
+    pub liquid_courage_until: f32,
+    pub aim_sway_x: f32,
+    pub aim_sway_y: f32,
+    pub invulnerable_until: f32,
     pub reel_index: u8,
     pub is_bot: bool,
     pub is_zombie: bool,
@@ -389,6 +409,16 @@ impl Player {
             jump_cut_boost_until: 0.0,
             kart_mode_until: 0.0,
             kart_oil_timer: 0.0,
+            rooted_until: 0.0,
+            blur_until: 0.0,
+            damage_output_multiplier: 1.0,
+            feast_until: 0.0,
+            off_the_meds_until: 0.0,
+            ragebait_until: 0.0,
+            liquid_courage_until: 0.0,
+            aim_sway_x: 0.0,
+            aim_sway_y: 0.0,
+            invulnerable_until: 0.0,
             reel_index: 0,
             is_bot: false,
             is_zombie: false,
@@ -521,6 +551,13 @@ impl Player {
             kart_mode_remaining: self.kart_mode_until.max(0.0),
             steroid_buff_remaining: self.steroid_buff_until.max(0.0),
             follower_drone_count: 0, // filled in snapshot()
+            rooted_remaining: self.rooted_until.max(0.0),
+            blur_remaining: self.blur_until.max(0.0),
+            feast_remaining: self.feast_until.max(0.0),
+            off_the_meds_remaining: self.off_the_meds_until.max(0.0),
+            ragebait_remaining: self.ragebait_until.max(0.0),
+            liquid_courage_remaining: self.liquid_courage_until.max(0.0),
+            invulnerable_remaining: self.invulnerable_until.max(0.0),
             reel_index: if self.reel_shield_remaining > 0.0 {
                 self.reel_index
             } else {
@@ -1082,6 +1119,16 @@ impl GameWorld {
             player.jump_cut_boost_until = 0.0;
             player.kart_mode_until = 0.0;
             player.kart_oil_timer = 0.0;
+            player.rooted_until = 0.0;
+            player.blur_until = 0.0;
+            player.damage_output_multiplier = 1.0;
+            player.feast_until = 0.0;
+            player.off_the_meds_until = 0.0;
+            player.ragebait_until = 0.0;
+            player.liquid_courage_until = 0.0;
+            player.aim_sway_x = 0.0;
+            player.aim_sway_y = 0.0;
+            player.invulnerable_until = 0.0;
             player.reel_index = 0;
         }
     }
@@ -1448,7 +1495,12 @@ impl GameWorld {
 
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
             let input = apply_hack_inversion(player, &input);
-            let (move_x, move_y) = normalize(input.dx, input.dy);
+            let rooted = player.rooted_until > 0.0;
+            let (move_x, move_y) = if rooted {
+                (0.0, 0.0)
+            } else {
+                normalize(input.dx, input.dy)
+            };
 
             let base_speed = base_move_speed_for_character(&player.character_id);
             let expansion_mult = crate::roster_expansion::movement_speed_multiplier(player);
@@ -1467,6 +1519,12 @@ impl GameWorld {
             } else {
                 base_speed * expansion_mult
             };
+            let speed = speed
+                * if player.invulnerable_until > 0.0 {
+                    crate::roster_expansion::XANDER_HYPERFIXATION_MOVE_MULT
+                } else {
+                    1.0
+                };
 
             let next_x = (player.x + move_x * speed * dt)
                 .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
@@ -1738,6 +1796,9 @@ impl GameWorld {
             if player.hangover_until > 0.0 {
                 continue;
             }
+            if player.invulnerable_until > 0.0 {
+                continue;
+            }
 
             if !player.has_active_weapon() {
                 continue;
@@ -1755,6 +1816,8 @@ impl GameWorld {
 
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
             let input = apply_hack_inversion(player, &input);
+            let (aim_x, aim_y) =
+                crate::roster_expansion::combat_aim(player, input.aim_x, input.aim_y);
 
             if weapon.can_reload() && input.reload && player.ammo < player.max_ammo {
                 let reload_time = weapons::reload_duration_for(weapon.id, player.ammo);
@@ -1766,14 +1829,15 @@ impl GameWorld {
                 continue;
             }
 
-            let (aim_x, aim_y) = normalize(input.aim_x, input.aim_y);
             if aim_x == 0.0 && aim_y == 0.0 {
                 continue;
             }
 
+            let fire_rate = crate::roster_expansion::effective_fire_rate(player, weapon.fire_rate);
+
             match weapon.kind {
                 weapons::WeaponKind::Melee { range, arc_deg } => {
-                    player.fire_cooldown = weapon.fire_rate;
+                    player.fire_cooldown = fire_rate;
                     melee_swings.push((
                         player.id,
                         weapon.id.to_string(),
@@ -1794,7 +1858,7 @@ impl GameWorld {
                     }
                     player.ammo -= 1;
                     player.save_ammo_to_active_slot();
-                    player.fire_cooldown = weapon.fire_rate;
+                    player.fire_cooldown = fire_rate;
                     abilities::notify_shot(player);
 
                     let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
@@ -1824,7 +1888,7 @@ impl GameWorld {
                     }
                     player.ammo -= 1;
                     player.save_ammo_to_active_slot();
-                    player.fire_cooldown = weapon.fire_rate;
+                    player.fire_cooldown = fire_rate;
                     abilities::notify_shot(player);
 
                     let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
@@ -2261,6 +2325,24 @@ impl GameWorld {
     }
 
     pub(crate) fn apply_damage(&mut self, killer_id: u8, victim_id: u8, damage: u16) {
+        self.apply_damage_inner(killer_id, victim_id, damage, false);
+    }
+
+    fn apply_damage_inner(
+        &mut self,
+        killer_id: u8,
+        victim_id: u8,
+        damage: u16,
+        from_reflect: bool,
+    ) {
+        if self
+            .players
+            .get(&victim_id)
+            .is_some_and(|v| v.invulnerable_until > 0.0)
+        {
+            return;
+        }
+
         let is_zombie = self
             .players
             .get(&victim_id)
@@ -2271,8 +2353,38 @@ impl GameWorld {
             .get(&killer_id)
             .map(|killer| killer.damage_dealt_multiplier)
             .unwrap_or(1.0);
+        let killer_output_mult = self
+            .players
+            .get(&killer_id)
+            .map(|killer| {
+                if killer.blur_until > 0.0 {
+                    killer.damage_output_multiplier
+                } else {
+                    1.0
+                }
+            })
+            .unwrap_or(1.0);
+        let feast_active = self
+            .players
+            .get(&killer_id)
+            .is_some_and(|killer| killer.feast_until > 0.0 && killer.alive);
+        let meds_active = self
+            .players
+            .get(&killer_id)
+            .is_some_and(|killer| killer.off_the_meds_until > 0.0 && killer.alive);
+        let can_lifesteal =
+            |killer: u8, victim: u8| killer == victim || self.damage_allowed(killer, victim);
+        let can_feast = feast_active && can_lifesteal(killer_id, victim_id);
+        let can_meds_lifesteal = meds_active && can_lifesteal(killer_id, victim_id);
+        let can_reflect = !from_reflect
+            && killer_id != victim_id
+            && self
+                .players
+                .get(&victim_id)
+                .is_some_and(|v| v.ragebait_until > 0.0)
+            && self.damage_allowed(killer_id, victim_id);
 
-        let died = {
+        let (died, lifesteal_heal, reflect_dmg) = {
             let Some(victim) = self.players.get_mut(&victim_id) else {
                 return;
             };
@@ -2289,12 +2401,52 @@ impl GameWorld {
             } else {
                 1.0
             };
-            let adjusted = ((damage as f32) * multiplier * hack_mult * killer_mult)
+            let incoming_mult = crate::roster_expansion::incoming_damage_multiplier(victim);
+            let adjusted = ((damage as f32)
+                * multiplier
+                * hack_mult
+                * killer_mult
+                * killer_output_mult
+                * incoming_mult)
                 .round()
                 .clamp(1.0, f32::from(u16::MAX)) as u16;
             victim.hp = victim.hp.saturating_sub(adjusted);
-            victim.hp == 0
+
+            let mut lifesteal_frac = 0.0;
+            if can_feast {
+                lifesteal_frac += crate::roster_expansion::LEE_FEAST_LIFESTEAL;
+            }
+            if can_meds_lifesteal {
+                lifesteal_frac += crate::roster_expansion::MARTIN_MEDS_LIFESTEAL;
+            }
+            let lifesteal_heal = if lifesteal_frac > 0.0 {
+                ((adjusted as f32) * lifesteal_frac)
+                    .round()
+                    .clamp(0.0, f32::from(u16::MAX)) as u16
+            } else {
+                0
+            };
+
+            let reflect_dmg = if can_reflect {
+                ((adjusted as f32) * crate::roster_expansion::TRISTAN_RAGEBAIT_REFLECT)
+                    .round()
+                    .clamp(1.0, f32::from(u16::MAX)) as u16
+            } else {
+                0
+            };
+
+            (victim.hp == 0, lifesteal_heal, reflect_dmg)
         };
+
+        if lifesteal_heal > 0 {
+            if let Some(killer) = self.players.get_mut(&killer_id) {
+                killer.hp = killer.hp.saturating_add(lifesteal_heal).min(killer.max_hp);
+            }
+        }
+
+        if reflect_dmg > 0 {
+            self.apply_damage_inner(victim_id, killer_id, reflect_dmg, true);
+        }
 
         if !died {
             if let Some(killer) = self.players.get_mut(&killer_id) {
@@ -2341,6 +2493,16 @@ impl GameWorld {
             victim.damage_dealt_multiplier = 1.0;
             victim.jump_cut_boost_until = 0.0;
             victim.kart_mode_until = 0.0;
+            victim.rooted_until = 0.0;
+            victim.blur_until = 0.0;
+            victim.damage_output_multiplier = 1.0;
+            victim.feast_until = 0.0;
+            victim.off_the_meds_until = 0.0;
+            victim.ragebait_until = 0.0;
+            victim.liquid_courage_until = 0.0;
+            victim.aim_sway_x = 0.0;
+            victim.aim_sway_y = 0.0;
+            victim.invulnerable_until = 0.0;
         }
 
         self.follower_drones.retain(|d| d.owner_id != victim_id);
@@ -2620,6 +2782,10 @@ impl GameWorld {
                 x: d.x,
                 y: d.y,
                 hp: d.hp,
+                kind: match d.kind {
+                    FollowerDroneKind::OrbitRanged => 0,
+                    FollowerDroneKind::MeleePet => 1,
+                },
             })
             .collect();
 

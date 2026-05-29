@@ -3,6 +3,7 @@ import { ALL_CHARACTERS, getCharacter } from '../content/characters';
 import { ARTHUR_KART, arthurKartAssetUrl } from '../content/arthur-kart';
 import { FINN_BOAT, finnBoatAssetUrl } from '../content/finn-boat';
 import { ISAAK_ULT, isaakUltAssetUrl } from '../content/isaak-ult';
+import { LACHY_PET, lachyPetAssetUrl } from '../content/lachy-pet';
 import { getMap, getMapTheme } from '../content/maps';
 import { getWeapon, listWeapons, weaponOrbitPosition } from '../content/weapons';
 import type {
@@ -189,11 +190,13 @@ export class ArenaRenderer {
   private boatTexture: Texture | null = null;
   private arthurKartTexture: Texture | null = null;
   private isaakUltTexture: Texture | null = null;
+  private lachyTexture: Texture | null = null;
   private vfx = new VfxManager();
   private tajReels = new TajReelVisuals();
   private reelPosts = new Map<number, ReelPostRuntime>();
   private truthNukes = new Map<number, TruthNukeView>();
-  private droneViews = new Map<number, Graphics>();
+  private droneViews = new Map<number, Container>();
+  private lastDronePositions = new Map<number, { x: number; y: number }>();
   private maliceFogLayer = new Container();
   private maliceFogViews = new Map<number, Graphics>();
   private maliceFogZones: MaliceFogZone[] = [];
@@ -362,6 +365,7 @@ export class ArenaRenderer {
     this.boatTexture = null;
     this.arthurKartTexture = null;
     this.isaakUltTexture = null;
+    this.lachyTexture = null;
     this.knownBulletIds.clear();
     this.knownEffectIds.clear();
     this.bulletStates.clear();
@@ -421,7 +425,7 @@ export class ArenaRenderer {
     this.syncMaliceFogZones(snapshot.effects ?? []);
     this.syncMaliceFogOverlays();
     this.syncOilSlickOverlays(snapshot.effects ?? []);
-    this.syncDrones(snapshot.drones ?? []);
+    this.syncDrones(snapshot.drones ?? [], snapshot.players);
     this.syncTruthNukes(snapshot.effects ?? []);
     this.syncReelPosts(snapshot.effects ?? []);
     this.detectMuzzleFlashes(snapshot.bullets, snapshot.players, me);
@@ -560,26 +564,50 @@ export class ArenaRenderer {
     }
   }
 
-  private syncDrones(drones: DroneSnapshot[]) {
+  private syncDrones(drones: DroneSnapshot[], players: PlayerSnapshot[]) {
     const live = new Set(drones.map((d) => d.id));
+    const ownerById = new Map(players.map((player) => [player.id, player]));
+
     for (const drone of drones) {
-      let gfx = this.droneViews.get(drone.id);
-      if (!gfx) {
-        gfx = new Graphics();
-        this.entityLayer.addChild(gfx);
-        this.droneViews.set(drone.id, gfx);
+      let container = this.droneViews.get(drone.id);
+      if (!container) {
+        container = new Container();
+        this.entityLayer.addChild(container);
+        this.droneViews.set(drone.id, container);
       }
-      gfx.clear();
-      gfx.circle(0, 0, 10)
-        .fill({ color: 0xb060ff, alpha: 0.85 })
-        .circle(0, 0, 10)
-        .stroke({ color: 0xffffff, width: 1.5, alpha: 0.9 });
-      gfx.position.set(drone.x, drone.y);
+      container.removeChildren();
+
+      const prev = this.lastDronePositions.get(drone.id);
+      const moveX = prev ? drone.x - prev.x : 0;
+      this.lastDronePositions.set(drone.id, { x: drone.x, y: drone.y });
+
+      if (drone.kind === 1 && this.lachyTexture) {
+        const sprite = new Sprite(this.lachyTexture);
+        sprite.anchor.set(LACHY_PET.pivot.x, LACHY_PET.pivot.y);
+        sprite.scale.set(LACHY_PET.displayScale);
+        const owner = ownerById.get(drone.owner_id);
+        const faceRight = owner ? drone.x >= owner.x : moveX >= 0;
+        if (!faceRight) {
+          sprite.scale.x = -Math.abs(sprite.scale.x);
+        }
+        container.addChild(sprite);
+      } else {
+        const gfx = new Graphics();
+        gfx.circle(0, 0, 10)
+          .fill({ color: 0xb060ff, alpha: 0.85 })
+          .circle(0, 0, 10)
+          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.9 });
+        container.addChild(gfx);
+      }
+
+      container.position.set(drone.x, drone.y);
     }
-    for (const [id, gfx] of this.droneViews) {
+
+    for (const [id, container] of this.droneViews) {
       if (!live.has(id)) {
-        gfx.destroy();
+        container.destroy({ children: true });
         this.droneViews.delete(id);
+        this.lastDronePositions.delete(id);
       }
     }
   }
@@ -1757,6 +1785,7 @@ export class ArenaRenderer {
     this.boatTexture = await loadTextureFromUrl(finnBoatAssetUrl());
     this.arthurKartTexture = await loadTextureFromUrl(arthurKartAssetUrl());
     this.isaakUltTexture = await loadTextureFromUrl(isaakUltAssetUrl());
+    this.lachyTexture = await loadTextureFromUrl(lachyPetAssetUrl());
     await Promise.all(
       listWeapons().map(async (weapon) => {
         const texture = await loadTextureFromUrl(assetUrl(weapon.meta.sprite));

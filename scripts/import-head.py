@@ -15,24 +15,46 @@ OUT_SIZE = 128
 ALPHA_PAD = 10
 
 
-def center_square_crop(img: Image.Image) -> Image.Image:
+def focus_square_crop(
+    img: Image.Image,
+    focus_x: float = 0.5,
+    focus_y: float = 0.5,
+) -> Image.Image:
+    """Crop a square centered on a normalized point (0–1) in the source image."""
     w, h = img.size
     side = min(w, h)
-    left = (w - side) // 2
-    top = (h - side) // 2
+    cx = int(focus_x * w)
+    cy = int(focus_y * h)
+    left = max(0, min(cx - side // 2, w - side))
+    top = max(0, min(cy - side // 2, h - side))
     return img.crop((left, top, left + side, top + side))
 
 
+def center_square_crop(img: Image.Image) -> Image.Image:
+    return focus_square_crop(img, 0.5, 0.5)
+
+
 def zoom_center_square(img: Image.Image, factor: float) -> Image.Image:
-    """factor > 1 zooms in (crops tighter on center)."""
-    if factor <= 1.0:
+    """factor > 1 zooms in; 0 < factor < 1 zooms out (more padding around face)."""
+    if factor == 1.0:
         return img
     w, h = img.size
     side = min(w, h)
-    crop_side = max(1, int(side / factor))
-    left = (w - crop_side) // 2
-    top = (h - crop_side) // 2
-    return img.crop((left, top, left + crop_side, top + crop_side))
+    if factor > 1.0:
+        crop_side = max(1, int(side / factor))
+        left = (w - crop_side) // 2
+        top = (h - crop_side) // 2
+        return img.crop((left, top, left + crop_side, top + crop_side))
+
+    if w != h:
+        img = center_square_crop(img)
+        side = img.size[0]
+    new_side = max(1, int(side * factor))
+    scaled = img.resize((new_side, new_side), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    offset = (side - new_side) // 2
+    canvas.paste(scaled, (offset, offset), scaled)
+    return canvas
 
 
 def trim_transparent(img: Image.Image, pad: int = ALPHA_PAD) -> Image.Image:
@@ -62,6 +84,8 @@ def import_head(
     *,
     pad: int = ALPHA_PAD,
     zoom: float = 1.0,
+    focus_x: float = 0.5,
+    focus_y: float = 0.5,
 ) -> Path:
     if not src.is_file():
         raise SystemExit(f"Source not found: {src}")
@@ -70,9 +94,9 @@ def import_head(
     if trim_alpha:
         img = trim_transparent(img, pad=pad)
     else:
-        img = center_square_crop(img)
+        img = focus_square_crop(img, focus_x, focus_y)
 
-    if zoom > 1.0:
+    if zoom != 1.0:
         img = zoom_center_square(img, zoom)
 
     img = img.resize((OUT_SIZE, OUT_SIZE), Image.Resampling.LANCZOS)
@@ -101,7 +125,19 @@ def main() -> None:
         "--zoom",
         type=float,
         default=1.0,
-        help="Center zoom factor >1 crops tighter (e.g. 1.2)",
+        help="Zoom: >1 crops tighter, <1 zooms out (e.g. 0.85)",
+    )
+    parser.add_argument(
+        "--focus-x",
+        type=float,
+        default=0.5,
+        help="Horizontal crop focus 0–1 (default 0.5 = center)",
+    )
+    parser.add_argument(
+        "--focus-y",
+        type=float,
+        default=0.5,
+        help="Vertical crop focus 0–1 (default 0.5 = center)",
     )
     args = parser.parse_args()
     out = import_head(
@@ -110,6 +146,8 @@ def main() -> None:
         args.trim_alpha,
         pad=args.pad,
         zoom=args.zoom,
+        focus_x=args.focus_x,
+        focus_y=args.focus_y,
     )
     print(f"Wrote {out} ({OUT_SIZE}x{OUT_SIZE})")
 

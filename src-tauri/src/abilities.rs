@@ -149,6 +149,18 @@ pub fn tick_status_effects(players: &mut HashMap<u8, Player>, dt: f32) {
         if player.hangover_until > 0.0 {
             player.hangover_until = (player.hangover_until - dt).max(0.0);
         }
+        if player.rooted_until > 0.0 {
+            player.rooted_until = (player.rooted_until - dt).max(0.0);
+        }
+        if player.blur_until > 0.0 {
+            player.blur_until = (player.blur_until - dt).max(0.0);
+            if player.blur_until <= 0.0 {
+                player.damage_output_multiplier = 1.0;
+            }
+        }
+        if player.feast_until > 0.0 {
+            player.feast_until = (player.feast_until - dt).max(0.0);
+        }
         player.last_shot_timer += dt;
     }
 }
@@ -269,9 +281,11 @@ pub fn try_activate(world: &mut GameWorld, player_id: u8) {
         "isaak" => activate_isaak_chi_blast(world, player_id),
         "taj" => activate_taj_story_shield(world, player_id),
         "finn" => activate_finn_cheeky_dinghy(world, player_id),
-        "sifan" | "connor" | "archie" | "arthur" | "oscar" | "vlad" => {
+        "sifan" | "connor" | "archie" | "arthur" | "oscar" | "vlad" | "mango" | "andrew"
+        | "lee" | "martin" | "tristan" | "andy" | "xander" => {
             crate::roster_expansion::try_activate(world, player_id);
         }
+        // REFACTOR TODO: per-ability dispatch registry if roster match arms keep growing.
         _ => {}
     }
 }
@@ -331,6 +345,7 @@ pub fn process_abilities(world: &mut GameWorld, dt: f32) {
                     launch_bailey_nuke(world, player_id, from_x, from_y, aim_x, aim_y);
                 }
                 "isaak" => fire_isaak_chi_blast(world, player_id, aim_x, aim_y),
+                "xander" => crate::roster_expansion::fire_xander_hyperfixation(world, player_id),
                 _ => {}
             }
         }
@@ -632,6 +647,7 @@ pub fn process_effects(world: &mut GameWorld, dt: f32) {
                 | EffectKind::MaliceZone
                 | EffectKind::FoodTray
                 | EffectKind::OilSlick
+                | EffectKind::Overthink
         ) {
             continue;
         }

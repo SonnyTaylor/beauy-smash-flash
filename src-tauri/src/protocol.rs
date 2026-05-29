@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 12;
+pub const PROTOCOL_VERSION: u16 = 14;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -186,6 +186,7 @@ pub enum EffectKind {
     MaliceZone,
     FoodTray,
     OilSlick,
+    Overthink,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -324,6 +325,20 @@ pub struct PlayerSnapshot {
     pub follower_drone_count: u8,
     #[serde(default)]
     pub team: u8,
+    #[serde(default)]
+    pub rooted_remaining: f32,
+    #[serde(default)]
+    pub blur_remaining: f32,
+    #[serde(default)]
+    pub feast_remaining: f32,
+    #[serde(default)]
+    pub off_the_meds_remaining: f32,
+    #[serde(default)]
+    pub ragebait_remaining: f32,
+    #[serde(default)]
+    pub liquid_courage_remaining: f32,
+    #[serde(default)]
+    pub invulnerable_remaining: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -333,6 +348,8 @@ pub struct DroneSnapshot {
     pub x: f32,
     pub y: f32,
     pub hp: u16,
+    #[serde(default)]
+    pub kind: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

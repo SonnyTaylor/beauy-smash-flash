@@ -1,11 +1,12 @@
-//! Playable roster expansion: Sifan, Connor, Archie, Arthur, Oscar, Vlad.
+//! Playable roster expansion: Sifan, Connor, Archie, Arthur, Oscar, Vlad,
+//! Mango, Andrew, Lee, Martin, Tristan, Andy, Xander.
 
 use std::collections::HashMap;
 
 use crate::abilities::{add_charge, aim_direction, ABILITY_CHARGE_MAX};
 use crate::game::{
-    circle_hits_circle, circle_hits_walls, normalize, FollowerDrone, GameWorld, Player,
-    WorldEffect, PLAYER_RADIUS,
+    circle_hits_circle, circle_hits_walls, normalize, FollowerDrone, FollowerDroneKind, GameWorld,
+    Player, WorldEffect, PLAYER_RADIUS,
 };
 use crate::protocol::{EffectKind, InputSnapshot};
 
@@ -61,6 +62,60 @@ const VLAD_DRONE_FIRE_RATE: f32 = 0.8;
 const VLAD_DRONE_RANGE: f32 = 520.0;
 const VLAD_DRONE_ORBIT_RADIUS: f32 = 52.0;
 
+// --- Mango — Overthink ---
+pub const MANGO_OVERTHINK_RANGE: f32 = 400.0;
+const MANGO_OVERTHINK_SPEED: f32 = 700.0;
+const MANGO_OVERTHINK_ROOT_DURATION: f32 = 1.2;
+const MANGO_OVERTHINK_MISS_REFUND: f32 = 50.0;
+const MANGO_OVERTHINK_RADIUS: f32 = 12.0;
+const MANGO_OVERTHINK_VFX_LIFE: f32 = 0.35;
+
+// --- Andrew — Blur ---
+const ANDREW_BLUR_RANGE: f32 = 300.0;
+const ANDREW_BLUR_DURATION: f32 = 3.5;
+const ANDREW_BLUR_DAMAGE_OUTPUT_MULT: f32 = 0.6;
+const ABILITY_MISS_REFUND: f32 = 50.0;
+
+// --- Lee — Feast ---
+const LEE_FEAST_HEAL_INSTANT: u16 = 20;
+const LEE_FEAST_DURATION: f32 = 6.0;
+pub const LEE_FEAST_LIFESTEAL: f32 = 0.4;
+
+// --- Martin — Off the Meds ---
+pub const MARTIN_MAX_HP: u16 = 90;
+const MARTIN_MEDS_DURATION: f32 = 5.0;
+pub const MARTIN_MEDS_LIFESTEAL: f32 = 0.15;
+const MARTIN_MEDS_FIRE_RATE_MULT: f32 = 1.3;
+const MARTIN_MEDS_SPEED_MULT: f32 = 1.2;
+const MARTIN_MEDS_DAMAGE_TAKEN_MULT: f32 = 1.25;
+
+// --- Tristan — Ragebait ---
+pub const TRISTAN_MAX_HP: u16 = 110;
+const TRISTAN_RAGEBAIT_DURATION: f32 = 2.5;
+const TRISTAN_RAGEBAIT_DAMAGE_MULT: f32 = 0.6;
+pub const TRISTAN_RAGEBAIT_REFLECT: f32 = 0.4;
+
+// --- Andy — Liquid Courage ---
+const ANDY_LIQUID_COURAGE_DURATION: f32 = 5.0;
+const ANDY_LIQUID_COURAGE_DAMAGE_MULT: f32 = 0.65;
+const ANDY_LIQUID_COURAGE_HEAL_PER_SEC: f32 = 4.0;
+const ANDY_AIM_SWAY: f32 = 0.08;
+const LACHY_HP: u16 = 20;
+const LACHY_DAMAGE: u16 = 12;
+const LACHY_BITE_INTERVAL: f32 = 1.0;
+const LACHY_MELEE_RANGE: f32 = 72.0;
+const LACHY_CHASE_RANGE: f32 = 220.0;
+const LACHY_MOVE_SPEED: f32 = 420.0;
+const LACHY_FOLLOW_RADIUS: f32 = 72.0;
+const LACHY_IDLE_OFFSET_X: f32 = -0.82;
+const LACHY_IDLE_OFFSET_Y: f32 = 0.38;
+const LACHY_PET_HIT_RADIUS: f32 = 18.0;
+
+// --- Xander — Hyperfixation ---
+pub const XANDER_HYPERFIXATION_WINDUP: f32 = 0.3;
+const XANDER_HYPERFIXATION_DURATION: f32 = 1.5;
+pub const XANDER_HYPERFIXATION_MOVE_MULT: f32 = 0.8;
+
 pub fn is_kart_mode(player: &Player) -> bool {
     player.kart_mode_until > 0.0
 }
@@ -99,7 +154,51 @@ pub fn movement_speed_multiplier(player: &Player) -> f32 {
     if is_kart_mode(player) {
         mult *= ARTHUR_KART_SPEED_MULT;
     }
+    if player.off_the_meds_until > 0.0 {
+        mult *= MARTIN_MEDS_SPEED_MULT;
+    }
     mult
+}
+
+pub fn incoming_damage_multiplier(victim: &Player) -> f32 {
+    let mut mult = 1.0;
+    if victim.ragebait_until > 0.0 {
+        mult *= TRISTAN_RAGEBAIT_DAMAGE_MULT;
+    }
+    if victim.liquid_courage_until > 0.0 {
+        mult *= ANDY_LIQUID_COURAGE_DAMAGE_MULT;
+    }
+    if victim.off_the_meds_until > 0.0 {
+        mult *= MARTIN_MEDS_DAMAGE_TAKEN_MULT;
+    }
+    mult
+}
+
+pub fn effective_fire_rate(player: &Player, base_fire_rate: f32) -> f32 {
+    if player.off_the_meds_until > 0.0 {
+        base_fire_rate / MARTIN_MEDS_FIRE_RATE_MULT
+    } else {
+        base_fire_rate
+    }
+}
+
+pub fn combat_aim(player: &Player, aim_x: f32, aim_y: f32) -> (f32, f32) {
+    if player.liquid_courage_until > 0.0 {
+        normalize(aim_x + player.aim_sway_x, aim_y + player.aim_sway_y)
+    } else {
+        normalize(aim_x, aim_y)
+    }
+}
+
+pub fn cleanse_debuffs(player: &mut Player) {
+    player.controls_inverted_until = 0.0;
+    player.slowed_until = 0.0;
+    player.slow_multiplier = 1.0;
+    player.marked_until = 0.0;
+    player.mark_damage_multiplier = 1.0;
+    player.rooted_until = 0.0;
+    player.blur_until = 0.0;
+    player.damage_output_multiplier = 1.0;
 }
 
 pub fn try_activate(world: &mut GameWorld, player_id: u8) {
@@ -116,6 +215,13 @@ pub fn try_activate(world: &mut GameWorld, player_id: u8) {
         "arthur" => activate_arthur(world, player_id),
         "oscar" => activate_oscar(world, player_id),
         "vlad" => activate_vlad(world, player_id),
+        "mango" => activate_mango(world, player_id),
+        "andrew" => activate_andrew(world, player_id),
+        "lee" => activate_lee(world, player_id),
+        "martin" => activate_martin(world, player_id),
+        "tristan" => activate_tristan(world, player_id),
+        "andy" => activate_andy(world, player_id),
+        "xander" => activate_xander(world, player_id),
         _ => {}
     }
 }
@@ -140,10 +246,37 @@ pub fn tick_player_buffs(players: &mut HashMap<u8, Player>, dt: f32) {
             player.kart_mode_until = (player.kart_mode_until - dt).max(0.0);
             player.kart_oil_timer += dt;
         }
+        if player.off_the_meds_until > 0.0 {
+            player.off_the_meds_until = (player.off_the_meds_until - dt).max(0.0);
+        }
+        if player.ragebait_until > 0.0 {
+            player.ragebait_until = (player.ragebait_until - dt).max(0.0);
+        }
+        if player.liquid_courage_until > 0.0 {
+            player.liquid_courage_until = (player.liquid_courage_until - dt).max(0.0);
+            player.aim_sway_x = ((player.id as f32 * 17.0 + player.liquid_courage_until * 31.0)
+                .sin())
+                * ANDY_AIM_SWAY;
+            player.aim_sway_y = ((player.id as f32 * 23.0 + player.liquid_courage_until * 37.0)
+                .cos())
+                * ANDY_AIM_SWAY;
+            player.hp = player
+                .hp
+                .saturating_add((ANDY_LIQUID_COURAGE_HEAL_PER_SEC * dt).round() as u16)
+                .min(player.max_hp);
+            if player.liquid_courage_until <= 0.0 {
+                player.aim_sway_x = 0.0;
+                player.aim_sway_y = 0.0;
+            }
+        }
+        if player.invulnerable_until > 0.0 {
+            player.invulnerable_until = (player.invulnerable_until - dt).max(0.0);
+        }
     }
 }
 
 pub fn process_world_systems(world: &mut GameWorld, dt: f32) {
+    process_overthink_projectiles(world, dt);
     process_zones(world, dt);
     process_drones(world, dt);
     process_arthur_oil_spawns(world, dt);
@@ -295,6 +428,7 @@ fn activate_vlad(world: &mut GameWorld, player_id: u8) {
             life: VLAD_DRONE_DURATION,
             fire_cooldown: 0.15 * i as f32,
             orbit_angle: angle,
+            kind: FollowerDroneKind::OrbitRanged,
         });
     }
 
@@ -309,6 +443,342 @@ fn activate_vlad(world: &mut GameWorld, player_id: u8) {
         0.4,
         player_id,
     ));
+}
+
+fn activate_martin(world: &mut GameWorld, player_id: u8) {
+    if let Some(player) = world.players.get_mut(&player_id) {
+        player.ability_charge = 0.0;
+        player.off_the_meds_until = MARTIN_MEDS_DURATION;
+    }
+    let (cx, cy) = world
+        .players
+        .get(&player_id)
+        .map(|p| (p.x, p.y))
+        .unwrap_or((0.0, 0.0));
+    let id = world.next_effect_id;
+    world.next_effect_id += 1;
+    world.effects.push(WorldEffect::burst(
+        id,
+        EffectKind::DirectorsCut,
+        cx,
+        cy,
+        44.0,
+        0.45,
+        player_id,
+    ));
+}
+
+fn activate_tristan(world: &mut GameWorld, player_id: u8) {
+    if let Some(player) = world.players.get_mut(&player_id) {
+        player.ability_charge = 0.0;
+        player.ragebait_until = TRISTAN_RAGEBAIT_DURATION;
+    }
+    let (cx, cy) = world
+        .players
+        .get(&player_id)
+        .map(|p| (p.x, p.y))
+        .unwrap_or((0.0, 0.0));
+    let id = world.next_effect_id;
+    world.next_effect_id += 1;
+    world.effects.push(WorldEffect::burst(
+        id,
+        EffectKind::ReelShield,
+        cx,
+        cy,
+        40.0,
+        0.35,
+        player_id,
+    ));
+}
+
+fn activate_andy(world: &mut GameWorld, player_id: u8) {
+    if let Some(player) = world.players.get_mut(&player_id) {
+        player.ability_charge = 0.0;
+        player.liquid_courage_until = ANDY_LIQUID_COURAGE_DURATION;
+    }
+
+    world
+        .follower_drones
+        .retain(|d| !(d.owner_id == player_id && d.kind == FollowerDroneKind::MeleePet));
+
+    let (ox, oy) = world
+        .players
+        .get(&player_id)
+        .map(|p| (p.x, p.y))
+        .unwrap_or((0.0, 0.0));
+    let id = world.next_drone_id;
+    world.next_drone_id += 1;
+    world.follower_drones.push(FollowerDrone {
+        id,
+        owner_id: player_id,
+        x: ox + LACHY_FOLLOW_RADIUS * LACHY_IDLE_OFFSET_X,
+        y: oy + LACHY_FOLLOW_RADIUS * LACHY_IDLE_OFFSET_Y,
+        hp: LACHY_HP,
+        life: ANDY_LIQUID_COURAGE_DURATION,
+        fire_cooldown: 0.0,
+        orbit_angle: 0.0,
+        kind: FollowerDroneKind::MeleePet,
+    });
+
+    let vfx_id = world.next_effect_id;
+    world.next_effect_id += 1;
+    world.effects.push(WorldEffect::burst(
+        vfx_id,
+        EffectKind::BoatSplash,
+        ox,
+        oy,
+        36.0,
+        0.4,
+        player_id,
+    ));
+}
+
+fn activate_xander(world: &mut GameWorld, player_id: u8) {
+    if let Some(player) = world.players.get_mut(&player_id) {
+        player.ability_windup = XANDER_HYPERFIXATION_WINDUP;
+        player.ability_charge = 0.0;
+    }
+}
+
+pub fn fire_xander_hyperfixation(world: &mut GameWorld, player_id: u8) {
+    if let Some(player) = world.players.get_mut(&player_id) {
+        cleanse_debuffs(player);
+        player.invulnerable_until = XANDER_HYPERFIXATION_DURATION;
+    }
+    let (cx, cy) = world
+        .players
+        .get(&player_id)
+        .map(|p| (p.x, p.y))
+        .unwrap_or((0.0, 0.0));
+    let id = world.next_effect_id;
+    world.next_effect_id += 1;
+    world.effects.push(WorldEffect::burst(
+        id,
+        EffectKind::ChiChannel,
+        cx,
+        cy,
+        36.0,
+        0.35,
+        player_id,
+    ));
+}
+
+fn activate_mango(world: &mut GameWorld, player_id: u8) {
+    let Some((dir_x, dir_y)) = aim_direction(world, player_id) else {
+        return;
+    };
+    let (origin_x, origin_y) = {
+        let Some(player) = world.players.get(&player_id) else {
+            return;
+        };
+        (
+            player.x + dir_x * (PLAYER_RADIUS + 8.0),
+            player.y + dir_y * (PLAYER_RADIUS + 8.0),
+        )
+    };
+
+    if let Some(player) = world.players.get_mut(&player_id) {
+        player.ability_charge = 0.0;
+    }
+
+    let travel_time = MANGO_OVERTHINK_RANGE / MANGO_OVERTHINK_SPEED;
+    let id = world.next_effect_id;
+    world.next_effect_id += 1;
+    world.effects.push(WorldEffect {
+        id,
+        kind: EffectKind::Overthink,
+        x: origin_x,
+        y: origin_y,
+        radius: MANGO_OVERTHINK_RADIUS,
+        life: travel_time,
+        owner_id: player_id,
+        origin_x,
+        origin_y,
+        target_x: dir_x,
+        target_y: dir_y,
+        max_life: travel_time,
+        hit_players: Vec::new(),
+        zone_hp: 0.0,
+        zone_damage_accum: 0.0,
+        zone_heal_accum: 0.0,
+    });
+}
+
+fn activate_andrew(world: &mut GameWorld, player_id: u8) {
+    let (cx, cy) = world
+        .players
+        .get(&player_id)
+        .map(|p| (p.x, p.y))
+        .unwrap_or((0.0, 0.0));
+
+    let target_id = nearest_enemy(world, player_id, cx, cy, ANDREW_BLUR_RANGE);
+
+    let Some(target_id) = target_id else {
+        if let Some(caster) = world.players.get_mut(&player_id) {
+            caster.ability_charge = ABILITY_MISS_REFUND;
+        }
+        return;
+    };
+
+    if let Some(target) = world.players.get_mut(&target_id) {
+        target.blur_until = ANDREW_BLUR_DURATION;
+        target.damage_output_multiplier = ANDREW_BLUR_DAMAGE_OUTPUT_MULT;
+    }
+    if let Some(caster) = world.players.get_mut(&player_id) {
+        caster.ability_charge = 0.0;
+    }
+
+    let (tx, ty) = world
+        .players
+        .get(&target_id)
+        .map(|player| (player.x, player.y))
+        .unwrap_or((cx, cy));
+    let id = world.next_effect_id;
+    world.next_effect_id += 1;
+    world.effects.push(WorldEffect::burst(
+        id,
+        EffectKind::Hack,
+        tx,
+        ty,
+        ANDREW_BLUR_RANGE,
+        0.45,
+        player_id,
+    ));
+}
+
+fn activate_lee(world: &mut GameWorld, player_id: u8) {
+    if let Some(player) = world.players.get_mut(&player_id) {
+        player.ability_charge = 0.0;
+        player.hp = player
+            .hp
+            .saturating_add(LEE_FEAST_HEAL_INSTANT)
+            .min(player.max_hp);
+        player.feast_until = LEE_FEAST_DURATION;
+    }
+
+    let (cx, cy) = world
+        .players
+        .get(&player_id)
+        .map(|p| (p.x, p.y))
+        .unwrap_or((0.0, 0.0));
+    let id = world.next_effect_id;
+    world.next_effect_id += 1;
+    world.effects.push(WorldEffect::burst(
+        id,
+        EffectKind::Mark,
+        cx,
+        cy,
+        36.0,
+        0.4,
+        player_id,
+    ));
+}
+
+fn process_overthink_projectiles(world: &mut GameWorld, dt: f32) {
+    let walls = world.map.walls.clone();
+    let mut hits: Vec<(u8, u8, f32, f32)> = Vec::new();
+    let mut misses: Vec<u8> = Vec::new();
+    let mut expired_ids: Vec<u32> = Vec::new();
+
+    let snapshots: Vec<(u32, u8, f32, f32, f32, f32, f32)> = world
+        .effects
+        .iter()
+        .filter(|effect| effect.kind == EffectKind::Overthink)
+        .map(|effect| {
+            (
+                effect.id,
+                effect.owner_id,
+                effect.x,
+                effect.y,
+                effect.target_x,
+                effect.target_y,
+                effect.life,
+            )
+        })
+        .collect();
+
+    for (id, owner_id, mut x, mut y, dir_x, dir_y, life) in snapshots {
+        x += dir_x * MANGO_OVERTHINK_SPEED * dt;
+        y += dir_y * MANGO_OVERTHINK_SPEED * dt;
+        let new_life = life - dt;
+
+        if let Some(effect) = world.effects.iter_mut().find(|effect| effect.id == id) {
+            effect.x = x;
+            effect.y = y;
+            effect.life = new_life;
+        }
+
+        if circle_hits_walls(x, y, MANGO_OVERTHINK_RADIUS, &walls) {
+            misses.push(owner_id);
+            expired_ids.push(id);
+            continue;
+        }
+
+        if let Some(victim_id) = find_overthink_hit(world, owner_id, x, y) {
+            hits.push((owner_id, victim_id, x, y));
+            expired_ids.push(id);
+            continue;
+        }
+
+        if new_life <= 0.0 {
+            misses.push(owner_id);
+            expired_ids.push(id);
+        }
+    }
+
+    world
+        .effects
+        .retain(|effect| effect.kind != EffectKind::Overthink || !expired_ids.contains(&effect.id));
+
+    for (owner_id, victim_id, hit_x, hit_y) in hits {
+        if let Some(victim) = world.players.get_mut(&victim_id) {
+            victim.rooted_until = MANGO_OVERTHINK_ROOT_DURATION;
+        }
+        let id = world.next_effect_id;
+        world.next_effect_id += 1;
+        world.effects.push(WorldEffect::burst(
+            id,
+            EffectKind::Hack,
+            hit_x,
+            hit_y,
+            28.0,
+            MANGO_OVERTHINK_VFX_LIFE,
+            owner_id,
+        ));
+    }
+
+    for owner_id in misses {
+        if let Some(caster) = world.players.get_mut(&owner_id) {
+            caster.ability_charge = MANGO_OVERTHINK_MISS_REFUND;
+        }
+    }
+}
+
+fn find_overthink_hit(world: &GameWorld, owner_id: u8, proj_x: f32, proj_y: f32) -> Option<u8> {
+    let mut best: Option<(u8, f32)> = None;
+    for player in world.players.values() {
+        if !player.alive || player.id == owner_id || player.spawn_protected() {
+            continue;
+        }
+        let hit_radius = hit_radius_for(player);
+        if circle_hits_circle(
+            proj_x,
+            proj_y,
+            MANGO_OVERTHINK_RADIUS,
+            player.x,
+            player.y,
+            hit_radius,
+        ) {
+            let dist_sq = distance_sq(proj_x, proj_y, player.x, player.y);
+            if best
+                .map(|(_, best_dist)| dist_sq < best_dist)
+                .unwrap_or(true)
+            {
+                best = Some((player.id, dist_sq));
+            }
+        }
+    }
+    best.map(|(id, _)| id)
 }
 
 fn spawn_zone_effect(
@@ -512,43 +982,79 @@ fn process_drones(world: &mut GameWorld, dt: f32) {
         .map(|(id, p)| (*id, (p.x, p.y)))
         .collect();
 
+    let walls = world.map.walls.clone();
+
+    let pet_moves: Vec<(u32, f32, f32)> = world
+        .follower_drones
+        .iter()
+        .filter(|d| d.kind == FollowerDroneKind::MeleePet)
+        .map(|d| {
+            let (ox, oy) = owners.get(&d.owner_id).copied().unwrap_or((d.x, d.y));
+            let (target_x, target_y, in_bite_range) =
+                melee_pet_target(world, d.owner_id, d.x, d.y, ox, oy);
+            if in_bite_range {
+                return (d.id, d.x, d.y);
+            }
+            let (dir_x, dir_y) = normalize(target_x - d.x, target_y - d.y);
+            let step = LACHY_MOVE_SPEED * dt;
+            let next_x = d.x + dir_x * step;
+            let next_y = d.y + dir_y * step;
+            if circle_hits_walls(next_x, next_y, 12.0, &walls) {
+                (d.id, d.x, d.y)
+            } else {
+                (d.id, next_x, next_y)
+            }
+        })
+        .collect();
+
     for drone in &mut world.follower_drones {
         drone.life -= dt;
         drone.fire_cooldown = (drone.fire_cooldown - dt).max(0.0);
-        if let Some((ox, oy)) = owners.get(&drone.owner_id) {
-            drone.orbit_angle += dt * 2.2;
-            drone.x = ox + drone.orbit_angle.cos() * VLAD_DRONE_ORBIT_RADIUS;
-            drone.y = oy + drone.orbit_angle.sin() * VLAD_DRONE_ORBIT_RADIUS;
+        if let Some((ox, oy)) = owners.get(&drone.owner_id).copied() {
+            match drone.kind {
+                FollowerDroneKind::OrbitRanged => {
+                    drone.orbit_angle += dt * 2.2;
+                    drone.x = ox + drone.orbit_angle.cos() * VLAD_DRONE_ORBIT_RADIUS;
+                    drone.y = oy + drone.orbit_angle.sin() * VLAD_DRONE_ORBIT_RADIUS;
+                }
+                FollowerDroneKind::MeleePet => {
+                    if let Some((_, x, y)) = pet_moves.iter().find(|(id, _, _)| *id == drone.id) {
+                        drone.x = *x;
+                        drone.y = *y;
+                    }
+                }
+            }
         }
     }
 
-    let drone_snapshots: Vec<(u8, f32, f32, f32, f32, u16)> = world
+    let ranged_snapshots: Vec<(u32, u8, f32, f32, f32, f32, u16)> = world
         .follower_drones
         .iter()
-        .map(|d| (d.owner_id, d.x, d.y, d.fire_cooldown, d.life, d.hp))
+        .filter(|d| d.kind == FollowerDroneKind::OrbitRanged)
+        .map(|d| (d.id, d.owner_id, d.x, d.y, d.fire_cooldown, d.life, d.hp))
         .collect();
 
-    let mut shots: Vec<(u8, u8, f32, f32)> = Vec::new();
-    let mut fire_owners: Vec<u8> = Vec::new();
+    let mut ranged_shots: Vec<(u8, u8, f32, f32)> = Vec::new();
+    let mut ranged_fire_ids: Vec<u32> = Vec::new();
 
-    for (owner, x, y, cooldown, life, hp) in drone_snapshots {
+    for (id, owner, x, y, cooldown, life, hp) in ranged_snapshots {
         if cooldown <= 0.0 && life > 0.0 && hp > 0 {
             if let Some(target_id) = nearest_enemy(world, owner, x, y, VLAD_DRONE_RANGE) {
                 if world.damage_allowed(owner, target_id) {
-                    shots.push((owner, target_id, x, y));
-                    fire_owners.push(owner);
+                    ranged_shots.push((owner, target_id, x, y));
+                    ranged_fire_ids.push(id);
                 }
             }
         }
     }
 
     for drone in &mut world.follower_drones {
-        if fire_owners.contains(&drone.owner_id) && drone.fire_cooldown <= 0.0 {
+        if ranged_fire_ids.contains(&drone.id) && drone.fire_cooldown <= 0.0 {
             drone.fire_cooldown = VLAD_DRONE_FIRE_RATE;
         }
     }
 
-    for (owner_id, target_id, x, y) in shots {
+    for (owner_id, target_id, x, y) in ranged_shots {
         world.apply_damage(owner_id, target_id, VLAD_DRONE_DAMAGE);
         let id = world.next_effect_id;
         world.next_effect_id += 1;
@@ -563,7 +1069,90 @@ fn process_drones(world: &mut GameWorld, dt: f32) {
         ));
     }
 
+    let melee_snapshots: Vec<(u32, u8, f32, f32, f32, u16)> = world
+        .follower_drones
+        .iter()
+        .filter(|d| d.kind == FollowerDroneKind::MeleePet)
+        .map(|d| (d.id, d.owner_id, d.x, d.y, d.fire_cooldown, d.hp))
+        .collect();
+
+    let mut melee_bites: Vec<(u8, u8, f32, f32)> = Vec::new();
+    let mut melee_fire_ids: Vec<u32> = Vec::new();
+
+    for (id, owner, x, y, cooldown, hp) in melee_snapshots {
+        if cooldown <= 0.0 && hp > 0 {
+            if let Some(target_id) = nearest_enemy(world, owner, x, y, LACHY_MELEE_RANGE) {
+                if world.damage_allowed(owner, target_id) {
+                    melee_bites.push((owner, target_id, x, y));
+                    melee_fire_ids.push(id);
+                }
+            }
+        }
+    }
+
+    for drone in &mut world.follower_drones {
+        if melee_fire_ids.contains(&drone.id) {
+            drone.fire_cooldown = LACHY_BITE_INTERVAL;
+        }
+    }
+
+    for (owner_id, target_id, x, y) in melee_bites {
+        world.apply_damage(owner_id, target_id, LACHY_DAMAGE);
+        let id = world.next_effect_id;
+        world.next_effect_id += 1;
+        world.effects.push(WorldEffect::burst(
+            id,
+            EffectKind::Slash,
+            x,
+            y,
+            18.0,
+            0.25,
+            owner_id,
+        ));
+    }
+
     world.follower_drones.retain(|d| d.life > 0.0 && d.hp > 0);
+}
+
+fn melee_pet_target(
+    world: &GameWorld,
+    owner_id: u8,
+    pet_x: f32,
+    pet_y: f32,
+    owner_x: f32,
+    owner_y: f32,
+) -> (f32, f32, bool) {
+    if let Some(target_id) = nearest_enemy(world, owner_id, pet_x, pet_y, LACHY_CHASE_RANGE) {
+        if let Some(target) = world.players.get(&target_id) {
+            let dx = target.x - pet_x;
+            let dy = target.y - pet_y;
+            let in_bite_range = dx * dx + dy * dy <= LACHY_MELEE_RANGE * LACHY_MELEE_RANGE;
+            return (target.x, target.y, in_bite_range);
+        }
+    }
+
+    let to_pet_x = pet_x - owner_x;
+    let to_pet_y = pet_y - owner_y;
+    let dist_sq = to_pet_x * to_pet_x + to_pet_y * to_pet_y;
+    let (ux, uy) = if dist_sq > 1.0 {
+        let dist = dist_sq.sqrt();
+        (to_pet_x / dist, to_pet_y / dist)
+    } else {
+        let len = (LACHY_IDLE_OFFSET_X * LACHY_IDLE_OFFSET_X
+            + LACHY_IDLE_OFFSET_Y * LACHY_IDLE_OFFSET_Y)
+            .sqrt()
+            .max(0.001);
+        (LACHY_IDLE_OFFSET_X / len, LACHY_IDLE_OFFSET_Y / len)
+    };
+    let anchor_x = owner_x + ux * LACHY_FOLLOW_RADIUS;
+    let anchor_y = owner_y + uy * LACHY_FOLLOW_RADIUS;
+
+    let to_anchor_x = anchor_x - pet_x;
+    let to_anchor_y = anchor_y - pet_y;
+    if to_anchor_x * to_anchor_x + to_anchor_y * to_anchor_y <= 36.0 {
+        return (pet_x, pet_y, false);
+    }
+    (anchor_x, anchor_y, false)
 }
 
 pub fn process_tray_bullet_hits(world: &mut GameWorld) {
@@ -607,7 +1196,13 @@ pub fn process_drone_bullet_hits(world: &mut GameWorld) {
     let mut hits: Vec<(u32, u16)> = Vec::new();
     for bullet in &world.bullets {
         for drone in &world.follower_drones {
-            if circle_hits_circle(bullet.x, bullet.y, bullet.radius, drone.x, drone.y, 12.0) {
+            let hit_radius = if drone.kind == FollowerDroneKind::MeleePet {
+                LACHY_PET_HIT_RADIUS
+            } else {
+                12.0
+            };
+            if circle_hits_circle(bullet.x, bullet.y, bullet.radius, drone.x, drone.y, hit_radius)
+            {
                 hits.push((drone.id, bullet.damage));
                 break;
             }
@@ -620,10 +1215,14 @@ pub fn process_drone_bullet_hits(world: &mut GameWorld) {
         .bullets
         .iter()
         .filter(|b| {
-            world
-                .follower_drones
-                .iter()
-                .any(|d| circle_hits_circle(b.x, b.y, b.radius, d.x, d.y, 12.0))
+            world.follower_drones.iter().any(|d| {
+                let hit_radius = if d.kind == FollowerDroneKind::MeleePet {
+                    LACHY_PET_HIT_RADIUS
+                } else {
+                    12.0
+                };
+                circle_hits_circle(b.x, b.y, b.radius, d.x, d.y, hit_radius)
+            })
         })
         .map(|b| b.id)
         .collect();
@@ -881,5 +1480,258 @@ mod tests {
             process_zones(&mut world, 1.0 / 10.0);
         }
         assert_eq!(world.players.get(&1).unwrap().hp, hp_before);
+    }
+
+    #[test]
+    fn mango_overthink_roots_but_allows_fire() {
+        use crate::protocol::InputSnapshot;
+
+        let mut world = GameWorld::default();
+        world.add_player(0, "Mango".into(), "mango".into(), "glock".into());
+        world.add_player(1, "Target".into(), "sonny".into(), "glock".into());
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        {
+            let mango = world.players.get_mut(&0).unwrap();
+            mango.x = 100.0;
+            mango.y = 200.0;
+            mango.spawn_protection = 0.0;
+            mango.ability_charge = ABILITY_CHARGE_MAX;
+            let target = world.players.get_mut(&1).unwrap();
+            target.x = 250.0;
+            target.y = 200.0;
+            target.spawn_protection = 0.0;
+        }
+        world.inputs.insert(
+            0,
+            InputSnapshot {
+                aim_x: 1.0,
+                aim_y: 0.0,
+                ..Default::default()
+            },
+        );
+
+        activate_mango(&mut world, 0);
+        for _ in 0..60 {
+            process_overthink_projectiles(&mut world, 1.0 / 60.0);
+        }
+        assert!(world.players.get(&1).unwrap().rooted_until > 0.0);
+
+        let start_x = world.players.get(&1).unwrap().x;
+        world.inputs.insert(
+            1,
+            InputSnapshot {
+                dx: 1.0,
+                aim_x: 1.0,
+                fire: true,
+                ..Default::default()
+            },
+        );
+        world.tick(1.0 / 60.0);
+        assert_eq!(world.players.get(&1).unwrap().x, start_x);
+        assert!(world.players.get(&1).unwrap().fire_cooldown > 0.0);
+    }
+
+    #[test]
+    fn andrew_blur_reduces_target_outgoing_damage() {
+        let mut world = GameWorld::default();
+        world.add_player(0, "Andrew".into(), "andrew".into(), "glock".into());
+        world.add_player(1, "Blurred".into(), "sonny".into(), "glock".into());
+        world.add_player(2, "Victim".into(), "bailey".into(), "glock".into());
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&2).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&0).unwrap().x = 100.0;
+        world.players.get_mut(&1).unwrap().x = 200.0;
+        world.players.get_mut(&0).unwrap().y = 100.0;
+        world.players.get_mut(&1).unwrap().y = 100.0;
+        world.players.get_mut(&0).unwrap().ability_charge = ABILITY_CHARGE_MAX;
+
+        activate_andrew(&mut world, 0);
+        assert!(world.players.get(&1).unwrap().blur_until > 0.0);
+
+        let hp_before = world.players.get(&2).unwrap().hp;
+        world.apply_damage(1, 2, 100);
+        let damage_dealt = hp_before - world.players.get(&2).unwrap().hp;
+        assert_eq!(damage_dealt, 60);
+    }
+
+    #[test]
+    fn lee_feast_lifesteals_40_percent() {
+        let mut world = GameWorld::default();
+        world.add_player(0, "Lee".into(), "lee".into(), "glock".into());
+        world.add_player(1, "Victim".into(), "sonny".into(), "glock".into());
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&0).unwrap().hp = 80;
+        world.players.get_mut(&0).unwrap().ability_charge = ABILITY_CHARGE_MAX;
+
+        activate_lee(&mut world, 0);
+        assert_eq!(world.players.get(&0).unwrap().hp, 100);
+        assert!(world.players.get(&0).unwrap().feast_until > 0.0);
+
+        world.players.get_mut(&0).unwrap().hp = 70;
+        world.apply_damage(0, 1, 25);
+        assert_eq!(world.players.get(&0).unwrap().hp, 80);
+    }
+
+    #[test]
+    fn martin_off_the_meds_buffs_and_increases_damage_taken() {
+        let mut world = GameWorld::default();
+        world.add_player(0, "Martin".into(), "martin".into(), "glock".into());
+        world.add_player(1, "Attacker".into(), "sonny".into(), "glock".into());
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
+        assert_eq!(world.players.get(&0).unwrap().max_hp, MARTIN_MAX_HP);
+
+        activate_martin(&mut world, 0);
+        assert!(world.players.get(&0).unwrap().off_the_meds_until > 0.0);
+
+        let hp_before = world.players.get(&0).unwrap().hp;
+        world.apply_damage(1, 0, 40);
+        assert_eq!(hp_before - world.players.get(&0).unwrap().hp, 50);
+
+        let base_rate = 0.18;
+        assert!(effective_fire_rate(world.players.get(&0).unwrap(), base_rate) < base_rate);
+    }
+
+    #[test]
+    fn tristan_ragebait_reflects_and_reduces() {
+        let mut world = GameWorld::default();
+        world.add_player(0, "Tristan".into(), "tristan".into(), "glock".into());
+        world.add_player(1, "Attacker".into(), "sonny".into(), "glock".into());
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
+        assert_eq!(world.players.get(&0).unwrap().max_hp, TRISTAN_MAX_HP);
+
+        activate_tristan(&mut world, 0);
+        let tristan_hp = world.players.get(&0).unwrap().hp;
+        let attacker_hp = world.players.get(&1).unwrap().hp;
+
+        world.apply_damage(1, 0, 100);
+        assert_eq!(tristan_hp - world.players.get(&0).unwrap().hp, 60);
+        assert_eq!(attacker_hp - world.players.get(&1).unwrap().hp, 24);
+    }
+
+    #[test]
+    fn tristan_reflect_no_loop() {
+        let mut world = GameWorld::default();
+        world.add_player(0, "Tristan".into(), "tristan".into(), "glock".into());
+        world.add_player(1, "Attacker".into(), "sonny".into(), "glock".into());
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
+        activate_tristan(&mut world, 0);
+
+        let attacker_hp = world.players.get(&1).unwrap().hp;
+        world.apply_damage(1, 0, 100);
+        assert_eq!(attacker_hp - world.players.get(&1).unwrap().hp, 24);
+    }
+
+    #[test]
+    fn andy_liquid_courage_resist_and_pet_spawn() {
+        let mut world = GameWorld::default();
+        world.add_player(0, "Andy".into(), "andy".into(), "glock".into());
+        world.add_player(1, "Attacker".into(), "sonny".into(), "glock".into());
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
+
+        activate_andy(&mut world, 0);
+        assert!(world.players.get(&0).unwrap().liquid_courage_until > 0.0);
+        assert_eq!(world.follower_drones.len(), 1);
+        assert_eq!(world.follower_drones[0].kind, FollowerDroneKind::MeleePet);
+
+        let hp_before = world.players.get(&0).unwrap().hp;
+        world.apply_damage(1, 0, 100);
+        assert_eq!(hp_before - world.players.get(&0).unwrap().hp, 65);
+    }
+
+    #[test]
+    fn xander_hyperfixation_blocks_all_damage_and_cleanses() {
+        let mut world = GameWorld::default();
+        world.add_player(0, "Xander".into(), "xander".into(), "glock".into());
+        world.add_player(1, "Attacker".into(), "sonny".into(), "glock".into());
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
+        world.players.get_mut(&0).unwrap().rooted_until = 3.0;
+        world.players.get_mut(&0).unwrap().blur_until = 3.0;
+
+        fire_xander_hyperfixation(&mut world, 0);
+        assert_eq!(world.players.get(&0).unwrap().rooted_until, 0.0);
+        assert_eq!(world.players.get(&0).unwrap().blur_until, 0.0);
+        assert!(world.players.get(&0).unwrap().invulnerable_until > 0.0);
+
+        let hp = world.players.get(&0).unwrap().hp;
+        world.apply_damage(1, 0, 100);
+        assert_eq!(world.players.get(&0).unwrap().hp, hp);
     }
 }

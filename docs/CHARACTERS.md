@@ -2,7 +2,9 @@
 
 **Balance pass 2026-05-29:** Jacob (Director's Cut nerf + 120 HP / slower base), Sonny (hack 3s), Finn (55 ram, 5s boat, per-enemy re-hit cooldown), friendly-fire-off unified for abilities (Bailey nuke + Taj post no longer damage other humans).
 
-**Roster expansion 2026-05-29:** Added Sifan, Connor, Archie, Arthur, Oscar, Vlad. Protocol bumped to **v11** (`PROTOCOL_VERSION`). Connor LoS blocking is **client-rendered** (`src/game/fog/maliceFog.ts`, `ArenaRenderer`) — applies even when lobby fog-of-war is off.
+**Roster expansion 2026-05-29:** Mango, Andrew, Lee Moore, Martin, Tristan, Andy, Xander. Protocol bumped to **v14** (`PROTOCOL_VERSION`).
+
+**Roster expansion 2026-05-29 (Sifan batch):** Added Sifan, Connor, Archie, Arthur, Oscar, Vlad. Protocol bumped to **v11** (`PROTOCOL_VERSION`). Connor LoS blocking is **client-rendered** (`src/game/fog/maliceFog.ts`, `ArenaRenderer`) — applies even when lobby fog-of-war is off.
 
 Authoritative reference for every playable character, their powers, and current balance numbers. Constants live in `src-tauri/src/abilities.rs` unless noted; movement, HP, and combat hooks live in `src-tauri/src/game.rs`.
 
@@ -58,12 +60,12 @@ Numbers here match the **authoritative Rust sim**, not lobby UI copy. After chan
 
 ## Shared rules
 
-Most fighters share the default row below. **Jacob** overrides HP and base speed.
+Most fighters share the default row below. **Jacob**, **Arthur**, **Martin**, and **Tristan** override HP; **Jacob** also overrides base speed.
 
-| Stat | Default | Jacob override | Source |
-|------|---------|----------------|--------|
-| Max HP | 100 | **120** | `PLAYER_MAX_HP`, `JACOB_MAX_HP` |
-| Move speed | 360 px/s | **331 px/s** (×0.92) | `PLAYER_SPEED`, `JACOB_BASE_SPEED` |
+| Stat | Default | Overrides | Source |
+|------|---------|-----------|--------|
+| Max HP | 100 | Jacob **120**, Arthur **110**, Tristan **110**, Martin **90** | `PLAYER_MAX_HP`, per-char constants |
+| Move speed | 360 px/s | Jacob **331 px/s** (×0.92) | `PLAYER_SPEED`, `JACOB_BASE_SPEED` |
 | Default weapon | Glock (25 dmg, 0.18s fire rate, 17 mag, 1.2s reload) | `weapons/mod.rs` |
 | Ability key | **E** (press on rising edge, not hold) | `process_ability_input()` |
 | Charge max | 100 | `ABILITY_CHARGE_MAX` |
@@ -91,6 +93,13 @@ When **friendly fire is off**, human-vs-human damage is blocked for guns and abi
 | Isaak Chi Blast | No | Beam raycast skips humans |
 | Finn boat ram | No | `process_boat_rams` returns early |
 | Sonny Reverse Shell | N/A | Debuff only |
+| Mango Overthink | N/A | Root debuff only |
+| Andrew Blur | N/A | Debuff only |
+| Lee Feast | N/A | Self-heal / lifesteal only |
+| Martin Off the Meds | N/A | Self-buff / self-lifesteal only |
+| Tristan Ragebait | N/A | Reflect respects FF (no ally reflect) |
+| Andy Liquid Courage | N/A | Self-buff; Lachy bites respect FF |
+| Xander Hyperfixation | N/A | Defensive only |
 | Jacob popcorn | No | Same as bullets |
 
 ### Damage multipliers (stack multiplicatively)
@@ -99,8 +108,14 @@ On every hit through `apply_damage()`:
 
 1. **Jacob mark:** ×1.4 if `marked_until > 0`
 2. **Sonny hack:** ×1.3 if `controls_inverted_until > 0`
+3. **Andrew blur:** ×0.6 on **attacker** outgoing damage if `blur_until > 0` (`damage_output_multiplier`)
+4. **Tristan ragebait:** ×0.6 incoming on victim if `ragebait_until > 0`
+5. **Andy liquid courage:** ×0.65 incoming if `liquid_courage_until > 0`
+6. **Martin off the meds:** ×1.25 incoming if `off_the_meds_until > 0`
 
 Example: 25 dmg Glock on hacked + marked target → `round(25 × 1.4 × 1.3) = 46`.
+Example: Blurred attacker with Glock → `round(25 × 0.6) = 15`.
+Example: Ragebait Tristan hit for 100 raw → takes 60, attacker reflects 24.
 
 ---
 
@@ -120,6 +135,13 @@ Example: 25 dmg Glock on hacked + marked target → `round(25 × 1.4 × 1.3) = 4
 | Arthur | `hot_lap` | Hot Lap | Mobile skirmisher | Standard | 5s kart + go-kart sprite, gun enabled, oil trail (no self-harm); 110 HP, big hitbox |
 | Oscar | `chippys_special` | Chippy's Special | Support / heal | Slow passive (4.5/s) | Heal station 8 HP/s, tray 60 HP |
 | Vlad | `going_viral` | Going Viral | Summoner | Standard | 3 drones, 6 dmg / 0.8s each |
+| Mango | `overthink` | Overthink | CC / utility | Standard | Skillshot root 1.2s; ~50% refund on miss |
+| Andrew | `blur` | Blur | Debuff | Standard | Nearest enemy −40% outgoing dmg 3.5s |
+| Lee Moore | `feast` | Feast | Sustain | Standard | +20 HP + 40% lifesteal 6s |
+| Martin | `off_the_meds` | Off the Meds | Berserk | Standard | 5s +30% fire rate, +20% speed, 15% LS; +25% taken; 90 HP |
+| Tristan | `ragebait` | Ragebait | Tank / punish | Standard | 2.5s −40% taken + 40% reflect; 110 HP |
+| Andy | `liquid_courage` | Liquid Courage | Sustain / pet | Standard | 5s −35% taken, 4 HP/s, aim sway, Lachy bites |
+| Xander | `hyperfixation` | Hyperfixation | Defensive | Standard | 0.3s windup → 1.5s invuln + cleanse |
 | Luca | `none` | *(none)* | Meme / handicap | Very slow passive | 1 HP, no gun, E does nothing |
 
 **Horde NPC (not in loadout):** Zombie — slow, melee claws, selectable only as spawned horde enemy.
@@ -136,6 +158,13 @@ No character should be "press E for flat damage." Each power has a **tradeoff**,
 | Isaak | Stillness mini-game; beam blocked by FF-off in practice mode |
 | Taj | Two-step shield → post; idle charge rewards pacing |
 | Finn | All-in commit; ram needs FF on; gun disabled in boat |
+| Mango | Zero direct damage; roots but leaves gun online — punish with aim |
+| Andrew | Zero direct damage; blurs nearest — anti-carry debuff |
+| Lee | Self-buff sustain; lifesteal rewards aggression, FF-off is self-only |
+| Martin | High tempo with glass tradeoff — faster but takes more damage |
+| Tristan | Bait damage into reflect windows; 110 HP anchor |
+| Andy | Drunk tank with pet pressure; aim sway is the cost |
+| Xander | Cleanse + invuln dodge window; cannot shoot during bubble |
 | Luca | Exists as a joke handicap — charge still fills |
 
 ---
@@ -556,6 +585,186 @@ Mirror of Isaak's stillness — rewards movement, not meditation.
 
 ---
 
+## Mango — Overthink
+
+| Field | Value |
+|-------|-------|
+| Color | Orange `(255, 140, 80)` |
+| Sprite | `heads/mango.png` |
+| `abilityId` | `overthink` |
+
+### Ability: Overthink
+
+| Stat | Value | Source |
+|------|-------|--------|
+| Type | Skillshot projectile | `roster_expansion.rs` |
+| Range | 400 px | `MANGO_OVERTHINK_RANGE` |
+| Travel speed | 700 px/s | `MANGO_OVERTHINK_SPEED` |
+| Root duration | 1.2s | `MANGO_OVERTHINK_ROOT_DURATION` |
+| Direct damage | **0** | — |
+| Miss refund | ~50 charge | `MANGO_OVERTHINK_MISS_REFUND` |
+| Passive charge | 6 / sec | standard |
+| FF off | Root debuff applies normally | no damage |
+
+**Root:** target cannot move (`rooted_until`) but **can aim and shoot**.
+
+**Counterplay:** dodge the bolt; rooted target is still dangerous at range.
+
+---
+
+## Andrew — Blur
+
+| Field | Value |
+|-------|-------|
+| Color | Sky blue `(120, 200, 255)` |
+| Sprite | `heads/andrew.png` |
+| `abilityId` | `blur` |
+
+### Ability: Blur
+
+| Stat | Value | Source |
+|------|-------|--------|
+| Targeting | Nearest enemy, 300 px | `ANDREW_BLUR_RANGE` |
+| Debuff duration | 3.5s | `ANDREW_BLUR_DURATION` |
+| Outgoing damage mult | ×0.6 (−40%) | `ANDREW_BLUR_DAMAGE_OUTPUT_MULT` |
+| Direct damage | **0** | — |
+| Miss refund | ~50 charge (no target) | `ABILITY_MISS_REFUND` |
+| Passive charge | 6 / sec | standard |
+| FF off | Debuff applies normally | no damage |
+
+Applied on the **attacker** side of `apply_damage()` via `damage_output_multiplier`.
+
+---
+
+## Lee Moore — Feast
+
+| Field | Value |
+|-------|-------|
+| Color | Lime `(180, 255, 120)` |
+| Sprite | `heads/lee.png` |
+| `abilityId` | `feast` |
+
+### Ability: Feast
+
+| Stat | Value | Source |
+|------|-------|--------|
+| Instant heal | +20 HP (clamped to max) | `LEE_FEAST_HEAL_INSTANT` |
+| Lifesteal duration | 6.0s | `LEE_FEAST_DURATION` |
+| Lifesteal rate | 40% of damage **dealt** | `LEE_FEAST_LIFESTEAL` |
+| Passive charge | 6 / sec | standard |
+| FF off | Self-heal / lifesteal only | no ally interaction |
+
+Lifesteal hooks on the dealer side in `apply_damage()` while `feast_until > 0`.
+
+---
+
+## Martin — Off the Meds
+
+| Field | Value |
+|-------|-------|
+| Color | Pink `(255, 90, 180)` |
+| Sprite | `heads/martin.png` |
+| `abilityId` | `off_the_meds` |
+
+### Base stats
+
+| Stat | Value | Source |
+|------|-------|--------|
+| Max HP | **90** | `MARTIN_MAX_HP` |
+| Move speed | 360 px/s base | default |
+
+### Ability: Off the Meds
+
+| Stat | Value | Source |
+|------|-------|--------|
+| Duration | 5.0s | `MARTIN_MEDS_DURATION` |
+| Fire rate | +30% (`÷1.3` cooldown) | `MARTIN_MEDS_FIRE_RATE_MULT` |
+| Move speed | +20% | `MARTIN_MEDS_SPEED_MULT` |
+| Lifesteal | 15% of damage dealt | `MARTIN_MEDS_LIFESTEAL` |
+| Damage taken | ×1.25 | `MARTIN_MEDS_DAMAGE_TAKEN_MULT` |
+| Gun | Normal loadout (not popcorn) | — |
+| Passive charge | 6 / sec | standard; **does not** freeze like Jacob |
+| FF off | Lifesteal self-only | — |
+| VFX | Rainbow trail while active | `off_the_meds_remaining` on snapshot |
+
+---
+
+## Tristan — Ragebait
+
+| Field | Value |
+|-------|-------|
+| Color | Red `(255, 60, 60)` |
+| Sprite | `heads/tristan.png` |
+| `abilityId` | `ragebait` |
+
+### Base stats
+
+| Stat | Value | Source |
+|------|-------|--------|
+| Max HP | **110** | `TRISTAN_MAX_HP` |
+
+### Ability: Ragebait
+
+| Stat | Value | Source |
+|------|-------|--------|
+| Stance duration | 2.5s | `TRISTAN_RAGEBAIT_DURATION` |
+| Incoming damage | ×0.6 | `TRISTAN_RAGEBAIT_DAMAGE_MULT` |
+| Reflect | 40% of damage **taken** back to attacker | `TRISTAN_RAGEBAIT_REFLECT` |
+| Reflect chains | **No** — reflected hits skip re-reflect | `from_reflect` flag |
+| Passive charge | 6 / sec | standard |
+| FF off | Reflect does **not** hit allied attackers | `damage_allowed()` |
+
+---
+
+## Andy — Liquid Courage
+
+| Field | Value |
+|-------|-------|
+| Color | Lavender `(200, 160, 255)` |
+| Sprite | `heads/andy.png` |
+| `abilityId` | `liquid_courage` |
+
+### Ability: Liquid Courage
+
+| Stat | Value | Source |
+|------|-------|--------|
+| Duration | 5.0s | `ANDY_LIQUID_COURAGE_DURATION` |
+| Incoming damage | ×0.65 | `ANDY_LIQUID_COURAGE_DAMAGE_MULT` |
+| Regen | 4 HP/s | `ANDY_LIQUID_COURAGE_HEAL_PER_SEC` |
+| Aim sway | Subtle random offset each tick | `aim_sway_x/y`, `ANDY_AIM_SWAY` |
+| Pet | **Lachy** — 1 melee follower | `FollowerDroneKind::MeleePet` |
+| Lachy HP | 20 (shootable) | `LACHY_HP` |
+| Lachy bite | 12 dmg / ~1.0s | `LACHY_DAMAGE`, `LACHY_BITE_INTERVAL` |
+| Lachy range | 72 px melee | `LACHY_MELEE_RANGE` |
+| Lachy follow offset | 72 px ring behind/side | `LACHY_FOLLOW_RADIUS` |
+| FF off | Lachy bites respect FF; self-buff unaffected | — |
+
+---
+
+## Xander — Hyperfixation
+
+| Field | Value |
+|-------|-------|
+| Color | Teal `(140, 255, 220)` |
+| Sprite | `heads/xander.png` |
+| `abilityId` | `hyperfixation` |
+
+### Ability: Hyperfixation
+
+| Stat | Value | Source |
+|------|-------|--------|
+| Windup | 0.3s tell | `XANDER_HYPERFIXATION_WINDUP` |
+| Invulnerability | 1.5s (blocks **all** damage) | `XANDER_HYPERFIXATION_DURATION` |
+| Cleanse on start | hack, root, mark, blur, slow | `cleanse_debuffs()` |
+| Movement | ×0.8 speed during invuln | `XANDER_HYPERFIXATION_MOVE_MULT` |
+| Shoot / reload | **Disabled** during invuln | `process_combat` |
+| Passive charge | 6 / sec | standard |
+| FF | N/A (defensive only) | — |
+
+Invuln is an early return in `apply_damage()` — blocks DoT, reflect, and direct hits.
+
+---
+
 ## Luca — Existing
 
 | Field | Value |
@@ -604,6 +813,13 @@ Approximate direct damage from a full charge at ideal execution:
 | Isaak | 55–85 | Single-target beam; FF required vs humans |
 | Taj (post) | 32 + slow | Optional after 5.5s block; +22 charge refund |
 | Finn (ram) | 55 per hit | +22 first / +8 re-hit per enemy; FF required |
+| Mango | 0 direct | Root only |
+| Andrew | 0 direct | −40% outgoing on debuffed target |
+| Lee | 0 direct | +20 burst heal + 40% lifesteal |
+| Martin | 0 direct | Tempo buff; +25% damage taken |
+| Tristan | 0 direct | −40% taken + 40% reflect |
+| Andy | 0 direct + pet bites | 12 dmg/bite from Lachy |
+| Xander | 0 direct | Invuln + cleanse |
 | Luca | 0 | — |
 
 Gun damage still matters — abilities are fight swingers, not guaranteed kills.
@@ -637,6 +853,14 @@ Combat adds +4 per damage event and kill bonuses (+25 base, +40 total for Bailey
 | Reel shield | Taj | `reel_shield_remaining`, `reel_shield_hp`, `reel_shield_angle` |
 | Boat / hangover | Finn | `boat_mode_until`, `hangover_until`, `boat_ram_cooldowns`, `boat_ram_first_refund_done` |
 | Stillness stacks | Isaak | `stillness_stacks` |
+| Root (no move, can shoot) | Mango | `rooted_until` |
+| Blur (−40% outgoing) | Andrew | `blur_until`, `damage_output_multiplier` |
+| Feast lifesteal | Lee | `feast_until` + dealer hook in `apply_damage` |
+| Off the Meds mode | Martin | `off_the_meds_until` |
+| Ragebait (−40% taken + reflect) | Tristan | `ragebait_until` + reflect in `apply_damage` |
+| Liquid courage (−35% taken + regen) | Andy | `liquid_courage_until` |
+| Invulnerability | Xander | `invulnerable_until` |
+| Melee pet (Lachy) | Andy | `FollowerDroneKind::MeleePet`, `drones[].kind` |
 
 All major modes clear on death/respawn.
 
@@ -652,6 +876,13 @@ All major modes clear on death/respawn.
 | Isaak | `heads/isaak.png` | Chi channel + beam VFX, stillness pips on arena |
 | Taj | `heads/taj.png` | Reel MP4s + phone frame (`TajReelVisuals.ts`) |
 | Finn | `heads/finn.png` | Dinghy sprite (`boat.png`), boat splash VFX |
+| Mango | `heads/mango.png` | Overthink projectile VFX (`EffectKind::Overthink`) |
+| Andrew | `heads/andrew.png` | Hack-style debuff burst |
+| Lee | `heads/lee.png` | Mark-style feast burst |
+| Martin | `heads/martin.png` | Rainbow trail (`off_the_meds_remaining`) |
+| Tristan | `heads/tristan.png` | Shield-style stance burst |
+| Andy | `heads/andy.png` | Lachy pet sprite (`lachy.png`, `DroneSnapshot.kind = 1`) |
+| Xander | `heads/xander.png` | Chi channel invuln burst |
 | Luca | `heads/luca.png` | (none) |
 
 ---

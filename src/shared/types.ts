@@ -171,7 +171,8 @@ export type EffectKind =
   | 'boat_splash'
   | 'malice_zone'
   | 'food_tray'
-  | 'oil_slick';
+  | 'oil_slick'
+  | 'overthink';
 
 export interface DroneSnapshot {
   id: number;
@@ -179,6 +180,7 @@ export interface DroneSnapshot {
   x: number;
   y: number;
   hp: number;
+  kind?: number;
 }
 
 export interface WorldEffectSnapshot {
@@ -250,6 +252,13 @@ export interface PlayerSnapshot {
   is_bot?: boolean;
   is_zombie?: boolean;
   team?: number;
+  rooted_remaining?: number;
+  blur_remaining?: number;
+  feast_remaining?: number;
+  off_the_meds_remaining?: number;
+  ragebait_remaining?: number;
+  liquid_courage_remaining?: number;
+  invulnerable_remaining?: number;
 }
 
 export interface StateSnapshot {
