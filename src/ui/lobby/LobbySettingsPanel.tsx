@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { MAPS } from '../../content/maps';
 import type { Gamemode, LobbyConfig, WinCondition } from '../../shared/types';
 import { Cycle, SettingRow } from '../components/CycleControl';
@@ -64,6 +65,16 @@ export function LobbySettingsPanel({
   const showTimeLimit = isLms || isHorde || config.win_condition !== 'kills';
   const showBotMates = !isHorde;
   const maxBots = Math.max(0, config.max_players - playerCount + (config.bot_count ?? 0));
+  const [serverNameDraft, setServerNameDraft] = useState(config.server_name);
+
+  useEffect(() => {
+    setServerNameDraft(config.server_name);
+  }, [config.server_name]);
+
+  function commitServerName() {
+    if (serverNameDraft === config.server_name) return;
+    patch({ server_name: serverNameDraft });
+  }
 
   return (
     <section className="lobby-settings">
@@ -78,9 +89,15 @@ export function LobbySettingsPanel({
             type="text"
             className="settings-text-input"
             maxLength={32}
-            value={config.server_name}
+            value={serverNameDraft}
             disabled={!isHost}
-            onChange={(event) => patch({ server_name: event.target.value })}
+            onChange={(event) => setServerNameDraft(event.target.value)}
+            onBlur={commitServerName}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.currentTarget.blur();
+              }
+            }}
           />
         </SettingRow>
 

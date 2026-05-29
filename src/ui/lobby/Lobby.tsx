@@ -26,6 +26,7 @@ export function Lobby({
   onNameChange,
   onConfigChange,
   onTeamChange,
+  onKickPlayer,
   onLeave,
   onChangeLoadout,
   onStart,
@@ -43,6 +44,7 @@ export function Lobby({
   onNameChange: (name: string) => void;
   onConfigChange: (config: LobbyConfig) => void;
   onTeamChange: (playerId: number, team: number) => void;
+  onKickPlayer?: (playerId: number) => void;
   onLeave: () => void;
   onChangeLoadout: () => void;
   onStart: () => void;
@@ -98,7 +100,7 @@ export function Lobby({
       <header className="lobby-header">
         <div>
           <p className="screen-kicker">{isHost ? 'Hosting' : 'Joined'}</p>
-          <h2 className="lobby-title">{config.server_name || 'LAN Game'}</h2>
+          <h2 className="lobby-title">{config.server_name.trim() || 'LAN Game'}</h2>
         </div>
         <div className="lobby-meta">
           {isHost && localIp && <CopyChip label="Share IP" value={localIp} />}
@@ -137,6 +139,11 @@ export function Lobby({
                 onNameSubmit={(next) => onNameChange(next)}
                 onReadyToggle={() => onReadyChange(!isReady)}
                 onTeamChange={(team) => onTeamChange(player.id, team)}
+                onKick={
+                  onKickPlayer && isHost && player.id !== myId && !player.is_host && !player.is_bot
+                    ? () => onKickPlayer(player.id)
+                    : undefined
+                }
               />
             ))}
             {Array.from({ length: emptySlotCount }).map((_, index) => (

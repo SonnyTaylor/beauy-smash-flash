@@ -5,7 +5,9 @@ export function ArenaLoadingOverlay() {
         <span className="arena-loading-spinner" aria-hidden />
         <p className="screen-kicker">Loading</p>
         <h2>Arena</h2>
-        <p className="arena-loading-hint">Pulling in maps, sprites, and VFX…</p>
+        <p className="arena-loading-hint">
+          Pulling in maps, sprites, and VFX… Match starts when everyone is loaded.
+        </p>
       </div>
     </div>
   );

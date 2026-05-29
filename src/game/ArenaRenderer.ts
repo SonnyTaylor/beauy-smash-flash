@@ -1,5 +1,6 @@
 import { Application, ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { ALL_CHARACTERS, getCharacter } from '../content/characters';
+import { resolvePlayerDisplayName } from '../shared/playerName';
 import { ARTHUR_KART, arthurKartAssetUrl } from '../content/arthur-kart';
 import { FINN_BOAT, finnBoatAssetUrl } from '../content/finn-boat';
 import { ISAAK_ULT, isaakUltAssetUrl } from '../content/isaak-ult';
@@ -29,7 +30,6 @@ import { GAME_SAFE_AREA_INSETS } from './safeArea';
 import {
   computeVisibilityPolygon,
   hasLineOfSight,
-  isSimpleVisibilityPolygon,
   rectsToSegments,
   type Point,
   type Segment,
@@ -218,12 +218,7 @@ export class ArenaRenderer {
   private viewportHeight = 0;
   private fogEnabled = false;
   private directorsCutCasterId: number | null = null;
-  private readonly directorsCutGrayFilter = (() => {
-    const filter = new ColorMatrixFilter();
-    filter.desaturate();
-    filter.brightness(0.72, false);
-    return filter;
-  })();
+  private readonly directorsCutFilters = new Map<number, ColorMatrixFilter>();
   private fogOriginX = 0;
   private fogOriginY = 0;
   private localPlayerX = 0;
@@ -854,7 +849,7 @@ export class ArenaRenderer {
     const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
     const stillnessStacks = player.stillness_stacks ?? 0;
     if (label) {
-      label.text = player.name || getCharacter(player.character_id).initials;
+      label.text = resolvePlayerDisplayName(player.name, player.character_id);
       const stackLift =
         player.character_id === 'isaak' && stillnessStacks > 0 ? 14 : 0;
       label.y = -PLAYER_RADIUS - 18 - stackLift;
@@ -867,7 +862,7 @@ export class ArenaRenderer {
       view.hackAura.visible = player.hacked_remaining > 0;
       view.container.filters =
         this.directorsCutCasterId !== null && player.id !== this.directorsCutCasterId
-          ? [this.directorsCutGrayFilter]
+          ? [this.getDirectorsCutFilter(player.id)]
           : null;
       view.abilityWindup = player.ability_windup;
       view.abilityAimX = player.ability_aim_x ?? 0;
@@ -1030,7 +1025,7 @@ export class ArenaRenderer {
     }
 
     const label = new Text({
-      text: player.name || character.initials,
+      text: resolvePlayerDisplayName(player.name, player.character_id),
       style: {
         fontFamily: 'Impact, Haettenschweiler, Arial Narrow Bold, sans-serif',
         fontSize: 15,
@@ -1337,6 +1332,14 @@ export class ArenaRenderer {
       sprite.texture = this.boatTexture;
       sprite.anchor.set(FINN_BOAT.pivot.x, FINN_BOAT.pivot.y);
       sprite.scale.set(FINN_BOAT.displayScale);
+    } else if (inKart) {
+      view.avatar.visible = true;
+      view.avatar.alpha = 0.95;
+      sprite.visible = false;
+      if (view.gun) {
+        view.gun.visible = true;
+      }
+      return;
     }
 
     sprite.visible = true;
@@ -1660,26 +1663,34 @@ export class ArenaRenderer {
       return;
     }
 
+    if (
+      !this.players.has(this.myId) ||
+      !Number.isFinite(this.fogOriginX) ||
+      !Number.isFinite(this.fogOriginY)
+    ) {
+      this.fogLayer.visible = false;
+      return;
+    }
+
     this.fogLayer.visible = true;
     this.fogOverlay.clear();
     this.fogOverlay.rect(0, 0, this.world.width, this.world.height);
     this.fogOverlay.fill({ color: 0x020408, alpha: 0.97 });
 
-    const hits = this.visibilityPolygon;
-    const usePolygon = isSimpleVisibilityPolygon(this.fogOriginX, this.fogOriginY, hits);
-
-    if (usePolygon) {
-      const flat: number[] = [];
-      for (const point of hits) {
-        flat.push(point.x, point.y);
-      }
-      this.fogOverlay.poly(flat, true);
-      this.fogOverlay.cut();
-      return;
-    }
-
+    // Circle cut is more reliable than polygon cut across Pixi builds/drivers.
     this.fogOverlay.circle(this.fogOriginX, this.fogOriginY, FOG_VISION_RADIUS);
     this.fogOverlay.cut();
+  }
+
+  private getDirectorsCutFilter(playerId: number): ColorMatrixFilter {
+    let filter = this.directorsCutFilters.get(playerId);
+    if (!filter) {
+      filter = new ColorMatrixFilter();
+      filter.desaturate();
+      filter.brightness(0.72, false);
+      this.directorsCutFilters.set(playerId, filter);
+    }
+    return filter;
   }
 
   private syncViewport(redrawFloor: boolean) {

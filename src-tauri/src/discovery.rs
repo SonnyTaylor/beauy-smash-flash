@@ -99,7 +99,7 @@ async fn host_beacon_info(state: &SharedState) -> Option<ServerInfo> {
         .unwrap_or_else(|| "127.0.0.1".to_string());
 
     Some(ServerInfo {
-        name: st.lobby_config.server_name.clone(),
+        name: crate::names::display_server_name(&st.lobby_config.server_name).to_string(),
         address,
         game_port: GAME_PORT,
         player_count: st.world.players.len(),

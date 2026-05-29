@@ -8,6 +8,7 @@ use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
 
 use crate::game::{GameWorld, ZOMBIE_ID_START};
+use crate::game_log;
 use crate::net::{
     decode_client, decode_server, encode_server, BROADCAST_HZ, GAME_PORT, MAX_PLAYERS, SIM_HZ,
 };
@@ -17,6 +18,9 @@ use crate::protocol::{
 };
 
 pub type SharedState = Arc<Mutex<AppState>>;
+
+const PEER_TIMEOUT: Duration = Duration::from_secs(12);
+const CLIENT_PACKET_TIMEOUT: Duration = Duration::from_secs(4);
 
 #[derive(Clone, Debug)]
 pub struct Peer {
@@ -45,6 +49,7 @@ pub struct AppState {
     pub host_addr: Option<SocketAddr>,
     pub lobby_config: LobbyConfig,
     pub bot_ids: HashSet<u8>,
+    pub arena_ready_players: HashSet<u8>,
     pub host_task: Option<tokio::task::JoinHandle<()>>,
     pub client_task: Option<tokio::task::JoinHandle<()>>,
     pub discovery_task: Option<tokio::task::JoinHandle<()>>,
@@ -65,6 +70,7 @@ impl Default for AppState {
             host_addr: None,
             lobby_config: LobbyConfig::default(),
             bot_ids: HashSet::new(),
+            arena_ready_players: HashSet::new(),
             host_task: None,
             client_task: None,
             discovery_task: None,
@@ -96,6 +102,7 @@ pub async fn shutdown_session(state: &SharedState) {
     st.world = GameWorld::default();
     st.lobby_config = LobbyConfig::default();
     st.bot_ids.clear();
+    st.arena_ready_players.clear();
 }
 
 impl AppState {
@@ -220,6 +227,11 @@ pub async fn host_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri
                 }
             }
             _ = broadcast_tick.tick() => {
+                {
+                    let mut st = state.lock().await;
+                    remove_stale_peers(&mut st);
+                }
+
                 let (message, peers, host_lobby, match_just_ended) = {
                     let st = state.lock().await;
                     let match_just_ended = st.match_started
@@ -314,14 +326,17 @@ async fn handle_host_message(
                         message: "Game is full".to_string(),
                     }
                 } else {
+                    remove_stale_peers(&mut st);
+                    remove_orphan_players(&mut st);
                     let id = next_player_id(&st);
+                    let resolved_name = crate::names::resolve_player_name(&name, &character_id);
                     st.peers.push(Peer {
                         id,
                         addr,
                         last_seen: Instant::now(),
                     });
                     st.world
-                        .add_player(id, name, character_id, primary_weapon_id);
+                        .add_player(id, resolved_name, character_id, primary_weapon_id);
                     if st.lobby_config.gamemode == Gamemode::TeamDeathmatch {
                         let team = st.world.next_open_team_id();
                         let _ = st.world.assign_team(id, team);
@@ -371,8 +386,13 @@ async fn handle_host_message(
             if let Some(player_id) = player_id {
                 let match_in_progress = st.match_started;
                 if let Some(player) = st.world.players.get_mut(&player_id) {
+                    let previous_name = player.name.clone();
                     let weapon_id = player.loadout_primary_weapon_id.clone();
                     player.apply_loadout(character_id, weapon_id, match_in_progress);
+                    if crate::names::is_placeholder_player_name(&previous_name) {
+                        player.name =
+                            crate::names::resolve_player_name(&previous_name, &player.character_id);
+                    }
                 }
             }
         }
@@ -392,7 +412,12 @@ async fn handle_host_message(
             if let Some(player_id) = player_id {
                 let match_in_progress = st.match_started;
                 if let Some(player) = st.world.players.get_mut(&player_id) {
+                    let previous_name = player.name.clone();
                     player.apply_loadout(character_id, primary_weapon_id, match_in_progress);
+                    if crate::names::is_placeholder_player_name(&previous_name) {
+                        player.name =
+                            crate::names::resolve_player_name(&previous_name, &player.character_id);
+                    }
                     st.ready_players.remove(&player_id);
                 }
             }
@@ -411,7 +436,8 @@ async fn handle_host_message(
             if let Some(player_id) = player_id {
                 if let Some(player) = st.world.players.get_mut(&player_id) {
                     if !cleaned.is_empty() {
-                        player.name = cleaned;
+                        player.name =
+                            crate::names::resolve_player_name(&cleaned, &player.character_id);
                     }
                 }
             }
@@ -455,14 +481,99 @@ async fn handle_host_message(
                 let _ = st.world.assign_team(player_id, team);
             }
         }
+        ClientMessage::ArenaReady => {
+            let mut st = state.lock().await;
+            let player_id = st
+                .peers
+                .iter_mut()
+                .find(|peer| peer.addr == addr)
+                .map(|peer| {
+                    peer.last_seen = Instant::now();
+                    peer.id
+                });
+            if let Some(player_id) = player_id {
+                st.arena_ready_players.insert(player_id);
+                try_unpause_match_if_all_arena_ready(&mut st);
+            }
+        }
         ClientMessage::Leave => {
             let mut st = state.lock().await;
             if let Some(index) = st.peers.iter().position(|peer| peer.addr == addr) {
                 let peer = st.peers.remove(index);
                 st.world.remove_player(peer.id);
                 st.ready_players.remove(&peer.id);
+                st.arena_ready_players.remove(&peer.id);
+                try_unpause_match_if_all_arena_ready(&mut st);
+                game_log::info("session", &format!("player {} left", peer.id));
             }
         }
+    }
+}
+
+fn human_match_player_ids(state: &AppState) -> HashSet<u8> {
+    state
+        .world
+        .players
+        .values()
+        .filter(|player| !player.is_bot && !player.is_zombie)
+        .map(|player| player.id)
+        .collect()
+}
+
+pub(crate) fn try_unpause_match_if_all_arena_ready(state: &mut AppState) {
+    if !state.match_started || state.world.match_ended {
+        return;
+    }
+    let required = human_match_player_ids(state);
+    if required.is_empty() {
+        return;
+    }
+    if required
+        .iter()
+        .all(|id| state.arena_ready_players.contains(id))
+    {
+        state.match_paused = false;
+        game_log::info("session", "all players arena-ready — match live");
+    }
+}
+
+fn remove_stale_peers(state: &mut AppState) {
+    let now = Instant::now();
+    let stale: Vec<u8> = state
+        .peers
+        .iter()
+        .filter(|peer| now.duration_since(peer.last_seen) > PEER_TIMEOUT)
+        .map(|peer| peer.id)
+        .collect();
+    if stale.is_empty() {
+        return;
+    }
+    state
+        .peers
+        .retain(|peer| now.duration_since(peer.last_seen) <= PEER_TIMEOUT);
+    for id in stale {
+        state.world.remove_player(id);
+        state.ready_players.remove(&id);
+        state.arena_ready_players.remove(&id);
+        game_log::info("session", &format!("removed stale player {id}"));
+    }
+    try_unpause_match_if_all_arena_ready(state);
+}
+
+fn remove_orphan_players(state: &mut AppState) {
+    let peer_ids: HashSet<u8> = state.peers.iter().map(|peer| peer.id).collect();
+    let orphan_ids: Vec<u8> = state
+        .world
+        .players
+        .keys()
+        .copied()
+        .filter(|id| *id != 0 && !peer_ids.contains(id) && !state.bot_ids.contains(id))
+        .collect();
+    for id in orphan_ids {
+        state.world.remove_player(id);
+        state.ready_players.remove(&id);
+        state.arena_ready_players.remove(&id);
+        game_log::info("session", &format!("removed orphan player {id}"));
     }
 }
 
@@ -497,45 +608,71 @@ fn clean_name(name: &str) -> String {
 
 pub async fn client_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri::Window) {
     let mut buf = [0u8; 8192];
+    let mut last_message = Instant::now();
+
     loop {
-        let Ok((n, _)) = socket.recv_from(&mut buf).await else {
-            continue;
-        };
+        let recv =
+            tokio::time::timeout(Duration::from_millis(500), socket.recv_from(&mut buf)).await;
 
-        let Ok(message) = decode_server(&buf[..n]) else {
-            continue;
-        };
+        match recv {
+            Ok(Ok((n, _))) => {
+                last_message = Instant::now();
+                let Ok(message) = decode_server(&buf[..n]) else {
+                    continue;
+                };
 
-        match message {
-            ServerMessage::State(snapshot) => {
-                {
-                    let mut st = state.lock().await;
-                    st.world.sync_from_snapshot(&snapshot);
+                match message {
+                    ServerMessage::State(snapshot) => {
+                        {
+                            let mut st = state.lock().await;
+                            st.world.sync_from_snapshot(&snapshot);
+                        }
+                        let _ = window.emit("state", snapshot);
+                    }
+                    ServerMessage::MatchEnded(snapshot) => {
+                        {
+                            let mut st = state.lock().await;
+                            st.world.sync_from_snapshot(&snapshot);
+                            st.match_end_emitted = true;
+                        }
+                        let _ = window.emit("match_ended", snapshot.clone());
+                        let _ = window.emit("state", snapshot);
+                    }
+                    ServerMessage::Lobby(lobby) => {
+                        let _ = window.emit("lobby", lobby);
+                    }
+                    ServerMessage::MatchStarted(snapshot) => {
+                        {
+                            let mut st = state.lock().await;
+                            st.world.sync_from_snapshot(&snapshot);
+                            st.match_end_emitted = false;
+                        }
+                        let _ = window.emit("match_started", snapshot.clone());
+                        let _ = window.emit("state", snapshot);
+                    }
+                    ServerMessage::Error { message } => {
+                        game_log::warn("session", &message);
+                        let _ = window.emit("session_lost", message);
+                        break;
+                    }
+                    _ => {}
                 }
-                let _ = window.emit("state", snapshot);
             }
-            ServerMessage::MatchEnded(snapshot) => {
-                {
-                    let mut st = state.lock().await;
-                    st.world.sync_from_snapshot(&snapshot);
-                    st.match_end_emitted = true;
+            Ok(Err(error)) => {
+                game_log::warn("session", &format!("client recv error: {error}"));
+            }
+            Err(_) => {
+                let should_disconnect = {
+                    let st = state.lock().await;
+                    st.mode == SessionMode::Client && last_message.elapsed() > CLIENT_PACKET_TIMEOUT
+                };
+                if should_disconnect {
+                    let message = "Lost connection to host.".to_string();
+                    game_log::warn("session", &message);
+                    let _ = window.emit("session_lost", message);
+                    break;
                 }
-                let _ = window.emit("match_ended", snapshot.clone());
-                let _ = window.emit("state", snapshot);
             }
-            ServerMessage::Lobby(lobby) => {
-                let _ = window.emit("lobby", lobby);
-            }
-            ServerMessage::MatchStarted(snapshot) => {
-                {
-                    let mut st = state.lock().await;
-                    st.world.sync_from_snapshot(&snapshot);
-                    st.match_end_emitted = false;
-                }
-                let _ = window.emit("match_started", snapshot.clone());
-                let _ = window.emit("state", snapshot);
-            }
-            _ => {}
         }
     }
 }

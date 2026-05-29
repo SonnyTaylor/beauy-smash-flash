@@ -3920,6 +3920,18 @@ h2 {
   color: #b7ffc4;
 }
 
+.slot-actions {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.slot-kick-btn {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
 .slot.slot-empty {
   grid-template-columns: 40px 1fr;
   align-items: center;

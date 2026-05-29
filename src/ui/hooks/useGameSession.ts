@@ -179,6 +179,7 @@ export function useGameSession() {
         gameAudio.resetMatch();
         renderer.prepareRematch();
         renderer.applyState(state);
+        void client.signalArenaReady();
         return;
       }
       void enterGame(state);
@@ -191,6 +192,10 @@ export function useGameSession() {
       releaseGamePointer();
       renderer.applyState(state);
       gameAudio.applyState(state, myIdRef.current);
+    });
+    client.listenForSessionLost((message) => {
+      setError(message);
+      void leaveLobby();
     });
 
     return () => {
@@ -310,6 +315,18 @@ export function useGameSession() {
       } catch (caught) {
         setError(String(caught));
       }
+    }
+  }
+
+  async function kickPlayer(playerId: number) {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await client.kickPlayer(playerId);
+    } catch (caught) {
+      setError(String(caught));
+    } finally {
+      setIsBusy(false);
     }
   }
 
@@ -486,6 +503,11 @@ export function useGameSession() {
     gameAudio.resetMatch();
     renderer.applyState(state);
     gameAudio.applyState(state, playerId);
+    try {
+      await client.signalArenaReady();
+    } catch {
+      // Best-effort; host unpauses when all peers report ready.
+    }
   }
 
   function saveGameSettings(next: GameSettings) {
@@ -631,6 +653,7 @@ export function useGameSession() {
     updateReady,
     updateName,
     updateLobbyConfig,
+    kickPlayer,
     setPlayerTeam,
     startMatch,
     leaveLobby,

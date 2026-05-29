@@ -31,7 +31,8 @@ const CONNOR_ZONE_SLOW_MULT: f32 = 0.85;
 pub const ARCHIE_BLINK_RANGE: f32 = 280.0;
 pub const ARCHIE_BLINK_BOOST_DURATION: f32 = 0.4;
 pub const ARCHIE_BLINK_SPEED_MULT: f32 = 1.2;
-pub const ARCHIE_RESTLESS_BONUS: f32 = 3.0;
+pub const ARCHIE_CHARGE_PASSIVE_BONUS: f32 = 4.0;
+pub const ARCHIE_RESTLESS_BONUS: f32 = 5.0;
 
 // --- Arthur — Hot Lap ---
 pub const ARTHUR_MAX_HP: u16 = 110;
@@ -39,7 +40,7 @@ pub const ARTHUR_HIT_RADIUS_MULT: f32 = 1.18;
 pub const ARTHUR_KART_DURATION: f32 = 5.0;
 pub const ARTHUR_KART_SPEED_MULT: f32 = 1.35;
 const ARTHUR_OIL_INTERVAL: f32 = 0.2;
-pub const ARTHUR_OIL_LIFE: f32 = 3.0;
+pub const ARTHUR_OIL_LIFE: f32 = 5.5;
 const ARTHUR_OIL_RADIUS: f32 = 36.0;
 const ARTHUR_OIL_DPS: f32 = 6.0;
 const ARTHUR_OIL_SLOW_MULT: f32 = 0.7;
@@ -133,11 +134,11 @@ pub fn archie_passive_charge_bonus(player: &Player, inputs: &HashMap<u8, InputSn
         return 0.0;
     }
     let input = inputs.get(&player.id).cloned().unwrap_or_default();
+    let mut bonus = ARCHIE_CHARGE_PASSIVE_BONUS;
     if input.dx.abs() + input.dy.abs() > 0.05 {
-        ARCHIE_RESTLESS_BONUS
-    } else {
-        0.0
+        bonus += ARCHIE_RESTLESS_BONUS;
     }
+    bonus
 }
 
 pub fn movement_speed_multiplier(player: &Player) -> f32 {
@@ -1201,8 +1202,14 @@ pub fn process_drone_bullet_hits(world: &mut GameWorld) {
             } else {
                 12.0
             };
-            if circle_hits_circle(bullet.x, bullet.y, bullet.radius, drone.x, drone.y, hit_radius)
-            {
+            if circle_hits_circle(
+                bullet.x,
+                bullet.y,
+                bullet.radius,
+                drone.x,
+                drone.y,
+                hit_radius,
+            ) {
                 hits.push((drone.id, bullet.damage));
                 break;
             }

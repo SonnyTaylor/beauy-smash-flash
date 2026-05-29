@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterDefinition, GameSettings, PlayerSnapshot, StateSnapshot } from '../../shared/types';
 import { formatMatchTime, teamLabel } from '../constants';
 import { getCharacter } from '../character';
+import { resolvePlayerDisplayName } from '../../shared/playerName';
 import { isLucaCharacter } from '../../content/characters';
 import { MatchScoreboard } from './MatchScoreboard';
 import { HudPlayerCard } from './HudPlayerCard';
@@ -118,7 +119,7 @@ function Podium({
               />
               <span>{character.initials}</span>
             </div>
-            <strong>{player.name}</strong>
+            <strong>{resolvePlayerDisplayName(player.name, player.character_id)}</strong>
             <span className="podium-stats">
               {player.score} · {player.kills}K / {player.deaths}D
             </span>
@@ -805,7 +806,7 @@ export function GameOverlay({
                     key={player.id}
                     className={`game-over-row ${player.id === winner?.id ? 'winner' : ''}`}
                   >
-                    <span>{player.name}</span>
+                    <span>{resolvePlayerDisplayName(player.name, player.character_id)}</span>
                     <span>
                       {player.score} · {player.kills}K / {player.deaths}D
                     </span>

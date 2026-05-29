@@ -19,6 +19,7 @@ export class TauriGameClient {
   private unlistenLobby: UnlistenFn | null = null;
   private unlistenMatchStarted: UnlistenFn | null = null;
   private unlistenMatchEnded: UnlistenFn | null = null;
+  private unlistenSessionLost: UnlistenFn | null = null;
 
   async listenForState(handler: StateHandler) {
     this.unlistenState?.();
@@ -120,6 +121,10 @@ export class TauriGameClient {
     await invoke('start_match');
   }
 
+  async signalArenaReady(): Promise<void> {
+    await invoke('signal_arena_ready');
+  }
+
   async returnToLobby(): Promise<void> {
     await invoke('return_to_lobby');
   }
@@ -132,6 +137,21 @@ export class TauriGameClient {
     await invoke('set_match_paused', { paused });
   }
 
+  async kickPlayer(playerId: number): Promise<void> {
+    await invoke('kick_player', { playerId });
+  }
+
+  async listenForSessionLost(handler: (message: string) => void) {
+    this.unlistenSessionLost?.();
+    this.unlistenSessionLost = await listen<string>('session_lost', (event) => {
+      handler(event.payload);
+    });
+  }
+
+  async writeLog(tag: string, message: string): Promise<void> {
+    await invoke('write_client_log', { tag, message });
+  }
+
   async stopSession(): Promise<void> {
     await invoke('stop_session');
   }
@@ -141,9 +161,11 @@ export class TauriGameClient {
     this.unlistenLobby?.();
     this.unlistenMatchStarted?.();
     this.unlistenMatchEnded?.();
+    this.unlistenSessionLost?.();
     this.unlistenState = null;
     this.unlistenLobby = null;
     this.unlistenMatchStarted = null;
     this.unlistenMatchEnded = null;
+    this.unlistenSessionLost = null;
   }
 }

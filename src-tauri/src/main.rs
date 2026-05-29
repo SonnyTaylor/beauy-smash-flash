@@ -8,7 +8,9 @@ mod bots;
 mod commands;
 mod discovery;
 mod game;
+mod game_log;
 mod maps;
+mod names;
 mod net;
 mod network;
 mod protocol;
@@ -25,6 +27,7 @@ fn get_app_info() -> AppInfo {
 }
 
 fn main() {
+    game_log::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -32,6 +35,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_app_info,
             commands::stop_session,
+            commands::kick_player,
+            commands::write_client_log,
             commands::start_host,
             commands::join_game,
             commands::scan_servers,
@@ -42,6 +47,7 @@ fn main() {
             commands::set_name,
             commands::update_lobby_config,
             commands::start_match,
+            commands::signal_arena_ready,
             commands::return_to_lobby,
             commands::rematch,
             commands::set_match_paused,

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 14;
+pub const PROTOCOL_VERSION: u16 = 15;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -434,6 +434,7 @@ pub enum ClientMessage {
         team: u8,
     },
     Leave,
+    ArenaReady,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

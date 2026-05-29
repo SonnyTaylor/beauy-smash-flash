@@ -3,8 +3,8 @@
   "sprite": "weapons/sword.png",
   "width": 1010,
   "height": 1010,
-  "displayScale": 0.1139,
-  "orbitRadius": 38.0,
+  "displayScale": 0.142,
+  "orbitRadius": 44.0,
   "pivot": {
     "x": 0.3208,
     "y": 0.5091

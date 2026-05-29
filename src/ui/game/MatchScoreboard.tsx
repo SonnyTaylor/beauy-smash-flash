@@ -1,4 +1,5 @@
 import type { StateSnapshot } from '../../shared/types';
+import { resolvePlayerDisplayName } from '../../shared/playerName';
 
 export function MatchScoreboard({
   state,
@@ -24,7 +25,9 @@ export function MatchScoreboard({
             className={`match-scoreboard-row ${player.id === myId ? 'me' : ''}`}
           >
             <span className="match-scoreboard-rank">{index + 1}</span>
-            <span className="match-scoreboard-name">{player.name}</span>
+            <span className="match-scoreboard-name">
+              {resolvePlayerDisplayName(player.name, player.character_id)}
+            </span>
             <span className="match-scoreboard-stats">
               {player.score} · {player.kills}K / {player.deaths}D
             </span>

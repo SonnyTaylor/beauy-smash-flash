@@ -1,5 +1,6 @@
 import { type CSSProperties } from 'react';
 import { getWeapon } from '../../content/weapons';
+import { resolvePlayerDisplayName } from '../../shared/playerName';
 import { TEAM_OPTIONS } from '../constants';
 import { getCharacter, rgbCss } from '../character';
 import { EditableName } from '../components/EditableName';
@@ -13,6 +14,7 @@ export function PlayerSlot({
   onNameSubmit,
   onReadyToggle,
   onTeamChange,
+  onKick,
 }: {
   player: LobbyPlayerView;
   isMe: boolean;
@@ -21,10 +23,12 @@ export function PlayerSlot({
   onNameSubmit: (name: string) => void;
   onReadyToggle: () => void;
   onTeamChange: (team: number) => void;
+  onKick?: () => void;
 }) {
   const character = getCharacter(player.character_id);
   const weapon = getWeapon(player.primary_weapon_id);
   const accent = rgbCss(character.color);
+  const displayName = resolvePlayerDisplayName(player.name, player.character_id);
   const canEditTeam = showTeamPicker && (isHost || isMe);
   const teamChoice = player.team ?? 0;
 
@@ -49,7 +53,7 @@ export function PlayerSlot({
           {isMe ? (
             <EditableName value={player.name} onSubmit={onNameSubmit} />
           ) : (
-            player.name
+            displayName
           )}
           {player.is_host ? <span className="host-tag">Host</span> : null}
           {player.is_bot ? <span className="host-tag">Bot</span> : null}
@@ -89,9 +93,16 @@ export function PlayerSlot({
           {player.ready ? 'Ready' : 'Ready Up'}
         </button>
       ) : (
-        <span className={`ready-pill ${player.ready ? 'ready' : ''}`}>
-          {player.ready ? 'Ready' : 'Not ready'}
-        </span>
+        <div className="slot-actions">
+          <span className={`ready-pill ${player.ready ? 'ready' : ''}`}>
+            {player.ready ? 'Ready' : 'Not ready'}
+          </span>
+          {isHost && onKick && !player.is_host && !player.is_bot ? (
+            <button type="button" className="ghost-button slot-kick-btn" onClick={onKick}>
+              Kick
+            </button>
+          ) : null}
+        </div>
       )}
     </div>
   );

@@ -18,7 +18,95 @@ use crate::weapons;
 
 #[tauri::command]
 pub async fn stop_session(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let (socket, peers, mode, host_addr) = {
+        let st = state.lock().await;
+        (
+            st.socket.clone(),
+            st.peers.clone(),
+            st.mode.clone(),
+            st.host_addr,
+        )
+    };
+
+    match mode {
+        SessionMode::Host => {
+            if let Some(socket) = socket {
+                let message = ServerMessage::Error {
+                    message: "Host left the game.".to_string(),
+                };
+                if let Ok(bytes) = encode_server(&message) {
+                    for peer in peers {
+                        let _ = socket.send_to(&bytes, peer.addr).await;
+                    }
+                }
+            }
+            crate::game_log::info("session", "host stopped session");
+        }
+        SessionMode::Client => {
+            if let (Some(socket), Some(host_addr)) = (socket, host_addr) {
+                if let Ok(bytes) = encode_client(&ClientMessage::Leave) {
+                    let _ = socket.send_to(&bytes, host_addr).await;
+                }
+            }
+            crate::game_log::info("session", "client left session");
+        }
+        SessionMode::Idle => {}
+    }
+
     shutdown_session(state.inner()).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn kick_player(
+    player_id: u8,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let (socket, peer_addr, kicked_name) = {
+        let mut st = state.lock().await;
+        if st.mode != SessionMode::Host {
+            return Err("Only the host can kick players".to_string());
+        }
+        if player_id == 0 {
+            return Err("Cannot kick the host".to_string());
+        }
+        if st.bot_ids.contains(&player_id) {
+            return Err("Change bot count to remove bots".to_string());
+        }
+        let peer_index = st.peers.iter().position(|peer| peer.id == player_id);
+        let peer_addr = peer_index.map(|index| st.peers[index].addr);
+        if let Some(index) = peer_index {
+            st.peers.remove(index);
+        }
+        let kicked_name = st
+            .world
+            .players
+            .get(&player_id)
+            .map(|player| player.name.clone())
+            .unwrap_or_else(|| format!("player {player_id}"));
+        st.world.remove_player(player_id);
+        st.ready_players.remove(&player_id);
+        st.arena_ready_players.remove(&player_id);
+        crate::session::try_unpause_match_if_all_arena_ready(&mut st);
+        (st.socket.clone(), peer_addr, kicked_name)
+    };
+
+    if let (Some(socket), Some(addr)) = (socket, peer_addr) {
+        let message = ServerMessage::Error {
+            message: "You were kicked by the host.".to_string(),
+        };
+        if let Ok(bytes) = encode_server(&message) {
+            let _ = socket.send_to(&bytes, addr).await;
+        }
+    }
+
+    crate::game_log::info("session", &format!("kicked {kicked_name}"));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn write_client_log(tag: String, message: String) -> Result<(), String> {
+    crate::game_log::info(&tag, &message);
     Ok(())
 }
 
@@ -53,10 +141,14 @@ pub async fn start_host(
         let mut lobby_config = LobbyConfig::default();
         lobby_config.server_name = clean_server_name(server_name);
         st.lobby_config = lobby_config;
+        let character_id = clean_character_id(character_id);
         st.world.add_player(
             0,
-            clean_player_name(player_name).unwrap_or_else(|| "Host".to_string()),
-            clean_character_id(character_id),
+            crate::names::resolve_player_name(
+                clean_player_name(player_name).as_deref().unwrap_or("Host"),
+                &character_id,
+            ),
+            character_id,
             clean_weapon_id(primary_weapon_id),
         );
         st.session_info()
@@ -97,10 +189,16 @@ pub async fn join_game(
             .map_err(|error| error.to_string())?,
     );
     let host_addr = game_addr(&ip)?;
+    let character_id = clean_character_id(character_id);
 
     let join = ClientMessage::Join {
-        name: clean_player_name(player_name).unwrap_or_else(|| "Player".to_string()),
-        character_id: clean_character_id(character_id),
+        name: crate::names::resolve_player_name(
+            clean_player_name(player_name)
+                .as_deref()
+                .unwrap_or("Player"),
+            &character_id,
+        ),
+        character_id,
         primary_weapon_id: clean_weapon_id(primary_weapon_id),
         protocol_version: crate::protocol::PROTOCOL_VERSION,
     };
@@ -240,11 +338,16 @@ pub async fn update_loadout(
             let my_id = st.my_id;
             let match_in_progress = st.match_started;
             if let Some(player) = st.world.players.get_mut(&my_id) {
+                let previous_name = player.name.clone();
                 player.apply_loadout(
                     character_id.clone(),
                     primary_weapon_id.clone(),
                     match_in_progress,
                 );
+                if crate::names::is_placeholder_player_name(&previous_name) {
+                    player.name =
+                        crate::names::resolve_player_name(&previous_name, &player.character_id);
+                }
             }
             st.ready_players.remove(&my_id);
         }
@@ -300,7 +403,8 @@ pub async fn start_match(
             config.wave_goal,
         );
         st.match_started = true;
-        st.match_paused = false;
+        st.match_paused = true;
+        st.arena_ready_players.clear();
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
     };
 
@@ -313,6 +417,37 @@ pub async fn start_match(
 
     let _ = window.emit("match_started", snapshot.clone());
     let _ = window.emit("state", snapshot);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn signal_arena_ready(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let (socket, host_addr, mode, my_id) = {
+        let mut st = state.lock().await;
+        if !st.match_started || st.world.match_ended {
+            return Ok(());
+        }
+        let mode = st.mode.clone();
+        let my_id = st.my_id;
+        if mode == SessionMode::Host {
+            st.arena_ready_players.insert(my_id);
+            crate::session::try_unpause_match_if_all_arena_ready(&mut st);
+        }
+        (st.socket.clone(), st.host_addr, mode, my_id)
+    };
+
+    if mode == SessionMode::Client {
+        if let (Some(socket), Some(host_addr)) = (socket, host_addr) {
+            let bytes = encode_client(&ClientMessage::ArenaReady)?;
+            socket
+                .send_to(&bytes, host_addr)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
+    } else {
+        let _ = my_id;
+    }
+
     Ok(())
 }
 
@@ -345,7 +480,8 @@ pub async fn set_name(name: String, state: tauri::State<'_, SharedState>) -> Res
         if st.mode == SessionMode::Host {
             let my_id = st.my_id;
             if let Some(player) = st.world.players.get_mut(&my_id) {
-                player.name = cleaned.clone();
+                let character_id = player.character_id.clone();
+                player.name = crate::names::resolve_player_name(&cleaned, &character_id);
             }
         }
         (st.socket.clone(), st.host_addr, st.mode.clone(), st.my_id)
@@ -419,7 +555,7 @@ pub async fn update_lobby_config(
         return Err("Only the host can change lobby settings".to_string());
     }
     let mut config = config;
-    config.server_name = clean_server_name(Some(config.server_name));
+    config.server_name = crate::names::trim_server_name(&config.server_name);
     if config.gamemode == crate::protocol::Gamemode::ZombieHorde {
         config.bot_count = 0;
         config.friendly_fire = false;
@@ -454,6 +590,7 @@ pub async fn return_to_lobby(
         st.match_paused = false;
         st.match_end_emitted = false;
         st.ready_players.clear();
+        st.arena_ready_players.clear();
         st.world.reset_for_lobby();
         (st.socket.clone(), st.peers.clone(), st.lobby_snapshot())
     };
@@ -488,7 +625,8 @@ pub async fn rematch(
         let config = st.lobby_config.clone();
         validate_match_config(&config)?;
         st.match_end_emitted = false;
-        st.match_paused = false;
+        st.match_paused = true;
+        st.arena_ready_players.clear();
         let map_id = config.map_id.clone();
         st.world.set_map(&map_id);
         st.world.reset_for_match(
@@ -607,12 +745,11 @@ fn clean_player_name(name: Option<String>) -> Option<String> {
 }
 
 fn clean_server_name(server_name: Option<String>) -> String {
-    let name = server_name
-        .unwrap_or_else(|| "LAN Game".to_string())
-        .trim()
-        .chars()
-        .take(32)
-        .collect::<String>();
+    let name = crate::names::trim_server_name(
+        server_name
+            .unwrap_or_else(|| "LAN Game".to_string())
+            .as_str(),
+    );
     if name.is_empty() {
         "LAN Game".to_string()
     } else {
