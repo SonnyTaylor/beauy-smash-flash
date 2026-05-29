@@ -265,7 +265,7 @@ export interface StateSnapshot {
   version: number;
   tick: number;
   world: WorldConfig;
-  map: MapSnapshot;
+  map?: MapSnapshot;
   players: PlayerSnapshot[];
   bullets: BulletSnapshot[];
   effects: WorldEffectSnapshot[];

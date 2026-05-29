@@ -2758,6 +2758,15 @@ impl GameWorld {
     }
 
     pub fn snapshot(&self) -> StateSnapshot {
+        self.build_snapshot(true)
+    }
+
+    /// Lighter tick broadcast — map geometry is omitted (clients keep the match-start map).
+    pub fn state_broadcast(&self) -> StateSnapshot {
+        self.build_snapshot(false)
+    }
+
+    fn build_snapshot(&self, include_map: bool) -> StateSnapshot {
         let mut players: Vec<_> = self
             .players
             .values()
@@ -2793,7 +2802,11 @@ impl GameWorld {
             version: PROTOCOL_VERSION,
             tick: self.tick,
             world: self.config.clone(),
-            map: self.map.snapshot(),
+            map: if include_map {
+                Some(self.map.snapshot())
+            } else {
+                None
+            },
             players,
             bullets: self.bullets.iter().map(Bullet::snapshot).collect(),
             effects: self

@@ -156,6 +156,13 @@ interface PickupView {
   bobPhase: number;
 }
 
+interface DroneView {
+  container: Container;
+  sprite: Sprite | null;
+  gfx: Graphics | null;
+  kind: number | null;
+}
+
 export class ArenaRenderer {
   private app: Application | null = null;
 
@@ -195,8 +202,9 @@ export class ArenaRenderer {
   private tajReels = new TajReelVisuals();
   private reelPosts = new Map<number, ReelPostRuntime>();
   private truthNukes = new Map<number, TruthNukeView>();
-  private droneViews = new Map<number, Container>();
+  private droneViews = new Map<number, DroneView>();
   private lastDronePositions = new Map<number, { x: number; y: number }>();
+  private texturesLoaded = false;
   private maliceFogLayer = new Container();
   private maliceFogViews = new Map<number, Graphics>();
   private maliceFogZones: MaliceFogZone[] = [];
@@ -236,6 +244,13 @@ export class ArenaRenderer {
 
   get isMounted(): boolean {
     return this.mounted;
+  }
+
+  /** Warm Pixi textures while still in lobby so match-start load is faster. */
+  async preloadAssets(): Promise<void> {
+    if (this.texturesLoaded) return;
+    await this.loadTextures();
+    this.texturesLoaded = true;
   }
 
   prepareRematch() {
@@ -391,6 +406,12 @@ export class ArenaRenderer {
       gfx.destroy();
     }
     this.oilSlickViews.clear();
+    for (const view of this.droneViews.values()) {
+      view.container.destroy({ children: true });
+    }
+    this.droneViews.clear();
+    this.lastDronePositions.clear();
+    this.texturesLoaded = false;
   }
 
   applyState(snapshot: StateSnapshot) {
@@ -410,7 +431,9 @@ export class ArenaRenderer {
     const worldChanged =
       this.world.width !== snapshot.world.width || this.world.height !== snapshot.world.height;
     this.world = snapshot.world;
-    this.applyMap(snapshot.map);
+    if (snapshot.map) {
+      this.applyMap(snapshot.map);
+    }
     if (worldChanged) {
       this.syncViewport(true);
     }
@@ -564,43 +587,64 @@ export class ArenaRenderer {
     const ownerById = new Map(players.map((player) => [player.id, player]));
 
     for (const drone of drones) {
-      let container = this.droneViews.get(drone.id);
-      if (!container) {
-        container = new Container();
-        this.entityLayer.addChild(container);
-        this.droneViews.set(drone.id, container);
+      if (!this.canSeePosition(drone.x, drone.y)) {
+        const hidden = this.droneViews.get(drone.id);
+        if (hidden) {
+          hidden.container.visible = false;
+        }
+        continue;
       }
-      container.removeChildren();
+
+      let view = this.droneViews.get(drone.id);
+      if (!view) {
+        const container = new Container();
+        this.entityLayer.addChild(container);
+        view = { container, sprite: null, gfx: null, kind: null };
+        this.droneViews.set(drone.id, view);
+      }
+      view.container.visible = true;
 
       const prev = this.lastDronePositions.get(drone.id);
       const moveX = prev ? drone.x - prev.x : 0;
       this.lastDronePositions.set(drone.id, { x: drone.x, y: drone.y });
 
       if (drone.kind === 1 && this.lachyTexture) {
-        const sprite = new Sprite(this.lachyTexture);
-        sprite.anchor.set(LACHY_PET.pivot.x, LACHY_PET.pivot.y);
-        sprite.scale.set(LACHY_PET.displayScale);
+        if (view.kind !== 1) {
+          view.gfx?.destroy();
+          view.gfx = null;
+          view.sprite?.destroy();
+          view.sprite = new Sprite(this.lachyTexture);
+          view.sprite.anchor.set(LACHY_PET.pivot.x, LACHY_PET.pivot.y);
+          view.sprite.scale.set(LACHY_PET.displayScale);
+          view.container.addChild(view.sprite);
+          view.kind = 1;
+        }
         const owner = ownerById.get(drone.owner_id);
         const faceRight = owner ? drone.x >= owner.x : moveX >= 0;
-        if (!faceRight) {
-          sprite.scale.x = -Math.abs(sprite.scale.x);
-        }
-        container.addChild(sprite);
+        const scaleX = faceRight ? Math.abs(LACHY_PET.displayScale) : -Math.abs(LACHY_PET.displayScale);
+        view.sprite!.scale.x = scaleX;
       } else {
-        const gfx = new Graphics();
-        gfx.circle(0, 0, 10)
-          .fill({ color: 0xb060ff, alpha: 0.85 })
-          .circle(0, 0, 10)
-          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.9 });
-        container.addChild(gfx);
+        if (view.kind !== 0) {
+          view.sprite?.destroy();
+          view.sprite = null;
+          view.gfx?.destroy();
+          view.gfx = new Graphics();
+          view.gfx
+            .circle(0, 0, 10)
+            .fill({ color: 0xb060ff, alpha: 0.85 })
+            .circle(0, 0, 10)
+            .stroke({ color: 0xffffff, width: 1.5, alpha: 0.9 });
+          view.container.addChild(view.gfx);
+          view.kind = 0;
+        }
       }
 
-      container.position.set(drone.x, drone.y);
+      view.container.position.set(drone.x, drone.y);
     }
 
-    for (const [id, container] of this.droneViews) {
+    for (const [id, view] of this.droneViews) {
       if (!live.has(id)) {
-        container.destroy({ children: true });
+        view.container.destroy({ children: true });
         this.droneViews.delete(id);
         this.lastDronePositions.delete(id);
       }
@@ -1791,6 +1835,7 @@ export class ArenaRenderer {
   }
 
   private async loadTextures() {
+    if (this.texturesLoaded) return;
     await this.vfx.loadAssets();
     await this.tajReels.preload();
     this.boatTexture = await loadTextureFromUrl(finnBoatAssetUrl());
@@ -1813,6 +1858,7 @@ export class ArenaRenderer {
         }
       }),
     );
+    this.texturesLoaded = true;
   }
 }
 

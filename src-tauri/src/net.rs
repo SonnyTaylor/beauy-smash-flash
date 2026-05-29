@@ -3,7 +3,7 @@ use crate::protocol::{ClientMessage, DiscoveryMessage, ServerMessage};
 pub const DISCOVERY_PORT: u16 = 5554;
 pub const GAME_PORT: u16 = 5555;
 pub const SIM_HZ: f32 = 60.0;
-pub const BROADCAST_HZ: f32 = 60.0;
+pub const BROADCAST_HZ: f32 = 30.0;
 pub const MAX_PLAYERS: usize = 12;
 
 pub fn encode_client(message: &ClientMessage) -> Result<Vec<u8>, String> {

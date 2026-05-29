@@ -25,6 +25,7 @@ import {
   writeStoredPrimaryWeaponId,
 } from '../storage';
 import { DEFAULT_LOBBY_CONFIG } from '../../shared/types';
+import { logGameEvent } from '../../shared/gameLog';
 import { closeApplicationWindow } from '../appClose';
 
 export function useGameSession() {
@@ -66,6 +67,7 @@ export function useGameSession() {
   const pausedRef = useRef(false);
   const matchEndedRef = useRef(false);
   const gameSettingsRef = useRef(gameSettings);
+  const renderStatsRef = useRef({ frames: 0, totalMs: 0 });
 
   const selectedCharacter = getCharacter(selectedCharacterId);
   const players = latestState?.players ?? [];
@@ -128,6 +130,11 @@ export function useGameSession() {
   }, [audio]);
 
   useEffect(() => {
+    if (screen !== 'lobby') return;
+    void renderer.preloadAssets();
+  }, [renderer, screen]);
+
+  useEffect(() => {
     if (!gameSettings.musicEnabled) {
       audio.setMusicMode('off');
       return;
@@ -160,7 +167,18 @@ export function useGameSession() {
       }
       input.setWorld(state.world);
       if (screenRef.current === 'game') {
+        const started = performance.now();
         renderer.applyState(state);
+        const elapsed = performance.now() - started;
+        const stats = renderStatsRef.current;
+        stats.frames += 1;
+        stats.totalMs += elapsed;
+        if (stats.frames >= 150) {
+          const avg = stats.totalMs / stats.frames;
+          logGameEvent('render', `applyState avg ${avg.toFixed(2)}ms over ${stats.frames} frames`);
+          stats.frames = 0;
+          stats.totalMs = 0;
+        }
         gameAudio.applyState(state, myIdRef.current);
       }
     });
@@ -490,8 +508,10 @@ export function useGameSession() {
         }
         const player =
           latestStateRef.current?.players.find((candidate) => candidate.id === playerId) ?? null;
+        const payload = input.sampleForNetwork(player);
+        if (!payload) return;
         try {
-          await client.sendInput(input.sample(player));
+          await client.sendInput(payload);
         } catch {
           // Best-effort UDP input should not break the UI.
         }

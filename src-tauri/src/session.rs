@@ -215,6 +215,7 @@ pub async fn host_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri
     let mut buf = [0u8; 8192];
     let mut sim_tick = tokio::time::interval(Duration::from_secs_f32(1.0 / SIM_HZ));
     let mut broadcast_tick = tokio::time::interval(Duration::from_secs_f32(1.0 / BROADCAST_HZ));
+    let mut broadcast_ticks: u64 = 0;
 
     loop {
         tokio::select! {
@@ -241,7 +242,7 @@ pub async fn host_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri
                         if st.world.match_ended {
                             ServerMessage::MatchEnded(st.world.snapshot())
                         } else {
-                            ServerMessage::State(st.world.snapshot())
+                            ServerMessage::State(st.world.state_broadcast())
                         }
                     } else {
                         ServerMessage::Lobby(st.lobby_snapshot())
@@ -254,7 +255,23 @@ pub async fn host_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri
                     st.match_end_emitted = true;
                 }
 
+                broadcast_ticks += 1;
+                let encode_start = Instant::now();
                 if let Ok(bytes) = encode_server(&message) {
+                    let encode_us = encode_start.elapsed().as_micros();
+                    if broadcast_ticks.is_multiple_of(150) {
+                        if matches!(message, ServerMessage::State(_)) {
+                            game_log::info(
+                                "net",
+                                &format!(
+                                    "state {} bytes, encode {}us, {} peers",
+                                    bytes.len(),
+                                    encode_us,
+                                    peers.len()
+                                ),
+                            );
+                        }
+                    }
                     for peer in peers {
                         let _ = socket.send_to(&bytes, peer.addr).await;
                     }

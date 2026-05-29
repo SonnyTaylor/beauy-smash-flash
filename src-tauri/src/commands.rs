@@ -228,7 +228,7 @@ pub async fn join_game(
                     version: crate::protocol::PROTOCOL_VERSION,
                     tick: 0,
                     world: world.clone(),
-                    map,
+                    map: Some(map),
                     players,
                     bullets: Vec::new(),
                     effects: Vec::new(),

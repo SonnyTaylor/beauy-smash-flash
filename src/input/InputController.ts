@@ -4,6 +4,8 @@ import { GAME_SAFE_AREA_INSETS } from '../game/safeArea';
 
 const MOVEMENT_KEYS = new Set(['w', 'a', 's', 'd']);
 const ACTION_KEYS = new Set(['r', 'e', 'q', 'g', 'f']);
+const AIM_EPSILON = 1.5;
+const HEARTBEAT_FRAMES = 15;
 
 export class InputController {
   private keys = new Set<string>();
@@ -14,11 +16,15 @@ export class InputController {
   private world: WorldConfig = { width: 1920, height: 1080 };
 
   private enabled = true;
+  private lastSent: Omit<InputSnapshot, 'seq'> | null = null;
+  private framesSinceSend = 0;
 
   attach(canvas: HTMLCanvasElement, world: WorldConfig) {
     this.canvas = canvas;
     this.world = world;
     this.hasPointer = false;
+    this.lastSent = null;
+    this.framesSinceSend = 0;
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
     window.addEventListener('mousemove', this.handleMouseMove);
@@ -37,6 +43,8 @@ export class InputController {
     this.keys.clear();
     this.canvas = null;
     this.hasPointer = false;
+    this.lastSent = null;
+    this.framesSinceSend = 0;
   }
 
   setWorld(world: WorldConfig) {
@@ -47,13 +55,40 @@ export class InputController {
     this.enabled = enabled;
     if (!enabled) {
       this.keys.clear();
+      this.lastSent = null;
+      this.framesSinceSend = 0;
     }
   }
 
   sample(origin: { x: number; y: number } | null): InputSnapshot {
+    return {
+      ...this.buildSnapshot(origin),
+      seq: ++this.seq,
+    };
+  }
+
+  /** Returns null when input is unchanged and a heartbeat is not due yet. */
+  sampleForNetwork(origin: { x: number; y: number } | null): InputSnapshot | null {
+    const snapshot = this.buildSnapshot(origin);
+    this.framesSinceSend += 1;
+
+    const changed = this.lastSent === null || inputChanged(this.lastSent, snapshot);
+    const heartbeat = this.framesSinceSend >= HEARTBEAT_FRAMES;
+    if (!changed && !heartbeat) {
+      return null;
+    }
+
+    this.lastSent = snapshot;
+    this.framesSinceSend = 0;
+    return {
+      ...snapshot,
+      seq: ++this.seq,
+    };
+  }
+
+  private buildSnapshot(origin: { x: number; y: number } | null): Omit<InputSnapshot, 'seq'> {
     if (!this.enabled) {
       return {
-        seq: ++this.seq,
         dx: 0,
         dy: 0,
         aim_x: 0,
@@ -73,7 +108,6 @@ export class InputController {
     const aimOrigin = origin ?? { x: this.world.width / 2, y: this.world.height / 2 };
 
     return {
-      seq: ++this.seq,
       dx,
       dy,
       aim_x: this.pointer.x - aimOrigin.x,
@@ -136,6 +170,25 @@ export class InputController {
   private handleMouseUp = (event: MouseEvent) => {
     this.keys.delete(`mouse${event.button}`);
   };
+}
+
+function inputChanged(
+  previous: Omit<InputSnapshot, 'seq'>,
+  next: Omit<InputSnapshot, 'seq'>,
+): boolean {
+  return (
+    previous.dx !== next.dx ||
+    previous.dy !== next.dy ||
+    Math.abs(previous.aim_x - next.aim_x) > AIM_EPSILON ||
+    Math.abs(previous.aim_y - next.aim_y) > AIM_EPSILON ||
+    previous.fire !== next.fire ||
+    previous.reload !== next.reload ||
+    previous.ability !== next.ability ||
+    previous.dash !== next.dash ||
+    previous.switch_weapon !== next.switch_weapon ||
+    previous.drop_weapon !== next.drop_weapon ||
+    previous.interact !== next.interact
+  );
 }
 
 function clamp(value: number, min: number, max: number): number {

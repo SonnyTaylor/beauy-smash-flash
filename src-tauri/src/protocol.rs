@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 15;
+pub const PROTOCOL_VERSION: u16 = 16;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -357,7 +357,8 @@ pub struct StateSnapshot {
     pub version: u16,
     pub tick: u64,
     pub world: WorldConfig,
-    pub map: MapSnapshot,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map: Option<MapSnapshot>,
     pub players: Vec<PlayerSnapshot>,
     #[serde(default)]
     pub bullets: Vec<BulletSnapshot>,

@@ -641,7 +641,7 @@ export function GameOverlay({
                 <h2>Game Menu</h2>
                 {state && (
                   <div className="game-pause-stats">
-                    <span>{state.map.name}</span>
+                    <span>{state.map?.name ?? 'Arena'}</span>
                     {isLastMateStanding && <span>Last mate standing</span>}
                     {remaining !== null && <span>{formatMatchTime(remaining)} left</span>}
                     {me && (
