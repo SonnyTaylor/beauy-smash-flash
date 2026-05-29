@@ -75,12 +75,7 @@ fn pick_human_target(world: &GameWorld, zombie_id: u8, x: f32, y: f32) -> Option
         let chasers = world
             .players
             .values()
-            .filter(|p| {
-                p.is_zombie
-                    && p.alive
-                    && p.id != zombie_id
-                    && !p.spawn_protected()
-            })
+            .filter(|p| p.is_zombie && p.alive && p.id != zombie_id && !p.spawn_protected())
             .filter(|p| {
                 let ddx = p.x - player.x;
                 let ddy = p.y - player.y;
@@ -89,7 +84,10 @@ fn pick_human_target(world: &GameWorld, zombie_id: u8, x: f32, y: f32) -> Option
             .count() as f32;
 
         let score = dist + chasers * TARGET_CROWD_PENALTY;
-        if best.map(|(_, _, best_score)| score < best_score).unwrap_or(true) {
+        if best
+            .map(|(_, _, best_score)| score < best_score)
+            .unwrap_or(true)
+        {
             best = Some((player.x, player.y, score));
         }
     }

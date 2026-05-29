@@ -19,7 +19,7 @@ use crate::protocol::{
 
 pub type SharedState = Arc<Mutex<AppState>>;
 
-const PEER_TIMEOUT: Duration = Duration::from_secs(12);
+const PEER_TIMEOUT: Duration = Duration::from_secs(6);
 const CLIENT_PACKET_TIMEOUT: Duration = Duration::from_secs(4);
 
 #[derive(Clone, Debug)]
@@ -212,7 +212,7 @@ impl AppState {
 }
 
 pub async fn host_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri::Window) {
-    let mut buf = [0u8; 8192];
+    let mut buf = [0u8; 65535];
     let mut sim_tick = tokio::time::interval(Duration::from_secs_f32(1.0 / SIM_HZ));
     let mut broadcast_tick = tokio::time::interval(Duration::from_secs_f32(1.0 / BROADCAST_HZ));
     let mut broadcast_ticks: u64 = 0;
@@ -370,6 +370,21 @@ async fn handle_host_message(
 
             if let Ok(bytes) = encode_server(&response) {
                 let _ = socket.send_to(&bytes, addr).await;
+            }
+
+            // If a match is already in progress, push the new peer straight into the game.
+            let match_in_progress = {
+                let st = state.lock().await;
+                st.match_started
+            };
+            if match_in_progress {
+                let snapshot = {
+                    let st = state.lock().await;
+                    st.world.snapshot()
+                };
+                if let Ok(bytes) = encode_server(&ServerMessage::MatchStarted(snapshot)) {
+                    let _ = socket.send_to(&bytes, addr).await;
+                }
             }
         }
         ClientMessage::SetReady { ready } => {
@@ -624,7 +639,7 @@ fn clean_name(name: &str) -> String {
 }
 
 pub async fn client_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri::Window) {
-    let mut buf = [0u8; 8192];
+    let mut buf = [0u8; 65535];
     let mut last_message = Instant::now();
 
     loop {

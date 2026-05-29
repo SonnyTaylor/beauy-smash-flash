@@ -36,10 +36,8 @@ impl NavGrid {
     }
 
     pub fn world_to_cell(&self, x: f32, y: f32) -> (usize, usize) {
-        let cx = ((x / self.cell_size).floor() as isize)
-            .clamp(0, self.cols as isize - 1) as usize;
-        let cy = ((y / self.cell_size).floor() as isize)
-            .clamp(0, self.rows as isize - 1) as usize;
+        let cx = ((x / self.cell_size).floor() as isize).clamp(0, self.cols as isize - 1) as usize;
+        let cy = ((y / self.cell_size).floor() as isize).clamp(0, self.rows as isize - 1) as usize;
         (cx, cy)
     }
 

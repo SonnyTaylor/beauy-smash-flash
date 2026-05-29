@@ -21,7 +21,7 @@ pub fn best_local_ipv4() -> Option<Ipv4Addr> {
             if is_bad_ip(&ip) {
                 continue;
             }
-            candidates.push((adapter_score(&iface.name), ip));
+            candidates.push((adapter_score(&iface.name) + cgnat_score(&ip), ip));
         }
     }
 
@@ -129,16 +129,21 @@ fn is_bad_ip(ip: &Ipv4Addr) -> bool {
     if octets[0] == 169 && octets[1] == 254 {
         return true;
     }
-    if octets[0] == 100 && (64..=127).contains(&octets[1]) {
-        return true;
-    }
-    if octets[0..3] == [192, 168, 56] {
-        return true;
-    }
-    if octets[0..3] == [192, 168, 183] || octets[0..3] == [192, 168, 159] {
-        return true;
-    }
     false
+}
+
+fn cgnat_score(ip: &Ipv4Addr) -> i32 {
+    let octets = ip.octets();
+    if octets[0] == 100 && (64..=127).contains(&octets[1]) {
+        return -2;
+    }
+    if octets[0..3] == [192, 168, 56]
+        || octets[0..3] == [192, 168, 183]
+        || octets[0..3] == [192, 168, 159]
+    {
+        return -3;
+    }
+    0
 }
 
 fn fallback_route_ips() -> [&'static str; 5] {
@@ -181,8 +186,15 @@ mod tests {
     #[test]
     fn filters_virtual_and_loopback_ips() {
         assert!(is_bad_ip(&Ipv4Addr::LOCALHOST));
-        assert!(is_bad_ip(&Ipv4Addr::new(100, 64, 0, 1)));
+        assert!(!is_bad_ip(&Ipv4Addr::new(100, 64, 0, 1)));
         assert!(is_bad_ip(&Ipv4Addr::new(169, 254, 1, 1)));
         assert!(!is_bad_ip(&Ipv4Addr::new(10, 12, 44, 8)));
+    }
+
+    #[test]
+    fn cgnat_scored_lower() {
+        assert_eq!(cgnat_score(&Ipv4Addr::new(100, 64, 0, 1)), -2);
+        assert_eq!(cgnat_score(&Ipv4Addr::new(192, 168, 56, 1)), -3);
+        assert_eq!(cgnat_score(&Ipv4Addr::new(10, 0, 0, 1)), 0);
     }
 }

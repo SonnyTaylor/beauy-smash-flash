@@ -646,6 +646,23 @@ impl Player {
         self.poison_until = snapshot.poison_remaining;
         self.is_bot = snapshot.is_bot;
         self.is_zombie = snapshot.is_zombie;
+        self.team = snapshot.team;
+        self.ability_aim_x = snapshot.ability_aim_x;
+        self.ability_aim_y = snapshot.ability_aim_y;
+        self.stillness_stacks = snapshot.stillness_stacks;
+        self.reel_shield_remaining = snapshot.reel_shield_remaining;
+        self.boat_mode_until = snapshot.boat_mode_remaining;
+        self.hangover_until = snapshot.hangover_remaining;
+        self.kart_mode_until = snapshot.kart_mode_remaining;
+        self.steroid_buff_until = snapshot.steroid_buff_remaining;
+        self.rooted_until = snapshot.rooted_remaining;
+        self.blur_until = snapshot.blur_remaining;
+        self.feast_until = snapshot.feast_remaining;
+        self.off_the_meds_until = snapshot.off_the_meds_remaining;
+        self.ragebait_until = snapshot.ragebait_remaining;
+        self.liquid_courage_until = snapshot.liquid_courage_remaining;
+        self.invulnerable_until = snapshot.invulnerable_remaining;
+        self.reel_index = snapshot.reel_index;
     }
 
     pub fn apply_loadout(
@@ -1408,6 +1425,46 @@ impl GameWorld {
                 ammo: pickup.ammo,
                 max_ammo: pickup.max_ammo,
                 life: WEAPON_PICKUP_LIFETIME_SECS,
+            })
+            .collect();
+        self.effects = snapshot
+            .effects
+            .iter()
+            .map(|effect| WorldEffect {
+                id: effect.id,
+                kind: effect.kind,
+                x: effect.x,
+                y: effect.y,
+                radius: effect.radius,
+                life: effect.life,
+                owner_id: effect.owner_id,
+                origin_x: effect.origin_x,
+                origin_y: effect.origin_y,
+                target_x: effect.target_x,
+                target_y: effect.target_y,
+                max_life: effect.max_life,
+                hit_players: Vec::new(),
+                zone_hp: 0.0,
+                zone_damage_accum: 0.0,
+                zone_heal_accum: 0.0,
+            })
+            .collect();
+        self.follower_drones = snapshot
+            .drones
+            .iter()
+            .map(|drone| FollowerDrone {
+                id: drone.id,
+                owner_id: drone.owner_id,
+                x: drone.x,
+                y: drone.y,
+                hp: drone.hp,
+                life: 0.0,
+                fire_cooldown: 0.0,
+                orbit_angle: 0.0,
+                kind: match drone.kind {
+                    1 => FollowerDroneKind::MeleePet,
+                    _ => FollowerDroneKind::OrbitRanged,
+                },
             })
             .collect();
 

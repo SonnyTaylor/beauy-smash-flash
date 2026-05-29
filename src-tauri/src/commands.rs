@@ -704,7 +704,7 @@ async fn wait_for_assignment(
     join_bytes: &[u8],
 ) -> Result<ServerMessage, String> {
     let deadline = Instant::now() + Duration::from_secs(8);
-    let mut buf = [0u8; 8192];
+    let mut buf = [0u8; 65535];
     let mut last_send = Instant::now() - Duration::from_secs(1);
 
     while Instant::now() < deadline {

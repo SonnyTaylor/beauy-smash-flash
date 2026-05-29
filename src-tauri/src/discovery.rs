@@ -15,10 +15,17 @@ use crate::version::APP_VERSION;
 const BEACON_INTERVAL: Duration = Duration::from_secs(1);
 
 pub async fn discovery_loop(state: SharedState) {
-    let Ok(socket) = bind_discovery_socket(DISCOVERY_PORT, true).await else {
-        return;
+    let socket = match bind_discovery_socket(DISCOVERY_PORT, true).await {
+        Ok(s) => Arc::new(s),
+        Err(error) => {
+            crate::game_log::warn(
+                "discovery",
+                &format!("failed to bind discovery socket: {error}"),
+            );
+            return;
+        }
     };
-    let socket = Arc::new(socket);
+
     let mut buf = [0u8; 2048];
     let mut beacon_tick = tokio::time::interval(BEACON_INTERVAL);
     beacon_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -34,9 +41,12 @@ pub async fn discovery_loop(state: SharedState) {
                 let Ok((n, addr)) = result else {
                     continue;
                 };
-                let Ok(DiscoveryMessage::Query { .. }) = decode_discovery(&buf[..n]) else {
+                let Ok(DiscoveryMessage::Query { version }) = decode_discovery(&buf[..n]) else {
                     continue;
                 };
+                if version != PROTOCOL_VERSION {
+                    continue;
+                }
 
                 let Some(info) = host_beacon_info(&state).await else {
                     continue;
