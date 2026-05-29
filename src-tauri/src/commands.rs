@@ -134,6 +134,7 @@ pub async fn join_game(
                     players,
                     bullets: Vec::new(),
                     effects: Vec::new(),
+                    drones: Vec::new(),
                     kill_feed: Vec::new(),
                     match_ended: false,
                     winner_id: None,
@@ -579,6 +580,12 @@ fn clean_character_id(character_id: Option<String>) -> String {
         Some("taj") => "taj",
         Some("finn") | Some("cheeky_dinghy") => "finn",
         Some("luca") => "luca",
+        Some("sifan") => "sifan",
+        Some("connor") => "connor",
+        Some("archie") => "archie",
+        Some("arthur") => "arthur",
+        Some("oscar") => "oscar",
+        Some("vlad") => "vlad",
         _ => "sonny",
     }
     .to_string()

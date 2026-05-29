@@ -12,6 +12,7 @@ mod maps;
 mod net;
 mod network;
 mod protocol;
+mod roster_expansion;
 mod session;
 mod version;
 mod weapons;

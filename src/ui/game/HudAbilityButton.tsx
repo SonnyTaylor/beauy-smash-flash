@@ -13,6 +13,7 @@ export function HudAbilityButton({
   hacked,
   directorsCutShots,
   boatModeRemaining,
+  kartModeRemaining,
   reelShieldRemaining,
   stillnessStacks,
 }: {
@@ -22,6 +23,7 @@ export function HudAbilityButton({
   hacked: boolean;
   directorsCutShots?: number | null;
   boatModeRemaining?: number;
+  kartModeRemaining?: number;
   reelShieldRemaining?: number;
   stillnessStacks?: number;
 }) {
@@ -31,6 +33,7 @@ export function HudAbilityButton({
   const casting = windup > 0;
   const inDirectorsCut = directorsCutShots != null && directorsCutShots > 0;
   const inBoat = (boatModeRemaining ?? 0) > 0;
+  const inKart = (kartModeRemaining ?? 0) > 0;
   const hasShield = (reelShieldRemaining ?? 0) > 0;
   const windupTotal =
     character.id === 'isaak' ? ISAAC_WINDUP_SECS : BAILEY_WINDUP_SECS;
@@ -56,6 +59,7 @@ export function HudAbilityButton({
 
   let statusLabel = character.abilityName;
   if (inDirectorsCut) statusLabel = 'Rolling…';
+  else if (inKart) statusLabel = 'Hot Lap…';
   else if (inBoat) statusLabel = 'Boating…';
   else if (hasShield) statusLabel = 'E to post';
   else if (casting) statusLabel = character.id === 'isaak' ? 'Channeling…' : 'Arming…';
@@ -70,11 +74,11 @@ export function HudAbilityButton({
           : 'Stillness';
 
   const showIsaakStacks =
-    character.id === 'isaak' && !casting && !inBoat;
+    character.id === 'isaak' && !casting && !inBoat && !inKart;
 
   return (
     <div
-      className={`hud-ability-wrap ${showIsaakStacks ? 'hud-ability-wrap--isaak' : ''} ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''} ${noAbility ? 'is-no-ability' : ''}`}
+      className={`hud-ability-wrap ${showIsaakStacks ? 'hud-ability-wrap--isaak' : ''} ${ready ? 'is-ready' : ''} ${casting ? 'is-casting' : ''} ${inDirectorsCut ? 'is-directors-cut' : ''} ${inKart ? 'is-karting' : ''} ${inBoat ? 'is-boating' : ''} ${hasShield ? 'is-shielded' : ''} ${hacked ? 'is-hacked' : ''} ${noAbility ? 'is-no-ability' : ''}`}
       style={{ '--accent': rgbCss(character.color) } as React.CSSProperties}
     >
       <div className="hud-ability">

@@ -181,6 +181,7 @@ export function GameOverlay({
   const isPoisoned = (me?.poison_remaining ?? 0) > 0;
   const isSpawnProtected = (me?.spawn_protected ?? false) && (me?.alive ?? false);
   const inBoatMode = (me?.boat_mode_remaining ?? 0) > 0;
+  const inKartMode = (me?.kart_mode_remaining ?? 0) > 0;
   const isLastMateStanding = state?.gamemode === 'last_mate_standing';
   const isZombieHorde = state?.gamemode === 'zombie_horde';
   const hordeWave = state?.wave ?? 0;
@@ -354,6 +355,12 @@ export function GameOverlay({
           </div>
         )}
 
+        {inKartMode && !matchEnded && (
+          <div className="hud-kart-banner" role="status">
+            Hot Lap — oil trail · {me?.kart_mode_remaining?.toFixed(1)}s
+          </div>
+        )}
+
         {inBoatMode && !matchEnded && (
           <div className="hud-boat-banner" role="status">
             Cheeky Dinghy — ram enemies · {me?.boat_mode_remaining?.toFixed(1)}s
@@ -483,6 +490,7 @@ export function GameOverlay({
                 hacked={isHacked}
                 directorsCutShots={inDirectorsCut ? (me?.directors_cut_shots ?? 0) : null}
                 boatModeRemaining={me?.boat_mode_remaining ?? 0}
+                kartModeRemaining={me?.kart_mode_remaining ?? 0}
                 reelShieldRemaining={me?.reel_shield_remaining ?? 0}
                 stillnessStacks={me?.stillness_stacks ?? 0}
               />

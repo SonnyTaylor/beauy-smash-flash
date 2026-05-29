@@ -4,7 +4,7 @@ import type { AppInfo } from '../../shared/types';
 
 const FALLBACK: AppInfo = {
   app_version: 'dev',
-  protocol_version: 9,
+  protocol_version: 11,
 };
 
 export function useAppInfo() {

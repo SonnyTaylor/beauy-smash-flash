@@ -10,7 +10,7 @@ export const PLAYABLE_CHARACTERS: CharacterDefinition[] = [
     abilityId: 'reverse_shell',
     abilityName: 'Reverse Shell',
     abilityDescription:
-      "Hack the nearest enemy for 4s — inverted controls and they take 30% extra damage.",
+      "Hack the nearest enemy for 3s — inverted controls and they take 30% extra damage.",
   },
   {
     id: 'bailey',
@@ -32,7 +32,7 @@ export const PLAYABLE_CHARACTERS: CharacterDefinition[] = [
     abilityId: 'directors_cut',
     abilityName: "Director's Cut",
     abilityDescription:
-      "30s movie mode — 1.67× speed, 24 popcorn shots that mark targets. Kills refund 3 shots.",
+      "18s movie mode — 1.5× speed, 18 popcorn shots that mark targets. Kills refund 2 shots.",
   },
   {
     id: 'isaak',
@@ -65,7 +65,73 @@ export const PLAYABLE_CHARACTERS: CharacterDefinition[] = [
     abilityId: 'cheeky_dinghy',
     abilityName: 'Cheeky Dinghy',
     abilityDescription:
-      'Speedboat for 4s — ram for 40 dmg (refunds charge). Cannot shoot; shorter hangover after.',
+      'Speedboat for 5s — ram for 55 dmg (re-hit after 1.2s). Cannot shoot during boat.',
+  },
+  {
+    id: 'sifan',
+    name: 'Sifan',
+    color: [255, 160, 60],
+    sprite: 'heads/sifan.png',
+    initials: 'SF',
+    abilityId: 'juice_heist',
+    abilityName: 'Juice Heist',
+    abilityDescription:
+      'Steal 40 charge from the nearest enemy and juice up — +15% speed and damage for 5s, then a crash.',
+  },
+  {
+    id: 'connor',
+    name: 'Connor',
+    color: [140, 180, 255],
+    sprite: 'heads/connor.png',
+    initials: 'CN',
+    abilityId: 'malice_drop',
+    abilityName: 'MALICE Drop',
+    abilityDescription:
+      'Drop a 6s fog zone — DoT, slow, and blocks enemy line of sight (you see through your own).',
+  },
+  {
+    id: 'archie',
+    name: 'Archie',
+    color: [255, 120, 200],
+    sprite: 'heads/archie.png',
+    initials: 'AR',
+    abilityId: 'jump_cut',
+    abilityName: 'Dexie Rush',
+    abilityDescription:
+      'Blink up to 280px toward aim, then a brief speed burst. Charge faster while moving.',
+  },
+  {
+    id: 'arthur',
+    name: 'Arthur',
+    color: [200, 80, 40],
+    sprite: 'heads/arthur.png',
+    initials: 'AT',
+    abilityId: 'hot_lap',
+    abilityName: 'Hot Lap',
+    abilityDescription:
+      '5s kart mode — keep shooting, leave an oil trail that slows and chips enemies. Bigger hitbox, 110 HP.',
+  },
+  {
+    id: 'oscar',
+    name: 'Oscar',
+    color: [255, 220, 100],
+    sprite: 'heads/oscar.png',
+    initials: 'OG',
+    abilityId: 'chippys_special',
+    abilityName: "Chippy's Special",
+    abilityDescription:
+      'Deploy a food tray that heals allies inside. Enemies can shoot the tray to shut it down.',
+  },
+  {
+    id: 'vlad',
+    name: 'Vlad',
+    color: [160, 60, 220],
+    sprite: 'heads/vlad.png',
+    initials: 'VL',
+    abilityId: 'going_viral',
+    abilityName: 'Going Viral',
+    abilityDescription:
+      'Summon 3 follower drones for 7s — chip damage at range; shoot them down to stop the clout.',
   },
   {
     id: 'luca',

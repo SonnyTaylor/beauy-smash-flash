@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 10;
+pub const PROTOCOL_VERSION: u16 = 11;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -180,6 +180,9 @@ pub enum EffectKind {
     ReelShield,
     ReelPost,
     BoatSplash,
+    MaliceZone,
+    FoodTray,
+    OilSlick,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -310,6 +313,21 @@ pub struct PlayerSnapshot {
     pub is_bot: bool,
     #[serde(default)]
     pub is_zombie: bool,
+    #[serde(default)]
+    pub kart_mode_remaining: f32,
+    #[serde(default)]
+    pub steroid_buff_remaining: f32,
+    #[serde(default)]
+    pub follower_drone_count: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DroneSnapshot {
+    pub id: u32,
+    pub owner_id: u8,
+    pub x: f32,
+    pub y: f32,
+    pub hp: u16,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -323,6 +341,8 @@ pub struct StateSnapshot {
     pub bullets: Vec<BulletSnapshot>,
     #[serde(default)]
     pub effects: Vec<WorldEffectSnapshot>,
+    #[serde(default)]
+    pub drones: Vec<DroneSnapshot>,
     #[serde(default)]
     pub kill_feed: Vec<KillFeedEntry>,
     #[serde(default)]

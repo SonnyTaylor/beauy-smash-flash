@@ -1,6 +1,8 @@
 import { Application, ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { ALL_CHARACTERS, getCharacter } from '../content/characters';
+import { ARTHUR_KART, arthurKartAssetUrl } from '../content/arthur-kart';
 import { FINN_BOAT, finnBoatAssetUrl } from '../content/finn-boat';
+import { ISAAK_ULT, isaakUltAssetUrl } from '../content/isaak-ult';
 import { getMap, getMapTheme } from '../content/maps';
 import { getWeapon, listWeapons, weaponOrbitPosition } from '../content/weapons';
 import type {
@@ -11,6 +13,7 @@ import type {
   StateSnapshot,
   WeaponPickupSnapshot,
   WorldConfig,
+  DroneSnapshot,
   WorldEffectSnapshot,
 } from '../shared/types';
 import {
@@ -30,6 +33,10 @@ import {
   type Point,
   type Segment,
 } from './fog/visibility';
+import {
+  isBlockedByMaliceFog,
+  type MaliceFogZone,
+} from './fog/maliceFog';
 
 const PLAYER_RADIUS = 26;
 const PLAYER_DIAMETER = PLAYER_RADIUS * 2;
@@ -85,6 +92,7 @@ interface PlayerView {
   avatar: Container;
   gun: Sprite | null;
   boatSprite: Sprite;
+  chiUltSprite: Sprite;
   shield: Graphics;
   hackAura: Graphics;
   markAura: Graphics;
@@ -112,6 +120,7 @@ interface PlayerView {
   abilityAimY: number;
   stillnessStacks: number;
   boatModeRemaining: number;
+  kartModeRemaining: number;
   reelShieldRemaining: number;
   reelIndex: number;
   reelShieldWasActive: boolean;
@@ -178,10 +187,18 @@ export class ArenaRenderer {
   private headTextures = new Map<string, Texture>();
   private weaponTextures = new Map<string, Texture>();
   private boatTexture: Texture | null = null;
+  private arthurKartTexture: Texture | null = null;
+  private isaakUltTexture: Texture | null = null;
   private vfx = new VfxManager();
   private tajReels = new TajReelVisuals();
   private reelPosts = new Map<number, ReelPostRuntime>();
   private truthNukes = new Map<number, TruthNukeView>();
+  private droneViews = new Map<number, Graphics>();
+  private maliceFogLayer = new Container();
+  private maliceFogViews = new Map<number, Graphics>();
+  private maliceFogZones: MaliceFogZone[] = [];
+  private oilSlickLayer = new Container();
+  private oilSlickViews = new Map<number, Graphics>();
   private mounted = false;
   private myId = 0;
   private mapId: string | null = null;
@@ -288,6 +305,8 @@ export class ArenaRenderer {
     this.root.sortableChildren = true;
     this.floorLayer.zIndex = 0;
     this.wallLayer.zIndex = 1;
+    this.maliceFogLayer.zIndex = 1.5;
+    this.oilSlickLayer.zIndex = 1.48;
     this.entityLayer.zIndex = 2;
     this.vfxLayer.zIndex = 3;
     this.fogLayer.zIndex = 4;
@@ -300,7 +319,15 @@ export class ArenaRenderer {
     this.wallLayer.addChild(this.wallContainer);
     this.entityLayer.addChild(this.pickupLayer, this.bullets);
     this.fogLayer.addChild(this.fogOverlay);
-    this.root.addChild(this.floorLayer, this.wallLayer, this.entityLayer, this.vfxLayer, this.fogLayer);
+    this.root.addChild(
+      this.floorLayer,
+      this.wallLayer,
+      this.maliceFogLayer,
+      this.oilSlickLayer,
+      this.entityLayer,
+      this.vfxLayer,
+      this.fogLayer,
+    );
     this.root.sortChildren();
     this.viewportMask = new Graphics();
     this.root.mask = this.viewportMask;
@@ -333,6 +360,8 @@ export class ArenaRenderer {
     this.headTextures.clear();
     this.weaponTextures.clear();
     this.boatTexture = null;
+    this.arthurKartTexture = null;
+    this.isaakUltTexture = null;
     this.knownBulletIds.clear();
     this.knownEffectIds.clear();
     this.bulletStates.clear();
@@ -354,6 +383,15 @@ export class ArenaRenderer {
     this.wallRects = [];
     this.wallSegments = [];
     this.visibilityPolygon = [];
+    this.maliceFogZones = [];
+    for (const gfx of this.maliceFogViews.values()) {
+      gfx.destroy();
+    }
+    this.maliceFogViews.clear();
+    for (const gfx of this.oilSlickViews.values()) {
+      gfx.destroy();
+    }
+    this.oilSlickViews.clear();
   }
 
   applyState(snapshot: StateSnapshot) {
@@ -380,6 +418,10 @@ export class ArenaRenderer {
     this.syncBulletTargets(snapshot.bullets);
     this.syncWeaponPickups(snapshot.weapon_pickups ?? []);
     this.syncWorldEffects(snapshot.effects ?? []);
+    this.syncMaliceFogZones(snapshot.effects ?? []);
+    this.syncMaliceFogOverlays();
+    this.syncOilSlickOverlays(snapshot.effects ?? []);
+    this.syncDrones(snapshot.drones ?? []);
     this.syncTruthNukes(snapshot.effects ?? []);
     this.syncReelPosts(snapshot.effects ?? []);
     this.detectMuzzleFlashes(snapshot.bullets, snapshot.players, me);
@@ -429,8 +471,7 @@ export class ArenaRenderer {
       view.isReloading = player.reloading || player.reload_remaining > 0;
       view.targetGunAngle = view.isReloading ? player.angle + RELOAD_GUN_TILT : player.angle;
 
-      const inVision =
-        !this.fogEnabled || player.id === this.myId || this.isInVision(player.x, player.y);
+      const inVision = player.id === this.myId || this.canSeePosition(player.x, player.y);
       view.container.visible = inVision;
     }
 
@@ -453,7 +494,7 @@ export class ArenaRenderer {
       if (this.knownEffectIds.has(effect.id)) {
         continue;
       }
-      if (this.fogEnabled && !this.isInVision(effect.x, effect.y)) {
+      if (!this.canSeePosition(effect.x, effect.y)) {
         this.knownEffectIds.add(effect.id);
         continue;
       }
@@ -503,12 +544,42 @@ export class ArenaRenderer {
         this.vfx.emitChiChannel(effect.x, effect.y, effect.radius);
       } else if (effect.kind === 'boat_splash') {
         this.vfx.emitBoatSplash(effect.x, effect.y, effect.radius);
+      } else if (effect.kind === 'malice_zone') {
+        // Persistent overlay handled in syncMaliceFogOverlays
+      } else if (effect.kind === 'food_tray') {
+        this.vfx.emitZoneRing(effect.x, effect.y, effect.radius, 0xffd060, 0.4);
+      } else if (effect.kind === 'oil_slick') {
+        // Persistent puddles: syncOilSlickOverlays
       }
     }
 
     for (const id of this.knownEffectIds) {
       if (!liveIds.has(id)) {
         this.knownEffectIds.delete(id);
+      }
+    }
+  }
+
+  private syncDrones(drones: DroneSnapshot[]) {
+    const live = new Set(drones.map((d) => d.id));
+    for (const drone of drones) {
+      let gfx = this.droneViews.get(drone.id);
+      if (!gfx) {
+        gfx = new Graphics();
+        this.entityLayer.addChild(gfx);
+        this.droneViews.set(drone.id, gfx);
+      }
+      gfx.clear();
+      gfx.circle(0, 0, 10)
+        .fill({ color: 0xb060ff, alpha: 0.85 })
+        .circle(0, 0, 10)
+        .stroke({ color: 0xffffff, width: 1.5, alpha: 0.9 });
+      gfx.position.set(drone.x, drone.y);
+    }
+    for (const [id, gfx] of this.droneViews) {
+      if (!live.has(id)) {
+        gfx.destroy();
+        this.droneViews.delete(id);
       }
     }
   }
@@ -520,7 +591,7 @@ export class ArenaRenderer {
         continue;
       }
       liveIds.add(effect.id);
-      if (this.fogEnabled && !this.isInVision(effect.x, effect.y)) {
+      if (!this.canSeePosition(effect.x, effect.y)) {
         continue;
       }
 
@@ -551,7 +622,7 @@ export class ArenaRenderer {
         continue;
       }
       liveIds.add(effect.id);
-      if (this.fogEnabled && !this.isInVision(effect.x, effect.y)) {
+      if (!this.canSeePosition(effect.x, effect.y)) {
         continue;
       }
 
@@ -616,10 +687,9 @@ export class ArenaRenderer {
         continue;
       }
       if (
-        this.fogEnabled &&
         me &&
         bullet.owner_id !== this.myId &&
-        !this.isInVision(bullet.x, bullet.y)
+        !this.canSeePosition(bullet.x, bullet.y)
       ) {
         this.knownBulletIds.add(bullet.id);
         continue;
@@ -700,9 +770,7 @@ export class ArenaRenderer {
 
       view.targetX = pickup.x;
       view.targetY = pickup.y;
-      const inVision =
-        !this.fogEnabled || this.isInVision(pickup.x, pickup.y);
-      view.container.visible = inVision;
+      view.container.visible = this.canSeePosition(pickup.x, pickup.y);
     }
 
     for (const [id, view] of this.pickups) {
@@ -780,6 +848,7 @@ export class ArenaRenderer {
       view.reelShieldRemaining = player.reel_shield_remaining ?? 0;
       view.reelIndex = player.reel_index ?? 0;
       view.boatModeRemaining = player.boat_mode_remaining ?? 0;
+      view.kartModeRemaining = player.kart_mode_remaining ?? 0;
       view.truthReticle.visible =
         player.character_id === 'bailey' && player.ability_windup > 0;
       if (view.truthReticle.visible) {
@@ -835,11 +904,7 @@ export class ArenaRenderer {
     const blend = 1 - Math.exp(-BULLET_LERP_RATE * dt);
     this.bullets.clear();
     for (const state of this.bulletStates.values()) {
-      if (
-        this.fogEnabled &&
-        state.ownerId !== this.myId &&
-        !this.isInVision(state.x, state.y)
-      ) {
+      if (state.ownerId !== this.myId && !this.canSeePosition(state.x, state.y)) {
         continue;
       }
 
@@ -902,6 +967,12 @@ export class ArenaRenderer {
     boatSprite.visible = false;
     container.addChild(boatSprite);
 
+    const chiUltSprite = new Sprite(Texture.EMPTY);
+    chiUltSprite.anchor.set(ISAAK_ULT.pivot.x, ISAAK_ULT.pivot.y);
+    chiUltSprite.scale.set(ISAAK_ULT.displayScale);
+    chiUltSprite.visible = false;
+    container.addChild(chiUltSprite);
+
     const truthReticle = new Graphics();
     truthReticle.visible = false;
     this.entityLayer.addChild(truthReticle);
@@ -953,6 +1024,7 @@ export class ArenaRenderer {
       avatar,
       gun,
       boatSprite,
+      chiUltSprite,
       shield,
       hackAura,
       markAura,
@@ -981,6 +1053,7 @@ export class ArenaRenderer {
       abilityAimY: player.ability_aim_y ?? 0,
       stillnessStacks: player.stillness_stacks ?? 0,
       boatModeRemaining: player.boat_mode_remaining ?? 0,
+      kartModeRemaining: player.kart_mode_remaining ?? 0,
       reelShieldRemaining: player.reel_shield_remaining ?? 0,
       reelIndex: player.reel_index ?? 0,
       reelShieldWasActive: (player.reel_shield_remaining ?? 0) > 0,
@@ -1034,11 +1107,17 @@ export class ArenaRenderer {
     const texture = this.headTextures.get(spritePath);
 
     if (texture) {
+      const faceMask = new Graphics();
+      faceMask.circle(0, 0, PLAYER_RADIUS).fill({ color: 0xffffff });
+
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5);
-      const scale = PLAYER_DIAMETER / Math.max(texture.width, texture.height);
-      sprite.scale.set(scale);
+      const coverScale = PLAYER_DIAMETER / Math.min(texture.width, texture.height);
+      sprite.scale.set(coverScale);
+      sprite.mask = faceMask;
+
       avatar.addChild(sprite);
+      avatar.addChild(faceMask);
     } else {
       const fallback = new Graphics()
         .circle(0, 0, PLAYER_RADIUS)
@@ -1139,10 +1218,24 @@ export class ArenaRenderer {
   }
 
   private drawChiAura(view: PlayerView, now: number) {
+    const channeling = view.abilityWindup > 0;
     const pulse = 0.45 + 0.55 * Math.abs(Math.sin(now / 95));
     const aura = view.chiAura;
     aura.clear();
     aura.visible = true;
+
+    if (channeling) {
+      const floatY = -38 + Math.sin(now / 520) * 12;
+      const ringR = 58 + pulse * 10;
+      aura.circle(0, floatY, ringR)
+        .stroke({ color: 0xffcc00, width: 4, alpha: 0.22 + pulse * 0.2 })
+        .circle(0, floatY, ringR * 0.72)
+        .stroke({ color: 0xfff8c8, width: 2, alpha: 0.35 + pulse * 0.25 });
+      aura.circle(0, floatY + 8, 24)
+        .fill({ color: 0xffd700, alpha: 0.08 + pulse * 0.06 });
+      return;
+    }
+
     aura.circle(0, 0, PLAYER_RADIUS + 10 + pulse * 4)
       .stroke({ color: 0xffcc00, width: 2.5, alpha: 0.35 + pulse * 0.35 });
     for (let i = 0; i < view.stillnessStacks; i += 1) {
@@ -1153,22 +1246,24 @@ export class ArenaRenderer {
     }
   }
 
-  private updateBoatVisual(view: PlayerView, now: number) {
-    const inBoat = view.boatModeRemaining > 0;
-    const sprite = view.boatSprite;
+  private updateIsaakChiUlt(view: PlayerView, now: number) {
+    const channeling = view.characterId === 'isaak' && view.abilityWindup > 0;
+    const sprite = view.chiUltSprite;
 
-    if (!inBoat) {
+    if (!channeling) {
       sprite.visible = false;
-      view.avatar.visible = true;
-      view.avatar.alpha = 1;
-      if (view.gun) {
+      if (view.boatModeRemaining <= 0 && view.kartModeRemaining <= 0) {
+        view.avatar.visible = true;
+        view.avatar.alpha = 1;
+      }
+      if (view.gun && view.boatModeRemaining <= 0 && view.kartModeRemaining <= 0) {
         view.gun.visible = true;
       }
       return;
     }
 
-    if (this.boatTexture) {
-      sprite.texture = this.boatTexture;
+    if (this.isaakUltTexture) {
+      sprite.texture = this.isaakUltTexture;
     }
     sprite.visible = true;
     view.avatar.visible = false;
@@ -1176,7 +1271,53 @@ export class ArenaRenderer {
       view.gun.visible = false;
     }
 
-    const bob = Math.sin(now / 160) * 2.5;
+    const bob = Math.sin(now / 520) * 12;
+    const sway = Math.sin(now / 780) * 0.05;
+    const pulse = 0.92 + 0.08 * Math.abs(Math.sin(now / 280));
+    const scalePulse = 1 + Math.sin(now / 360) * 0.06;
+    const lift = -38 + bob;
+
+    sprite.anchor.set(ISAAK_ULT.pivot.x, ISAAK_ULT.pivot.y);
+    sprite.scale.set(ISAAK_ULT.displayScale * scalePulse);
+    sprite.rotation = sway;
+    sprite.position.set(0, lift);
+    sprite.alpha = pulse;
+  }
+
+  private updateVehicleVisual(view: PlayerView, now: number) {
+    const inBoat = view.boatModeRemaining > 0;
+    const inKart = view.kartModeRemaining > 0;
+    const sprite = view.boatSprite;
+
+    if (!inBoat && !inKart) {
+      sprite.visible = false;
+      if (view.abilityWindup <= 0 || view.characterId !== 'isaak') {
+        view.avatar.visible = true;
+        view.avatar.alpha = 1;
+      }
+      if (view.gun) {
+        view.gun.visible = true;
+      }
+      return;
+    }
+
+    if (inKart && this.arthurKartTexture) {
+      sprite.texture = this.arthurKartTexture;
+      sprite.anchor.set(ARTHUR_KART.pivot.x, ARTHUR_KART.pivot.y);
+      sprite.scale.set(ARTHUR_KART.displayScale);
+    } else if (inBoat && this.boatTexture) {
+      sprite.texture = this.boatTexture;
+      sprite.anchor.set(FINN_BOAT.pivot.x, FINN_BOAT.pivot.y);
+      sprite.scale.set(FINN_BOAT.displayScale);
+    }
+
+    sprite.visible = true;
+    view.avatar.visible = false;
+    if (view.gun) {
+      view.gun.visible = inKart;
+    }
+
+    const bob = Math.sin(now / (inKart ? 130 : 160)) * (inKart ? 3.5 : 2.5);
     const pulse = 0.92 + 0.08 * Math.abs(Math.sin(now / 120));
     sprite.rotation = view.displayAngle;
     sprite.position.set(0, bob);
@@ -1277,7 +1418,8 @@ export class ArenaRenderer {
         view.chiAura.visible = false;
       }
 
-      this.updateBoatVisual(view, now);
+      this.updateVehicleVisual(view, now);
+      this.updateIsaakChiUlt(view, now);
 
       this.updateTajReelShield(view);
 
@@ -1308,7 +1450,19 @@ export class ArenaRenderer {
     }
   }
 
-  private isInVision(x: number, y: number): boolean {
+  private canSeePosition(x: number, y: number): boolean {
+    if (
+      isBlockedByMaliceFog(
+        this.fogOriginX,
+        this.fogOriginY,
+        x,
+        y,
+        this.maliceFogZones,
+        this.myId,
+      )
+    ) {
+      return false;
+    }
     if (!this.fogEnabled) {
       return true;
     }
@@ -1320,6 +1474,127 @@ export class ArenaRenderer {
       this.wallSegments,
       FOG_VISION_RADIUS,
     );
+  }
+
+  /** @deprecated use canSeePosition — kept for call sites that already use the name */
+  private isInVision(x: number, y: number): boolean {
+    return this.canSeePosition(x, y);
+  }
+
+  private syncMaliceFogZones(effects: WorldEffectSnapshot[]) {
+    this.maliceFogZones = effects
+      .filter((effect) => effect.kind === 'malice_zone')
+      .map((effect) => ({
+        id: effect.id,
+        x: effect.x,
+        y: effect.y,
+        radius: effect.radius,
+        ownerId: effect.owner_id,
+        lifeRatio:
+          effect.max_life && effect.max_life > 0
+            ? Math.max(0, effect.life / effect.max_life)
+            : 1,
+      }));
+  }
+
+  private syncMaliceFogOverlays() {
+    const live = new Set(this.maliceFogZones.map((zone) => zone.id));
+    for (const zone of this.maliceFogZones) {
+      let gfx = this.maliceFogViews.get(zone.id);
+      if (!gfx) {
+        gfx = new Graphics();
+        this.maliceFogLayer.addChild(gfx);
+        this.maliceFogViews.set(zone.id, gfx);
+      }
+      const own = zone.ownerId === this.myId;
+      const pulse = 0.85 + 0.15 * zone.lifeRatio;
+      const r = Math.min(Math.max(zone.radius, 8), 280);
+      gfx.clear();
+      gfx.circle(0, 0, r)
+        .fill({ color: 0x2a3558, alpha: (own ? 0.1 : 0.22) * pulse })
+        .circle(0, 0, r * 0.9)
+        .stroke({ color: 0x6a8cc8, width: 2, alpha: 0.28 * pulse })
+        .circle(0, 0, r * 0.5)
+        .fill({ color: 0x4a6090, alpha: (own ? 0.05 : 0.12) * pulse });
+      gfx.position.set(zone.x, zone.y);
+    }
+    for (const [id, gfx] of this.maliceFogViews) {
+      if (!live.has(id)) {
+        gfx.destroy();
+        this.maliceFogViews.delete(id);
+      }
+    }
+    this.maliceFogLayer.visible = this.maliceFogZones.length > 0;
+  }
+
+  private drawOilPuddle(gfx: Graphics, radius: number, lifeRatio: number, variant: number) {
+    const fade = Math.max(0.15, lifeRatio);
+    const wobble = 0.9 + (variant % 5) * 0.04;
+    const rx = radius * 1.08 * wobble;
+    const ry = radius * 0.88 * (1.1 - (variant % 3) * 0.05);
+
+    gfx.ellipse(0, 0, rx, ry)
+      .fill({ color: 0x0c0a06, alpha: 0.78 * fade })
+      .ellipse(0, 0, rx * 0.92, ry * 0.92)
+      .stroke({ color: 0x1e1810, width: 2.5, alpha: 0.55 * fade });
+
+    gfx.ellipse(radius * 0.12, -radius * 0.08, radius * 0.55, radius * 0.42)
+      .fill({ color: 0x1f1810, alpha: 0.65 * fade });
+
+    gfx.ellipse(-radius * 0.18, radius * 0.1, radius * 0.38, radius * 0.28)
+      .fill({ color: 0x2a2218, alpha: 0.45 * fade });
+
+    // Iridescent sheen (rainbow oil)
+    const sheenColors = [0x4a3060, 0x305848, 0x484830, 0x603040];
+    const sheen = sheenColors[variant % sheenColors.length];
+    gfx.ellipse(radius * 0.15, -radius * 0.2, radius * 0.4, radius * 0.22)
+      .fill({ color: sheen, alpha: 0.28 * fade })
+      .ellipse(-radius * 0.22, radius * 0.05, radius * 0.25, radius * 0.18)
+      .fill({ color: 0x88b0c8, alpha: 0.14 * fade });
+
+    gfx.circle(0, 0, radius * 0.95)
+      .stroke({ color: 0x3d3020, width: 1.5, alpha: 0.35 * fade });
+  }
+
+  private syncOilSlickOverlays(effects: WorldEffectSnapshot[]) {
+    const live = new Set<number>();
+    const now = performance.now();
+
+    for (const effect of effects) {
+      if (effect.kind !== 'oil_slick') {
+        continue;
+      }
+      live.add(effect.id);
+
+      let gfx = this.oilSlickViews.get(effect.id);
+      const isNew = !gfx;
+      if (!gfx) {
+        gfx = new Graphics();
+        this.oilSlickLayer.addChild(gfx);
+        this.oilSlickViews.set(effect.id, gfx);
+      }
+
+      const lifeRatio =
+        effect.max_life && effect.max_life > 0
+          ? Math.max(0, effect.life / effect.max_life)
+          : 1;
+      const spawnPop = isNew ? 0.85 + 0.15 * Math.abs(Math.sin(now / 80)) : 1;
+      const fade = lifeRatio * spawnPop;
+
+      gfx.clear();
+      this.drawOilPuddle(gfx, effect.radius, fade, effect.id);
+      gfx.position.set(effect.x, effect.y);
+      gfx.rotation = ((effect.id % 8) - 4) * 0.12;
+      gfx.visible = this.canSeePosition(effect.x, effect.y);
+    }
+
+    for (const [id, gfx] of this.oilSlickViews) {
+      if (!live.has(id)) {
+        gfx.destroy();
+        this.oilSlickViews.delete(id);
+      }
+    }
+    this.oilSlickLayer.visible = live.size > 0;
   }
 
   private updateFogVisibility() {
@@ -1338,20 +1613,16 @@ export class ArenaRenderer {
   }
 
   private applyFogEntityVisibility() {
-    if (!this.fogEnabled) {
-      return;
-    }
-
     for (const [id, view] of this.players) {
       if (id === this.myId) {
         view.container.visible = true;
         continue;
       }
-      view.container.visible = this.isInVision(view.container.x, view.container.y);
+      view.container.visible = this.canSeePosition(view.container.x, view.container.y);
     }
 
     for (const view of this.pickups.values()) {
-      view.container.visible = this.isInVision(view.container.x, view.container.y);
+      view.container.visible = this.canSeePosition(view.container.x, view.container.y);
     }
   }
 
@@ -1484,6 +1755,8 @@ export class ArenaRenderer {
     await this.vfx.loadAssets();
     await this.tajReels.preload();
     this.boatTexture = await loadTextureFromUrl(finnBoatAssetUrl());
+    this.arthurKartTexture = await loadTextureFromUrl(arthurKartAssetUrl());
+    this.isaakUltTexture = await loadTextureFromUrl(isaakUltAssetUrl());
     await Promise.all(
       listWeapons().map(async (weapon) => {
         const texture = await loadTextureFromUrl(assetUrl(weapon.meta.sprite));

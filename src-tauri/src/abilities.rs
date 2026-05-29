@@ -28,15 +28,15 @@ const BAILEY_NUKE_SLOW_MULT: f32 = 0.78;
 const TRUTH_EXPLOSION_VFX_LIFE: f32 = 0.65;
 
 pub const SONNY_HACK_RANGE: f32 = 280.0;
-pub const SONNY_HACK_DURATION: f32 = 4.0;
+pub const SONNY_HACK_DURATION: f32 = 3.0;
 pub const SONNY_HACK_DAMAGE_MULT: f32 = 1.3;
 const SONNY_HACK_CHARGE_BONUS: f32 = 18.0;
 const SONNY_HACK_VFX_LIFE: f32 = 0.55;
 const SONNY_MISS_REFUND: f32 = 50.0;
 
-pub const JACOB_DIRECTORS_CUT_DURATION: f32 = 30.0;
-pub const JACOB_DIRECTORS_CUT_SHOTS: u8 = 24;
-pub const JACOB_DIRECTORS_CUT_SPEED: f32 = 1.67;
+pub const JACOB_DIRECTORS_CUT_DURATION: f32 = 18.0;
+pub const JACOB_DIRECTORS_CUT_SHOTS: u8 = 18;
+pub const JACOB_DIRECTORS_CUT_SPEED: f32 = 1.5;
 pub const POPCORN_WEAPON_ID: &str = "popcorn";
 pub const POPCORN_DAMAGE: u16 = 14;
 pub const POPCORN_SPEED: f32 = 920.0;
@@ -49,13 +49,13 @@ pub const POPCORN_MARK_DAMAGE_MULT: f32 = 1.4;
 const POPCORN_INITIAL_SPREAD_DEG: f32 = 6.0;
 const POPCORN_BOUNCE_SPREAD_DEG: f32 = 40.0;
 const DIRECTORS_CUT_VFX_LIFE: f32 = 0.45;
-const DIRECTORS_CUT_KILL_SHOT_REFUND: u8 = 3;
+const DIRECTORS_CUT_KILL_SHOT_REFUND: u8 = 2;
 
 pub const ISAAC_STILLNESS_STACK_TIME: f32 = 1.5;
 pub const ISAAC_MAX_STILLNESS_STACKS: u8 = 3;
 pub const ISAAC_CHI_WINDUP: f32 = 1.4;
-pub const ISAAC_CHI_BASE_DAMAGE: u16 = 55;
-pub const ISAAC_CHI_DAMAGE_PER_STACK: u16 = 10;
+pub const ISAAC_CHI_BASE_DAMAGE: u16 = 55; // BALANCE TODO: 50
+pub const ISAAC_CHI_DAMAGE_PER_STACK: u16 = 10; // BALANCE TODO: 12
 const ISAAC_CHI_BEAM_HALF_WIDTH: f32 = 14.0;
 const ISAAC_CHI_RANGE: f32 = 900.0;
 const ISAAC_CHI_SLOW_DURATION: f32 = 1.0;
@@ -66,7 +66,7 @@ const ISAAC_CHI_CHANNEL_VFX_LIFE: f32 = 0.25;
 pub const TAJ_REEL_COUNT: u8 = 5;
 
 pub const REEL_SHIELD_DURATION: f32 = 5.5;
-pub const REEL_SHIELD_HP: f32 = 110.0;
+pub const REEL_SHIELD_HP: f32 = 110.0; // BALANCE TODO: 90
 const REEL_SHIELD_HALF_WIDTH: f32 = 58.0;
 const REEL_SHIELD_DEPTH: f32 = 16.0;
 const REEL_SHIELD_OFFSET: f32 = 44.0;
@@ -75,13 +75,15 @@ const REEL_POST_DAMAGE: u16 = 32;
 const REEL_POST_KNOCKBACK: f32 = 280.0;
 const REEL_POST_SLOW_DURATION: f32 = 1.25;
 const REEL_POST_SLOW_MULT: f32 = 0.72;
-const REEL_POST_CHARGE_REFUND: f32 = 22.0;
+const REEL_POST_CHARGE_REFUND: f32 = 22.0; // BALANCE TODO: 15
 
-pub const FINN_BOAT_DURATION: f32 = 4.0;
+pub const FINN_BOAT_DURATION: f32 = 5.0;
 pub const FINN_BOAT_SPEED_MULT: f32 = 1.8;
-const FINN_RAM_DAMAGE: u16 = 40;
+const FINN_RAM_DAMAGE: u16 = 55;
 const FINN_RAM_KNOCKBACK: f32 = 320.0;
-const FINN_RAM_CHARGE_REFUND: f32 = 22.0;
+const FINN_RAM_REHIT_COOLDOWN: f32 = 1.2;
+const FINN_RAM_CHARGE_REFUND_FIRST: f32 = 22.0;
+const FINN_RAM_CHARGE_REFUND_REHIT: f32 = 8.0;
 pub const FINN_HANGOVER_DURATION: f32 = 0.55;
 pub const FINN_HANGOVER_SPEED_MULT: f32 = 0.62;
 const BOAT_SPLASH_VFX_LIFE: f32 = 0.45;
@@ -216,20 +218,26 @@ pub fn tick_character_passives(
     }
 }
 
-fn passive_charge_rate(player: &Player, _inputs: &HashMap<u8, InputSnapshot>) -> f32 {
-    match player.character_id.as_str() {
+fn passive_charge_rate(player: &Player, inputs: &HashMap<u8, InputSnapshot>) -> f32 {
+    let base = match player.character_id.as_str() {
         "bailey" => BAILEY_CHARGE_PASSIVE_PER_SEC,
         "luca" => LUCA_CHARGE_PASSIVE_PER_SEC,
+        "oscar" => crate::roster_expansion::OSCAR_CHARGE_PASSIVE_PER_SEC,
         "taj" if player.last_shot_timer >= TAJ_IDLE_SHOT_THRESHOLD => TAJ_CHARGE_PASSIVE_IDLE,
         _ => CHARGE_PASSIVE_PER_SEC,
-    }
+    };
+    base + crate::roster_expansion::archie_passive_charge_bonus(player, inputs)
 }
 
 pub fn try_activate(world: &mut GameWorld, player_id: u8) {
     let Some(player) = world.players.get(&player_id) else {
         return;
     };
-    if !player.alive || player.spawn_protected() || in_boat_mode(player) {
+    if !player.alive
+        || player.spawn_protected()
+        || in_boat_mode(player)
+        || crate::roster_expansion::is_kart_mode(player)
+    {
         return;
     }
 
@@ -262,6 +270,9 @@ pub fn try_activate(world: &mut GameWorld, player_id: u8) {
         "isaak" => activate_isaak_chi_blast(world, player_id),
         "taj" => activate_taj_story_shield(world, player_id),
         "finn" => activate_finn_cheeky_dinghy(world, player_id),
+        "sifan" | "connor" | "archie" | "arthur" | "oscar" | "vlad" => {
+            crate::roster_expansion::try_activate(world, player_id);
+        }
         _ => {}
     }
 }
@@ -348,11 +359,19 @@ pub fn process_active_modes(world: &mut GameWorld, dt: f32) {
 
     for player in world.players.values_mut() {
         if player.boat_mode_until > 0.0 {
+            for cooldown in player.boat_ram_cooldowns.values_mut() {
+                *cooldown = (*cooldown - dt).max(0.0);
+            }
+            player
+                .boat_ram_cooldowns
+                .retain(|_, cooldown| *cooldown > 0.0);
+
             player.boat_mode_until = (player.boat_mode_until - dt).max(0.0);
             if player.boat_mode_until <= 0.0 {
                 ended_boats.push((player.id, player.x, player.y));
                 player.hangover_until = FINN_HANGOVER_DURATION;
-                player.boat_rammed.clear();
+                player.boat_ram_cooldowns.clear();
+                player.boat_ram_first_refund_done.clear();
             }
         }
 
@@ -427,24 +446,41 @@ pub fn process_boat_rams(world: &mut GameWorld) {
             .collect();
 
         for target_id in targets {
-            let already_hit = world
+            let on_cooldown = world
                 .players
                 .get(&boater_id)
-                .map(|player| player.boat_rammed.contains(&target_id))
+                .map(|player| {
+                    player
+                        .boat_ram_cooldowns
+                        .get(&target_id)
+                        .copied()
+                        .unwrap_or(0.0)
+                        > 0.0
+                })
                 .unwrap_or(true);
-            if already_hit {
+            if on_cooldown {
                 continue;
             }
 
-            if let Some(boater) = world.players.get_mut(&boater_id) {
-                boater.boat_rammed.push(target_id);
-            }
+            let refund = if let Some(boater) = world.players.get_mut(&boater_id) {
+                boater
+                    .boat_ram_cooldowns
+                    .insert(target_id, FINN_RAM_REHIT_COOLDOWN);
+                if boater.boat_ram_first_refund_done.contains(&target_id) {
+                    FINN_RAM_CHARGE_REFUND_REHIT
+                } else {
+                    boater.boat_ram_first_refund_done.push(target_id);
+                    FINN_RAM_CHARGE_REFUND_FIRST
+                }
+            } else {
+                continue;
+            };
 
             world.apply_damage(boater_id, target_id, FINN_RAM_DAMAGE);
             apply_knockback(world, target_id, dir_x, dir_y, FINN_RAM_KNOCKBACK);
             add_charge(
                 world.players.get_mut(&boater_id).expect("boater exists"),
-                FINN_RAM_CHARGE_REFUND,
+                refund,
             );
 
             let (tx, ty) = world
@@ -591,7 +627,14 @@ pub fn process_projectile_effects(world: &mut GameWorld, dt: f32) {
 
 pub fn process_effects(world: &mut GameWorld, dt: f32) {
     for effect in &mut world.effects {
-        if effect.kind == EffectKind::TruthNuke || effect.kind == EffectKind::ReelPost {
+        if matches!(
+            effect.kind,
+            EffectKind::TruthNuke
+                | EffectKind::ReelPost
+                | EffectKind::MaliceZone
+                | EffectKind::FoodTray
+                | EffectKind::OilSlick
+        ) {
             continue;
         }
         effect.life -= dt;
@@ -665,13 +708,17 @@ fn post_taj_reel_shield(world: &mut GameWorld, player_id: u8) {
         target_y: dir_y,
         max_life: 0.55,
         hit_players: Vec::new(),
+        zone_hp: 0.0,
+        zone_damage_accum: 0.0,
+        zone_heal_accum: 0.0,
     });
 }
 
 fn activate_finn_cheeky_dinghy(world: &mut GameWorld, player_id: u8) {
     if let Some(player) = world.players.get_mut(&player_id) {
         player.boat_mode_until = FINN_BOAT_DURATION;
-        player.boat_rammed.clear();
+        player.boat_ram_cooldowns.clear();
+        player.boat_ram_first_refund_done.clear();
         player.ability_charge = 0.0;
         player.reload_timer = 0.0;
         player.hangover_until = 0.0;
@@ -737,6 +784,9 @@ fn fire_isaak_chi_blast(world: &mut GameWorld, player_id: u8, dir_x: f32, dir_y:
         target_y: end_x.1,
         max_life: ISAAC_CHI_VFX_LIFE,
         hit_players: Vec::new(),
+        zone_hp: 0.0,
+        zone_damage_accum: 0.0,
+        zone_heal_accum: 0.0,
     });
 
     if let Some((victim_id, hit_x, hit_y, _)) = hit {
@@ -814,6 +864,9 @@ fn find_reel_post_contacts(
 }
 
 fn apply_reel_post_hit(world: &mut GameWorld, owner_id: u8, victim_id: u8, dir_x: f32, dir_y: f32) {
+    if !world.damage_allowed(owner_id, victim_id) {
+        return;
+    }
     world.apply_damage(owner_id, victim_id, REEL_POST_DAMAGE);
     apply_knockback(world, victim_id, dir_x, dir_y, REEL_POST_KNOCKBACK);
     if let Some(victim) = world.players.get_mut(&victim_id) {
@@ -1069,7 +1122,7 @@ fn apply_knockback(world: &mut GameWorld, victim_id: u8, dir_x: f32, dir_y: f32,
     }
 }
 
-fn aim_direction(world: &GameWorld, player_id: u8) -> Option<(f32, f32)> {
+pub(crate) fn aim_direction(world: &GameWorld, player_id: u8) -> Option<(f32, f32)> {
     let player = world.players.get(&player_id)?;
     let input = world.inputs.get(&player_id).cloned().unwrap_or_default();
     let (ax, ay) = normalize(input.aim_x, input.aim_y);
@@ -1125,6 +1178,9 @@ fn launch_bailey_nuke(
         target_y,
         max_life: BAILEY_NUKE_FLIGHT,
         hit_players: Vec::new(),
+        zone_hp: 0.0,
+        zone_damage_accum: 0.0,
+        zone_heal_accum: 0.0,
     });
 }
 
@@ -1181,6 +1237,9 @@ fn activate_sonny_reverse_shell(world: &mut GameWorld, caster_id: u8, x: f32, y:
         target_y: ty,
         max_life: SONNY_HACK_VFX_LIFE,
         hit_players: Vec::new(),
+        zone_hp: 0.0,
+        zone_damage_accum: 0.0,
+        zone_heal_accum: 0.0,
     });
 }
 
@@ -1227,6 +1286,7 @@ fn apply_explosion_damage(
             player.alive
                 && !player.spawn_protected()
                 && circle_hits_circle(player.x, player.y, PLAYER_RADIUS, x, y, radius)
+                && truth_nuke_hit_allowed(world, owner_id, player.id)
         })
         .filter_map(|player| {
             let distance = distance(player.x, player.y, x, y);
@@ -1246,6 +1306,20 @@ fn apply_explosion_damage(
             victim.slow_multiplier = victim.slow_multiplier.min(BAILEY_NUKE_SLOW_MULT);
         }
     }
+}
+
+/// When friendly fire is off: owner self-damage and zombies only (not other humans).
+fn truth_nuke_hit_allowed(world: &GameWorld, owner_id: u8, victim_id: u8) -> bool {
+    if world.friendly_fire {
+        return true;
+    }
+    if owner_id == victim_id {
+        return true;
+    }
+    world
+        .players
+        .get(&victim_id)
+        .is_some_and(|player| player.is_zombie)
 }
 
 pub fn blast_damage_at_distance(max_damage: u16, distance: f32, radius: f32) -> u16 {
@@ -1480,7 +1554,7 @@ mod tests {
     }
 
     #[test]
-    fn taj_reel_post_damages_while_friendly_fire_off() {
+    fn taj_reel_post_does_not_damage_other_humans_when_friendly_fire_off() {
         let mut world = test_world_with_taj();
         world.friendly_fire = false;
         world.add_player(
@@ -1494,6 +1568,7 @@ mod tests {
             victim.x = 420.0;
             victim.y = 300.0;
         }
+        let victim_hp_before = world.players.get(&1).unwrap().hp;
 
         post_taj_reel_shield(&mut world, 0);
         assert!(world
@@ -1505,7 +1580,67 @@ mod tests {
             process_projectile_effects(&mut world, 1.0 / 60.0);
         }
 
-        assert!(world.players.get(&1).unwrap().hp < crate::game::PLAYER_MAX_HP);
+        assert_eq!(world.players.get(&1).unwrap().hp, victim_hp_before);
+    }
+
+    #[test]
+    fn finn_boat_ram_rehit_cooldown() {
+        let mut world = GameWorld::default();
+        world.friendly_fire = true;
+        world.add_player(
+            0,
+            "Finn".to_string(),
+            "finn".to_string(),
+            "glock".to_string(),
+        );
+        world.add_player(
+            1,
+            "Victim".to_string(),
+            "sonny".to_string(),
+            "glock".to_string(),
+        );
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            crate::protocol::Gamemode::Deathmatch,
+            true,
+            false,
+            0,
+        );
+        if let Some(finn) = world.players.get_mut(&0) {
+            finn.spawn_protection = 0.0;
+            finn.x = 400.0;
+            finn.y = 400.0;
+            finn.boat_mode_until = FINN_BOAT_DURATION;
+            finn.boat_ram_cooldowns.clear();
+            finn.boat_ram_first_refund_done.clear();
+        }
+        if let Some(victim) = world.players.get_mut(&1) {
+            victim.spawn_protection = 0.0;
+            victim.x = 430.0;
+            victim.y = 400.0;
+        }
+
+        let hp_before = world.players.get(&1).unwrap().hp;
+        process_boat_rams(&mut world);
+        let hp_after_first = world.players.get(&1).unwrap().hp;
+        assert!(hp_after_first < hp_before);
+
+        process_boat_rams(&mut world);
+        assert_eq!(world.players.get(&1).unwrap().hp, hp_after_first);
+
+        process_active_modes(&mut world, 0.5);
+        process_boat_rams(&mut world);
+        assert_eq!(world.players.get(&1).unwrap().hp, hp_after_first);
+
+        process_active_modes(&mut world, 0.75);
+        if let Some(victim) = world.players.get_mut(&1) {
+            victim.x = 430.0;
+            victim.y = 400.0;
+        }
+        process_boat_rams(&mut world);
+        assert!(world.players.get(&1).unwrap().hp < hp_after_first);
     }
 
     #[test]

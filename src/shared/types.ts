@@ -166,7 +166,18 @@ export type EffectKind =
   | 'chi_channel'
   | 'reel_shield'
   | 'reel_post'
-  | 'boat_splash';
+  | 'boat_splash'
+  | 'malice_zone'
+  | 'food_tray'
+  | 'oil_slick';
+
+export interface DroneSnapshot {
+  id: number;
+  owner_id: number;
+  x: number;
+  y: number;
+  hp: number;
+}
 
 export interface WorldEffectSnapshot {
   id: number;
@@ -225,6 +236,9 @@ export interface PlayerSnapshot {
   reel_shield_remaining?: number;
   boat_mode_remaining?: number;
   hangover_remaining?: number;
+  kart_mode_remaining?: number;
+  steroid_buff_remaining?: number;
+  follower_drone_count?: number;
   reel_index?: number;
   active_weapon?: string;
   active_slot?: number;
@@ -243,6 +257,7 @@ export interface StateSnapshot {
   players: PlayerSnapshot[];
   bullets: BulletSnapshot[];
   effects: WorldEffectSnapshot[];
+  drones?: DroneSnapshot[];
   kill_feed: KillFeedEntry[];
   match_ended: boolean;
   winner_id: number | null;

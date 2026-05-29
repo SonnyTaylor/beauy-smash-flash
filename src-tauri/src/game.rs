@@ -33,18 +33,31 @@ pub const HORDE_SPAWN_STAGGER_SECS: f32 = 0.65;
 
 pub const LUCA_MAX_HP: u16 = 1;
 pub const LUCA_SPEED_MULT: f32 = 0.42;
+pub const JACOB_MAX_HP: u16 = 120;
+pub const JACOB_BASE_SPEED: f32 = 331.0;
 
-const BOT_CHARACTERS: [&str; 6] = ["sonny", "bailey", "jacob", "isaak", "taj", "finn"];
+const BOT_CHARACTERS: [&str; 12] = [
+    "sonny", "bailey", "jacob", "isaak", "taj", "finn", "sifan", "connor", "archie", "arthur",
+    "oscar", "vlad",
+];
 
 pub fn is_luca_character(character_id: &str) -> bool {
     character_id == "luca"
 }
 
 fn max_hp_for_character(character_id: &str) -> u16 {
-    if is_luca_character(character_id) {
-        LUCA_MAX_HP
-    } else {
-        PLAYER_MAX_HP
+    match character_id {
+        "luca" => LUCA_MAX_HP,
+        "jacob" => JACOB_MAX_HP,
+        "arthur" => crate::roster_expansion::ARTHUR_MAX_HP,
+        _ => PLAYER_MAX_HP,
+    }
+}
+
+fn base_move_speed_for_character(character_id: &str) -> f32 {
+    match character_id {
+        "jacob" => JACOB_BASE_SPEED,
+        _ => PLAYER_SPEED,
     }
 }
 
@@ -158,6 +171,22 @@ pub struct WorldEffect {
     pub max_life: f32,
     /// Server-only: players already damaged by a traveling reel post.
     pub hit_players: Vec<u8>,
+    /// Destructible zone HP (food tray) or unused for other zones.
+    pub zone_hp: f32,
+    pub zone_damage_accum: f32,
+    pub zone_heal_accum: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct FollowerDrone {
+    pub id: u32,
+    pub owner_id: u8,
+    pub x: f32,
+    pub y: f32,
+    pub hp: u16,
+    pub life: f32,
+    pub fire_cooldown: f32,
+    pub orbit_angle: f32,
 }
 
 impl WorldEffect {
@@ -184,6 +213,9 @@ impl WorldEffect {
             target_y: y,
             max_life: life,
             hit_players: Vec::new(),
+            zone_hp: 0.0,
+            zone_damage_accum: 0.0,
+            zone_heal_accum: 0.0,
         }
     }
 }
@@ -262,8 +294,15 @@ pub struct Player {
     pub reel_shield_hp: f32,
     pub reel_shield_angle: f32,
     pub boat_mode_until: f32,
-    pub boat_rammed: Vec<u8>,
+    pub boat_ram_cooldowns: HashMap<u8, f32>,
+    pub boat_ram_first_refund_done: Vec<u8>,
     pub hangover_until: f32,
+    pub steroid_buff_until: f32,
+    pub steroid_crash_until: f32,
+    pub damage_dealt_multiplier: f32,
+    pub jump_cut_boost_until: f32,
+    pub kart_mode_until: f32,
+    pub kart_oil_timer: f32,
     pub reel_index: u8,
     pub is_bot: bool,
     pub is_zombie: bool,
@@ -339,8 +378,15 @@ impl Player {
             reel_shield_hp: 0.0,
             reel_shield_angle: 0.0,
             boat_mode_until: 0.0,
-            boat_rammed: Vec::new(),
+            boat_ram_cooldowns: HashMap::new(),
+            boat_ram_first_refund_done: Vec::new(),
             hangover_until: 0.0,
+            steroid_buff_until: 0.0,
+            steroid_crash_until: 0.0,
+            damage_dealt_multiplier: 1.0,
+            jump_cut_boost_until: 0.0,
+            kart_mode_until: 0.0,
+            kart_oil_timer: 0.0,
             reel_index: 0,
             is_bot: false,
             is_zombie: false,
@@ -469,6 +515,9 @@ impl Player {
             reel_shield_remaining: self.reel_shield_remaining.max(0.0),
             boat_mode_remaining: self.boat_mode_until.max(0.0),
             hangover_remaining: self.hangover_until.max(0.0),
+            kart_mode_remaining: self.kart_mode_until.max(0.0),
+            steroid_buff_remaining: self.steroid_buff_until.max(0.0),
+            follower_drone_count: 0, // filled in snapshot()
             reel_index: if self.reel_shield_remaining > 0.0 {
                 self.reel_index
             } else {
@@ -585,9 +634,9 @@ impl Player {
             return;
         }
 
-        self.max_hp = PLAYER_MAX_HP;
-        if self.hp > PLAYER_MAX_HP {
-            self.hp = PLAYER_MAX_HP;
+        self.max_hp = max_hp_for_character(&self.character_id);
+        if self.hp > self.max_hp {
+            self.hp = self.max_hp;
         }
         let new_primary = weapons::primary_slot_for(&self.loadout_primary_weapon_id);
         self.primary = Some(new_primary);
@@ -635,8 +684,10 @@ pub struct GameWorld {
     ability_held: HashMap<u8, bool>,
     pub bullets: Vec<Bullet>,
     pub effects: Vec<WorldEffect>,
+    pub follower_drones: Vec<FollowerDrone>,
     pub next_bullet_id: u32,
     pub next_effect_id: u32,
+    pub next_drone_id: u32,
     pub kill_feed: Vec<KillFeedEntry>,
     pub score_limit: u16,
     pub time_limit_secs: u16,
@@ -710,8 +761,10 @@ impl GameWorld {
             ability_held: HashMap::new(),
             bullets: Vec::new(),
             effects: Vec::new(),
+            follower_drones: Vec::new(),
             next_bullet_id: 1,
             next_effect_id: 1,
+            next_drone_id: 1,
             kill_feed: Vec::new(),
             score_limit: 20,
             time_limit_secs: 0,
@@ -862,8 +915,10 @@ impl GameWorld {
         self.tick = 0;
         self.bullets.clear();
         self.effects.clear();
+        self.follower_drones.clear();
         self.kill_feed.clear();
         self.next_effect_id = 1;
+        self.next_drone_id = 1;
         self.score_limit = score_limit;
         self.time_limit_secs = time_limit_secs;
         self.match_elapsed = 0.0;
@@ -909,6 +964,7 @@ impl GameWorld {
             }
             self.reset_player_for_spawn(id, SPAWN_PROTECTION_TIME);
         }
+        self.follower_drones.clear();
 
         if gamemode == Gamemode::ZombieHorde {
             self.wave_intermission_timer = HORDE_INITIAL_DELAY;
@@ -1005,8 +1061,15 @@ impl GameWorld {
             player.reel_shield_remaining = 0.0;
             player.reel_shield_hp = 0.0;
             player.boat_mode_until = 0.0;
-            player.boat_rammed.clear();
+            player.boat_ram_cooldowns.clear();
+            player.boat_ram_first_refund_done.clear();
             player.hangover_until = 0.0;
+            player.steroid_buff_until = 0.0;
+            player.steroid_crash_until = 0.0;
+            player.damage_dealt_multiplier = 1.0;
+            player.jump_cut_boost_until = 0.0;
+            player.kart_mode_until = 0.0;
+            player.kart_oil_timer = 0.0;
             player.reel_index = 0;
         }
     }
@@ -1316,10 +1379,12 @@ impl GameWorld {
         abilities::passive_charge_tick(&mut self.players, &self.inputs, dt, self.dev_mode);
         abilities::tick_status_effects(&mut self.players, dt);
         abilities::tick_character_passives(&mut self.players, &self.inputs, dt);
+        crate::roster_expansion::tick_player_buffs(&mut self.players, dt);
         self.tick_poison_damage(dt);
         self.process_ability_input();
         abilities::process_abilities(self, dt);
         abilities::process_active_modes(self, dt);
+        crate::roster_expansion::process_world_systems(self, dt);
         abilities::process_projectile_effects(self, dt);
         abilities::process_effects(self, dt);
         self.process_horde(dt);
@@ -1367,20 +1432,22 @@ impl GameWorld {
             let input = apply_hack_inversion(player, &input);
             let (move_x, move_y) = normalize(input.dx, input.dy);
 
+            let base_speed = base_move_speed_for_character(&player.character_id);
+            let expansion_mult = crate::roster_expansion::movement_speed_multiplier(player);
             let speed = if player.slowed_until > 0.0 {
-                PLAYER_SPEED * player.slow_multiplier
+                base_speed * player.slow_multiplier * expansion_mult
             } else if abilities::in_boat_mode(player) {
-                PLAYER_SPEED * abilities::FINN_BOAT_SPEED_MULT
+                base_speed * abilities::FINN_BOAT_SPEED_MULT * expansion_mult
             } else if player.hangover_until > 0.0 {
-                PLAYER_SPEED * abilities::FINN_HANGOVER_SPEED_MULT
+                base_speed * abilities::FINN_HANGOVER_SPEED_MULT * expansion_mult
             } else if abilities::in_directors_cut(player) {
-                PLAYER_SPEED * abilities::JACOB_DIRECTORS_CUT_SPEED
+                base_speed * abilities::JACOB_DIRECTORS_CUT_SPEED * expansion_mult
             } else if player.is_zombie {
                 PLAYER_SPEED * ZOMBIE_SPEED_MULT
             } else if is_luca_character(&player.character_id) {
                 PLAYER_SPEED * LUCA_SPEED_MULT
             } else {
-                PLAYER_SPEED
+                base_speed * expansion_mult
             };
 
             let next_x = (player.x + move_x * speed * dt)
@@ -1542,7 +1609,7 @@ impl GameWorld {
                 .any(|player| !player.alive && player.respawn_timer > 0.0)
     }
 
-    fn damage_allowed(&self, owner_id: u8, victim_id: u8) -> bool {
+    pub(crate) fn damage_allowed(&self, owner_id: u8, victim_id: u8) -> bool {
         if self.friendly_fire {
             return true;
         }
@@ -1953,7 +2020,7 @@ impl GameWorld {
                     bullet.radius,
                     player.x,
                     player.y,
-                    PLAYER_RADIUS,
+                    crate::roster_expansion::hit_radius_for(player),
                 ) {
                     hits.push((
                         bullet.id,
@@ -1970,6 +2037,9 @@ impl GameWorld {
                 }
             }
         }
+
+        crate::roster_expansion::process_tray_bullet_hits(self);
+        crate::roster_expansion::process_drone_bullet_hits(self);
 
         if hits.is_empty() {
             return;
@@ -2169,6 +2239,12 @@ impl GameWorld {
             .get(&victim_id)
             .is_some_and(|player| player.is_zombie);
 
+        let killer_mult = self
+            .players
+            .get(&killer_id)
+            .map(|killer| killer.damage_dealt_multiplier)
+            .unwrap_or(1.0);
+
         let died = {
             let Some(victim) = self.players.get_mut(&victim_id) else {
                 return;
@@ -2186,7 +2262,7 @@ impl GameWorld {
             } else {
                 1.0
             };
-            let adjusted = ((damage as f32) * multiplier * hack_mult)
+            let adjusted = ((damage as f32) * multiplier * hack_mult * killer_mult)
                 .round()
                 .clamp(1.0, f32::from(u16::MAX)) as u16;
             victim.hp = victim.hp.saturating_sub(adjusted);
@@ -2230,10 +2306,17 @@ impl GameWorld {
             victim.reel_shield_remaining = 0.0;
             victim.reel_shield_hp = 0.0;
             victim.boat_mode_until = 0.0;
-            victim.boat_rammed.clear();
+            victim.boat_ram_cooldowns.clear();
+            victim.boat_ram_first_refund_done.clear();
             victim.hangover_until = 0.0;
+            victim.steroid_buff_until = 0.0;
+            victim.steroid_crash_until = 0.0;
+            victim.damage_dealt_multiplier = 1.0;
+            victim.jump_cut_boost_until = 0.0;
+            victim.kart_mode_until = 0.0;
         }
 
+        self.follower_drones.retain(|d| d.owner_id != victim_id);
         self.drop_player_weapons_on_death(victim_id);
 
         if let Some(killer) = self.players.get_mut(&killer_id) {
@@ -2360,8 +2443,32 @@ impl GameWorld {
     }
 
     pub fn snapshot(&self) -> StateSnapshot {
-        let mut players: Vec<_> = self.players.values().map(Player::snapshot).collect();
+        let mut players: Vec<_> = self
+            .players
+            .values()
+            .map(|player| {
+                let mut snap = player.snapshot();
+                snap.follower_drone_count = self
+                    .follower_drones
+                    .iter()
+                    .filter(|d| d.owner_id == player.id)
+                    .count() as u8;
+                snap
+            })
+            .collect();
         players.sort_by_key(|player| player.id);
+
+        let drones: Vec<crate::protocol::DroneSnapshot> = self
+            .follower_drones
+            .iter()
+            .map(|d| crate::protocol::DroneSnapshot {
+                id: d.id,
+                owner_id: d.owner_id,
+                x: d.x,
+                y: d.y,
+                hp: d.hp,
+            })
+            .collect();
 
         StateSnapshot {
             version: PROTOCOL_VERSION,
@@ -2375,6 +2482,7 @@ impl GameWorld {
                 .iter()
                 .map(abilities::effect_snapshot)
                 .collect(),
+            drones,
             kill_feed: self.kill_feed.clone(),
             match_ended: self.match_ended,
             winner_id: self.winner_id,
@@ -3032,17 +3140,19 @@ mod tests {
     }
 
     #[test]
-    fn bailey_truth_nuke_damages_even_when_friendly_fire_off() {
+    fn bailey_truth_nuke_does_not_damage_other_humans_when_friendly_fire_off() {
         use crate::abilities::ABILITY_CHARGE_MAX;
 
         let mut world = test_world_with_two_players();
         world.friendly_fire = false;
         {
             let caster = world.players.get_mut(&1).unwrap();
+            caster.character_id = "bailey".to_string();
             caster.ability_charge = ABILITY_CHARGE_MAX;
             caster.x = 400.0;
             caster.y = 400.0;
         }
+        let victim_hp_before = world.players.get(&0).unwrap().hp;
         {
             let victim = world.players.get_mut(&0).unwrap();
             victim.x = 700.0;
@@ -3065,7 +3175,7 @@ mod tests {
             world.tick(1.0 / 60.0);
         }
 
-        assert!(world.players.get(&0).unwrap().hp < PLAYER_MAX_HP);
+        assert_eq!(world.players.get(&0).unwrap().hp, victim_hp_before);
     }
 
     #[test]
