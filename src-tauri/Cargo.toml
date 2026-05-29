@@ -17,6 +17,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["net", "time", "macros", "rt-multi-thread", "sync"] }
 if-addrs = "0.13"
 socket2 = { version = "0.5", features = ["all"] }
+flate2 = "1"
 
 [features]
 default = ["custom-protocol"]

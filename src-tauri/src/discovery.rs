@@ -60,7 +60,7 @@ pub async fn discovery_loop(state: SharedState) {
 }
 
 pub async fn scan_servers(timeout_ms: u64) -> Result<Vec<ServerInfo>, String> {
-    let socket = bind_discovery_socket(0, true).await?;
+    let socket = Arc::new(bind_discovery_socket(0, true).await?);
     let local_ip = best_local_ipv4();
     let query = encode_discovery(&DiscoveryMessage::Query {
         version: PROTOCOL_VERSION,
@@ -68,21 +68,28 @@ pub async fn scan_servers(timeout_ms: u64) -> Result<Vec<ServerInfo>, String> {
     let targets = discovery_targets(local_ip);
 
     let deadline = Instant::now() + Duration::from_millis(timeout_ms.clamp(500, 3000));
+
+    // Fire queries from a background task so the main loop can listen continuously.
+    let query_task = {
+        let socket = socket.clone();
+        let targets = targets.clone();
+        let query = query.clone();
+        tokio::spawn(async move {
+            while Instant::now() < deadline {
+                for target in &targets {
+                    let _ = socket.send_to(&query, target).await;
+                }
+                tokio::time::sleep(Duration::from_millis(350)).await;
+            }
+        })
+    };
+
     let mut buf = [0u8; 2048];
     let mut servers = HashMap::<String, ServerInfo>::new();
-    let mut last_query = Instant::now() - Duration::from_secs(1);
 
     while Instant::now() < deadline {
-        if last_query.elapsed() >= Duration::from_millis(350) {
-            for target in &targets {
-                let _ = socket.send_to(&query, target).await;
-            }
-            last_query = Instant::now();
-        }
-
         let remaining = deadline.saturating_duration_since(Instant::now());
-        let recv_timeout = remaining.min(Duration::from_millis(200));
-        let result = tokio::time::timeout(recv_timeout, socket.recv_from(&mut buf)).await;
+        let result = tokio::time::timeout(remaining, socket.recv_from(&mut buf)).await;
         let Ok(Ok((n, addr))) = result else {
             continue;
         };
@@ -92,6 +99,8 @@ pub async fn scan_servers(timeout_ms: u64) -> Result<Vec<ServerInfo>, String> {
             servers.insert(format!("{}:{}", info.address, info.game_port), info);
         }
     }
+
+    query_task.abort();
 
     let mut servers: Vec<_> = servers.into_values().collect();
     servers.sort_by(|a, b| a.name.cmp(&b.name));

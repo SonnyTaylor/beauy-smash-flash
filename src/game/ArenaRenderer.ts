@@ -1794,7 +1794,7 @@ export class ArenaRenderer {
   private applyMap(map: MapSnapshot) {
     if (!map?.id) return;
 
-    const walls = getMap(map.id).walls;
+    const walls = map.walls;
     this.wallRects = walls.filter((wall) => wall.w > 0 && wall.h > 0);
     this.wallSegments = rectsToSegments(this.wallRects);
     const needsRebuild = map.id !== this.mapSignature || this.wallContainer.children.length === 0;
