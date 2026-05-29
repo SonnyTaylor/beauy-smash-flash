@@ -47,6 +47,8 @@ export interface LobbyPlayerSnapshot {
   ready: boolean;
   is_host: boolean;
   is_bot?: boolean;
+  /** 0 = unassigned, 1 = Alpha, 2 = Bravo */
+  team?: number;
 }
 
 export type Gamemode =
@@ -247,6 +249,7 @@ export interface PlayerSnapshot {
   secondary_weapon?: WeaponSlotSnapshot | null;
   is_bot?: boolean;
   is_zombie?: boolean;
+  team?: number;
 }
 
 export interface StateSnapshot {
@@ -261,6 +264,8 @@ export interface StateSnapshot {
   kill_feed: KillFeedEntry[];
   match_ended: boolean;
   winner_id: number | null;
+  winner_team?: number | null;
+  team_scores?: [number, number];
   score_limit: number;
   time_limit_secs: number;
   match_elapsed_secs: number;

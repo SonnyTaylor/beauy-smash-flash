@@ -1,6 +1,6 @@
 {
   "name": "beauy-smash-flash",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "scripts": {
     "dev": "bunx vite",

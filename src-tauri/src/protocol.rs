@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 11;
+pub const PROTOCOL_VERSION: u16 = 12;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -26,6 +26,9 @@ pub struct LobbyPlayerSnapshot {
     pub is_host: bool,
     #[serde(default)]
     pub is_bot: bool,
+    /// 0 = unassigned, 1 = Alpha, 2 = Bravo (team deathmatch).
+    #[serde(default)]
+    pub team: u8,
 }
 
 fn default_primary_weapon_id() -> String {
@@ -319,6 +322,8 @@ pub struct PlayerSnapshot {
     pub steroid_buff_remaining: f32,
     #[serde(default)]
     pub follower_drone_count: u8,
+    #[serde(default)]
+    pub team: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -373,6 +378,10 @@ pub struct StateSnapshot {
     pub wave_intermission_secs: f32,
     #[serde(default)]
     pub wave_goal: u16,
+    #[serde(default)]
+    pub winner_team: Option<u8>,
+    #[serde(default)]
+    pub team_scores: [u16; 2],
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -404,6 +413,9 @@ pub enum ClientMessage {
         config: LobbyConfig,
     },
     Input(InputSnapshot),
+    SetTeam {
+        team: u8,
+    },
     Leave,
 }
 

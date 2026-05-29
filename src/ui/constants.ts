@@ -1,8 +1,22 @@
 import type { Gamemode, WinCondition } from '../shared/types';
 
+export const TEAM_ALPHA = 1;
+export const TEAM_BRAVO = 2;
+
+export const TEAM_OPTIONS: Array<{ id: number; label: string; color: string }> = [
+  { id: TEAM_ALPHA, label: 'Alpha', color: '#ff5a5a' },
+  { id: TEAM_BRAVO, label: 'Bravo', color: '#5a9eff' },
+];
+
+export function teamLabel(team: number | undefined): string {
+  if (team === TEAM_ALPHA) return 'Alpha';
+  if (team === TEAM_BRAVO) return 'Bravo';
+  return 'Unassigned';
+}
+
 export const GAMEMODE_OPTIONS: Array<{ id: Gamemode; label: string; available: boolean }> = [
   { id: 'deathmatch', label: 'Deathmatch', available: true },
-  { id: 'team_deathmatch', label: 'Team Deathmatch', available: false },
+  { id: 'team_deathmatch', label: 'Team Deathmatch', available: true },
   { id: 'last_mate_standing', label: 'Last Mate Standing', available: true },
   { id: 'zombie_horde', label: 'Zombie Horde', available: true },
 ];

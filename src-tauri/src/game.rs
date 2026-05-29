@@ -306,6 +306,8 @@ pub struct Player {
     pub reel_index: u8,
     pub is_bot: bool,
     pub is_zombie: bool,
+    /// 0 = unassigned, 1 = Alpha, 2 = Bravo (team deathmatch).
+    pub team: u8,
 }
 
 impl Player {
@@ -390,6 +392,7 @@ impl Player {
             reel_index: 0,
             is_bot: false,
             is_zombie: false,
+            team: 0,
         }
     }
 
@@ -530,6 +533,7 @@ impl Player {
             secondary_weapon: self.secondary.as_ref().map(Self::slot_snapshot),
             is_bot: self.is_bot,
             is_zombie: self.is_zombie,
+            team: self.team,
         }
     }
 
@@ -698,6 +702,7 @@ pub struct GameWorld {
     pub fog_of_war: bool,
     pub match_ended: bool,
     pub winner_id: Option<u8>,
+    pub winner_team: Option<u8>,
     pub match_end_reason: Option<MatchEndReason>,
     pub weapon_pickups: Vec<WeaponPickup>,
     pub next_pickup_id: u32,
@@ -775,6 +780,7 @@ impl GameWorld {
             fog_of_war: false,
             match_ended: false,
             winner_id: None,
+            winner_team: None,
             match_end_reason: None,
             weapon_pickups: Vec::new(),
             next_pickup_id: 1,
@@ -932,6 +938,7 @@ impl GameWorld {
         self.fog_of_war = fog_of_war;
         self.match_ended = false;
         self.winner_id = None;
+        self.winner_team = None;
         self.match_end_reason = None;
         self.next_bullet_id = 1;
         self.weapon_pickups.clear();
@@ -944,6 +951,10 @@ impl GameWorld {
         self.next_zombie_id = ZOMBIE_ID_START;
         self.wave_goal = wave_goal;
         self.bot_nav.clear();
+
+        if gamemode == Gamemode::TeamDeathmatch {
+            self.balance_teams_for_match();
+        }
 
         let ids: Vec<u8> = self
             .players
@@ -981,6 +992,7 @@ impl GameWorld {
         self.match_elapsed = 0.0;
         self.match_ended = false;
         self.winner_id = None;
+        self.winner_team = None;
         self.match_end_reason = None;
         self.next_bullet_id = 1;
         self.weapon_pickups.clear();
@@ -1224,15 +1236,21 @@ impl GameWorld {
             return;
         }
 
-        let active = player.active_slot;
-        let replaced = player
-            .slot_state(active)
-            .cloned()
-            .unwrap_or_else(weapons::default_primary_slot);
-        if let Some(slot) = player.slot_state_mut(active) {
+        let swap_slot = if player.slot_state(player.active_slot).is_some() {
+            player.active_slot
+        } else if player.primary.is_some() {
+            ActiveSlot::Primary
+        } else {
+            ActiveSlot::Secondary
+        };
+        let Some(replaced) = player.slot_state(swap_slot).cloned() else {
+            return;
+        };
+        if let Some(slot) = player.slot_state_mut(swap_slot) {
             slot.weapon_id = pickup.weapon_id;
             slot.ammo = pickup.ammo;
         }
+        player.active_slot = swap_slot;
         self.weapon_pickups[index] = WeaponPickup {
             id: pickup.id,
             weapon_id: replaced.weapon_id.clone(),
@@ -1610,17 +1628,23 @@ impl GameWorld {
     }
 
     pub(crate) fn damage_allowed(&self, owner_id: u8, victim_id: u8) -> bool {
-        if self.friendly_fire {
-            return true;
-        }
         let Some(owner) = self.players.get(&owner_id) else {
             return false;
         };
         let Some(victim) = self.players.get(&victim_id) else {
             return false;
         };
-        // When FF is off: block human-vs-human, allow human↔zombie (horde co-op).
-        owner.is_zombie != victim.is_zombie
+        if owner.is_zombie != victim.is_zombie {
+            return true;
+        }
+        if self.gamemode == Gamemode::TeamDeathmatch && owner.team != 0 && owner.team == victim.team
+        {
+            return self.friendly_fire;
+        }
+        if !self.friendly_fire {
+            return false;
+        }
+        true
     }
 
     fn process_ability_input(&mut self) {
@@ -1733,7 +1757,8 @@ impl GameWorld {
             let input = apply_hack_inversion(player, &input);
 
             if weapon.can_reload() && input.reload && player.ammo < player.max_ammo {
-                reload_requests.push((player.id, weapon.reload_time));
+                let reload_time = weapons::reload_duration_for(weapon.id, player.ammo);
+                reload_requests.push((player.id, reload_time));
                 continue;
             }
 
@@ -1763,7 +1788,8 @@ impl GameWorld {
                 }
                 weapons::WeaponKind::Pellets { count, spread_deg } => {
                     if player.ammo == 0 {
-                        reload_requests.push((player.id, weapon.reload_time));
+                        let reload_time = weapons::reload_duration_for(weapon.id, player.ammo);
+                        reload_requests.push((player.id, reload_time));
                         continue;
                     }
                     player.ammo -= 1;
@@ -1792,7 +1818,8 @@ impl GameWorld {
                 }
                 weapons::WeaponKind::Bullet => {
                     if player.ammo == 0 {
-                        reload_requests.push((player.id, weapon.reload_time));
+                        let reload_time = weapons::reload_duration_for(weapon.id, player.ammo);
+                        reload_requests.push((player.id, reload_time));
                         continue;
                     }
                     player.ammo -= 1;
@@ -2395,6 +2422,40 @@ impl GameWorld {
             return;
         }
 
+        if self.gamemode == Gamemode::TeamDeathmatch {
+            let team_scores = self.team_scores();
+            let score_win = self.score_limit > 0
+                && (team_scores[0] >= self.score_limit || team_scores[1] >= self.score_limit);
+            let time_win =
+                self.time_limit_secs > 0 && self.match_elapsed >= self.time_limit_secs as f32;
+
+            let (should_end, reason) = match self.win_condition {
+                WinCondition::Kills => (score_win, score_win.then_some(MatchEndReason::Score)),
+                WinCondition::Time => (time_win, time_win.then_some(MatchEndReason::Time)),
+                WinCondition::Either => {
+                    if score_win {
+                        (true, Some(MatchEndReason::Score))
+                    } else if time_win {
+                        (true, Some(MatchEndReason::Time))
+                    } else {
+                        (false, None)
+                    }
+                }
+            };
+
+            if !should_end {
+                return;
+            }
+
+            self.match_ended = true;
+            self.match_end_reason = reason;
+            self.winner_team = self.leading_team_id();
+            self.winner_id = self
+                .winner_team
+                .and_then(|team| self.leading_player_on_team(team));
+            return;
+        }
+
         let score_win = self.score_limit > 0
             && self
                 .players
@@ -2426,6 +2487,98 @@ impl GameWorld {
         self.match_ended = true;
         self.match_end_reason = reason;
         self.winner_id = self.leading_player_id();
+    }
+
+    fn team_scores(&self) -> [u16; 2] {
+        let mut scores = [0u16, 0u16];
+        for player in self.players.values() {
+            if player.is_zombie || player.team == 0 || player.team > 2 {
+                continue;
+            }
+            let index = (player.team - 1) as usize;
+            scores[index] = scores[index].saturating_add(player.score);
+        }
+        scores
+    }
+
+    fn leading_team_id(&self) -> Option<u8> {
+        let scores = self.team_scores();
+        if scores[0] == scores[1] {
+            return None;
+        }
+        Some(if scores[0] > scores[1] { 1 } else { 2 })
+    }
+
+    fn leading_player_on_team(&self, team: u8) -> Option<u8> {
+        self.players
+            .values()
+            .filter(|player| !player.is_zombie && player.team == team)
+            .max_by(|a, b| {
+                a.score
+                    .cmp(&b.score)
+                    .then(a.kills.cmp(&b.kills))
+                    .then(b.deaths.cmp(&a.deaths))
+                    .then(a.id.cmp(&b.id))
+            })
+            .map(|player| player.id)
+    }
+
+    pub fn assign_team(&mut self, player_id: u8, team: u8) -> Result<(), String> {
+        if team > 2 {
+            return Err("Team must be 0 (auto), 1 (Alpha), or 2 (Bravo).".to_string());
+        }
+        let Some(player) = self.players.get_mut(&player_id) else {
+            return Err("Player not found.".to_string());
+        };
+        if player.is_zombie {
+            return Err("Cannot assign teams to zombies.".to_string());
+        }
+        player.team = team;
+        Ok(())
+    }
+
+    pub fn balance_teams_for_match(&mut self) {
+        let ids: Vec<u8> = self
+            .players
+            .keys()
+            .copied()
+            .filter(|id| !self.players[id].is_zombie)
+            .collect();
+        for id in ids {
+            if self.players[&id].team != 0 {
+                continue;
+            }
+            let count_1 = self
+                .players
+                .values()
+                .filter(|player| !player.is_zombie && player.team == 1)
+                .count();
+            let count_2 = self
+                .players
+                .values()
+                .filter(|player| !player.is_zombie && player.team == 2)
+                .count();
+            let team = if count_1 <= count_2 { 1 } else { 2 };
+            self.players.get_mut(&id).expect("player id").team = team;
+        }
+    }
+
+    pub fn next_open_team_id(&self) -> u8 {
+        let count_1 = self
+            .players
+            .values()
+            .filter(|player| !player.is_zombie && player.team == 1)
+            .count();
+        let count_2 = self
+            .players
+            .values()
+            .filter(|player| !player.is_zombie && player.team == 2)
+            .count();
+        if count_1 <= count_2 {
+            1
+        } else {
+            2
+        }
     }
 
     fn leading_player_id(&self) -> Option<u8> {
@@ -2486,6 +2639,8 @@ impl GameWorld {
             kill_feed: self.kill_feed.clone(),
             match_ended: self.match_ended,
             winner_id: self.winner_id,
+            winner_team: self.winner_team,
+            team_scores: self.team_scores(),
             score_limit: self.score_limit,
             time_limit_secs: self.time_limit_secs,
             match_elapsed_secs: self.match_elapsed,
@@ -3448,6 +3603,36 @@ mod tests {
         assert!(world.weapon_pickups.is_empty());
         assert_eq!(player.secondary.as_ref().unwrap().ammo, 8);
         assert_eq!(player.active_slot, ActiveSlot::Secondary);
+    }
+
+    #[test]
+    fn pickup_swaps_active_weapon_when_both_slots_full() {
+        let mut world = test_world_with_two_players();
+        {
+            let player = world.players.get_mut(&0).unwrap();
+            player.secondary = Some(WeaponSlotState {
+                weapon_id: "glock".to_string(),
+                ammo: 5,
+            });
+            player.active_slot = ActiveSlot::Primary;
+        }
+        world.weapon_pickups.push(WeaponPickup {
+            id: 1,
+            weapon_id: "shotgun".to_string(),
+            x: world.players.get(&0).unwrap().x,
+            y: world.players.get(&0).unwrap().y,
+            ammo: 3,
+            max_ammo: 5,
+            life: WEAPON_PICKUP_LIFETIME_SECS,
+        });
+
+        world.try_pickup_weapon(0);
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.primary.as_ref().unwrap().weapon_id, "shotgun");
+        assert_eq!(player.primary.as_ref().unwrap().ammo, 3);
+        assert_eq!(world.weapon_pickups.len(), 1);
+        assert_eq!(world.weapon_pickups[0].weapon_id, "glock");
     }
 
     #[test]

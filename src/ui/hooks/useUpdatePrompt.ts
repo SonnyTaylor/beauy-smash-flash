@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { isVersionNewer } from '../../shared/versionCompare';
 
 export type UpdatePromptState =
   | { status: 'idle' }
@@ -49,7 +50,7 @@ export function useUpdatePrompt(enabled: boolean, currentVersion: string) {
       try {
         const update = await check();
         setChecked(true);
-        if (!update) {
+        if (!update || !isVersionNewer(update.version, currentVersion)) {
           setLatestVersion(currentVersion);
           setUpToDate(true);
           setPendingUpdate(null);

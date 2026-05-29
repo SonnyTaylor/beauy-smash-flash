@@ -123,12 +123,12 @@ const SCAR: WeaponDef = WeaponDef {
     id: "scar",
     name: "SCAR",
     kind: WeaponKind::Bullet,
-    damage: 20,
-    fire_rate: 0.11,
-    bullet_speed: 800.0,
-    bullet_life: 2.1,
+    damage: 17,
+    fire_rate: 0.13,
+    bullet_speed: 780.0,
+    bullet_life: 2.0,
     max_ammo: 30,
-    reload_time: 2.4,
+    reload_time: 2.5,
     bullet_radius: 4.0,
     muzzle_offset: 34.0,
     splash_radius: 0.0,
@@ -146,7 +146,7 @@ const SHOTGUN: WeaponDef = WeaponDef {
     damage: 10,
     fire_rate: 0.78,
     bullet_speed: 620.0,
-    bullet_life: 0.38,
+    bullet_life: 0.48,
     max_ammo: 5,
     reload_time: 2.5,
     bullet_radius: 3.5,
@@ -234,19 +234,19 @@ const FECES: WeaponDef = WeaponDef {
     id: "feces",
     name: "Tom Pearl's Shit",
     kind: WeaponKind::Bullet,
-    damage: 5,
-    fire_rate: 0.52,
-    bullet_speed: 390.0,
-    bullet_life: 1.4,
+    damage: 8,
+    fire_rate: 0.46,
+    bullet_speed: 420.0,
+    bullet_life: 1.5,
     max_ammo: 18,
-    reload_time: 1.7,
+    reload_time: 1.5,
     bullet_radius: 6.0,
     muzzle_offset: 22.0,
     splash_radius: 0.0,
     splash_damage: 0,
     on_hit: WeaponOnHit::Poison {
-        dps: 5,
-        duration: 4.0,
+        dps: 8,
+        duration: 5.0,
     },
 };
 
@@ -441,6 +441,23 @@ pub fn max_ammo_for(id: &str) -> u8 {
     get_or_default(id).max_ammo
 }
 
+/// Reload duration scales with missing shells for the shotgun; other weapons use full mag time.
+pub fn reload_duration_for(weapon_id: &str, current_ammo: u8) -> f32 {
+    let weapon = get_or_default(weapon_id);
+    if !weapon.can_reload() {
+        return 0.0;
+    }
+    let missing = weapon.max_ammo.saturating_sub(current_ammo);
+    if missing == 0 {
+        return 0.0;
+    }
+    if weapon.id == "shotgun" {
+        weapon.reload_time * (missing as f32 / weapon.max_ammo as f32)
+    } else {
+        weapon.reload_time
+    }
+}
+
 pub fn registry_map() -> HashMap<&'static str, &'static WeaponDef> {
     REGISTRY.iter().map(|weapon| (weapon.id, weapon)).collect()
 }
@@ -454,6 +471,14 @@ mod tests {
         let slot = default_primary_slot();
         assert_eq!(slot.weapon_id, "glock");
         assert_eq!(slot.ammo, GLOCK.max_ammo);
+    }
+
+    #[test]
+    fn shotgun_reload_scales_with_missing_shells() {
+        assert!((reload_duration_for("shotgun", 0) - 2.5).abs() < 0.01);
+        assert!((reload_duration_for("shotgun", 4) - 0.5).abs() < 0.01);
+        assert_eq!(reload_duration_for("shotgun", 5), 0.0);
+        assert!((reload_duration_for("glock", 0) - 1.2).abs() < 0.01);
     }
 
     #[test]

@@ -91,13 +91,12 @@ Releases: sync app version in the three files above, tag `vX.Y.Z`, push tag — 
 - The game should feel fullscreen and modern, not boxed into the old Python resolution.
 - Python limits like player count, fixed resolution, and single weapon are not hard requirements.
 - The old guide at `C:\Users\Sonny Taylor\Code\local-game\GAME_GUIDE.md` is useful for characters, powers, maps, and vibe.
-- **Deathmatch** and **Last Mate Standing** (no respawns) are playable. **TDM** is stubbed in lobby UI as "Soon".
+- **Deathmatch**, **Team Deathmatch**, and **Last Mate Standing** (no respawns) are playable.
 - **Fog of war** is client-rendered (`src/game/fog/visibility.ts`, toggled in lobby).
 - **Friendly fire off** means no player damage (practice mode), not team FF.
 
 ## Planned Features (not yet implemented)
 
-- Team Deathmatch gamemode
 - Cosmetics, bots/zombie mode, more maps and visual map polish
 - Dash input (in protocol, not wired to sim)
 - Per-weapon SFX variety beyond the shared gunshot sample

@@ -124,6 +124,7 @@ impl AppState {
                 },
                 is_host: player.id == 0,
                 is_bot: player.is_bot,
+                team: player.team,
             })
             .collect();
         players.sort_by_key(|player| player.id);
@@ -193,6 +194,10 @@ impl AppState {
                 character_id,
                 "glock".to_string(),
             );
+            if self.lobby_config.gamemode == Gamemode::TeamDeathmatch {
+                let team = self.world.next_open_team_id();
+                let _ = self.world.assign_team(id, team);
+            }
             self.bot_ids.insert(id);
             self.ready_players.insert(id);
         }
@@ -317,6 +322,10 @@ async fn handle_host_message(
                     });
                     st.world
                         .add_player(id, name, character_id, primary_weapon_id);
+                    if st.lobby_config.gamemode == Gamemode::TeamDeathmatch {
+                        let team = st.world.next_open_team_id();
+                        let _ = st.world.assign_team(id, team);
+                    }
                     st.ready_players.remove(&id);
                     ServerMessage::Assigned {
                         id,
@@ -424,6 +433,26 @@ async fn handle_host_message(
                 });
             if let Some(player_id) = player_id {
                 st.world.set_input(player_id, input);
+            }
+        }
+        ClientMessage::SetTeam { team } => {
+            let mut st = state.lock().await;
+            if st.match_started {
+                return;
+            }
+            let player_id = st
+                .peers
+                .iter_mut()
+                .find(|peer| peer.addr == addr)
+                .map(|peer| {
+                    peer.last_seen = Instant::now();
+                    peer.id
+                });
+            if let Some(player_id) = player_id {
+                if team > 2 {
+                    return;
+                }
+                let _ = st.world.assign_team(player_id, team);
             }
         }
         ClientMessage::Leave => {

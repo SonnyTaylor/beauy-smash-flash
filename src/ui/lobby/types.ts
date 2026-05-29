@@ -6,4 +6,5 @@ export type LobbyPlayerView = {
   ready: boolean;
   is_host: boolean;
   is_bot?: boolean;
+  team?: number;
 };

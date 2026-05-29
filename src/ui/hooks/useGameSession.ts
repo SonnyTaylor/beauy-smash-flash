@@ -322,6 +322,14 @@ export function useGameSession() {
     }
   }
 
+  async function setPlayerTeam(playerId: number, team: number) {
+    try {
+      await client.setPlayerTeam(playerId, team);
+    } catch (caught) {
+      setError(String(caught));
+    }
+  }
+
   async function startMatch() {
     setIsBusy(true);
     setError(null);
@@ -623,6 +631,7 @@ export function useGameSession() {
     updateReady,
     updateName,
     updateLobbyConfig,
+    setPlayerTeam,
     startMatch,
     leaveLobby,
     leaveGame: leaveLobby,

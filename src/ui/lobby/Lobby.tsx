@@ -25,6 +25,7 @@ export function Lobby({
   onReadyChange,
   onNameChange,
   onConfigChange,
+  onTeamChange,
   onLeave,
   onChangeLoadout,
   onStart,
@@ -41,12 +42,14 @@ export function Lobby({
   onReadyChange: (ready: boolean) => void;
   onNameChange: (name: string) => void;
   onConfigChange: (config: LobbyConfig) => void;
+  onTeamChange: (playerId: number, team: number) => void;
   onLeave: () => void;
   onChangeLoadout: () => void;
   onStart: () => void;
 }) {
   const isHost = sessionKind === 'host';
   const config = lobby?.config ?? DEFAULT_LOBBY_CONFIG;
+  const isTeamDeathmatch = config.gamemode === 'team_deathmatch';
 
   const lobbyPlayers: LobbyPlayerView[] = (lobby?.players ?? [
     {
@@ -129,8 +132,11 @@ export function Lobby({
                 key={player.id}
                 player={player}
                 isMe={player.id === myId}
+                isHost={isHost}
+                showTeamPicker={isTeamDeathmatch}
                 onNameSubmit={(next) => onNameChange(next)}
                 onReadyToggle={() => onReadyChange(!isReady)}
+                onTeamChange={(team) => onTeamChange(player.id, team)}
               />
             ))}
             {Array.from({ length: emptySlotCount }).map((_, index) => (

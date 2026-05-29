@@ -108,6 +108,10 @@ export class TauriGameClient {
     await invoke('update_lobby_config', { config });
   }
 
+  async setPlayerTeam(playerId: number, team: number): Promise<void> {
+    await invoke('set_player_team', { playerId, team });
+  }
+
   async setBotCount(count: number): Promise<void> {
     await invoke('set_bot_count', { count });
   }

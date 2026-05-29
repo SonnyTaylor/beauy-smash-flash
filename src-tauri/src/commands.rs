@@ -138,6 +138,8 @@ pub async fn join_game(
                     kill_feed: Vec::new(),
                     match_ended: false,
                     winner_id: None,
+                    winner_team: None,
+                    team_scores: [0, 0],
                     score_limit: lobby_config.score_limit,
                     time_limit_secs: lobby_config.time_limit_secs,
                     match_elapsed_secs: 0.0,
@@ -365,6 +367,49 @@ pub async fn set_name(name: String, state: tauri::State<'_, SharedState>) -> Res
 }
 
 #[tauri::command]
+pub async fn set_player_team(
+    player_id: u8,
+    team: u8,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let (socket, host_addr, mode, my_id) = {
+        let mut st = state.lock().await;
+        if st.match_started {
+            return Err("Cannot change teams during a match.".to_string());
+        }
+        if st.lobby_config.gamemode != crate::protocol::Gamemode::TeamDeathmatch {
+            return Err("Team selection is only for Team Deathmatch.".to_string());
+        }
+        match st.mode {
+            SessionMode::Host => {
+                st.world.assign_team(player_id, team)?;
+            }
+            SessionMode::Client => {
+                if player_id != st.my_id {
+                    return Err("Only the host can change other players' teams.".to_string());
+                }
+            }
+            SessionMode::Idle => return Err("Not in a session.".to_string()),
+        }
+        (st.socket.clone(), st.host_addr, st.mode.clone(), st.my_id)
+    };
+
+    if mode == SessionMode::Client {
+        if let (Some(socket), Some(host_addr)) = (socket, host_addr) {
+            let bytes = encode_client(&ClientMessage::SetTeam { team })?;
+            socket
+                .send_to(&bytes, host_addr)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
+    } else if mode == SessionMode::Host {
+        let _ = (player_id, my_id);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn update_lobby_config(
     config: LobbyConfig,
     state: tauri::State<'_, SharedState>,
@@ -385,6 +430,9 @@ pub async fn update_lobby_config(
     if !st.match_started {
         st.world.set_map(&map_id);
         st.world.reposition_players_to_spawns();
+        if st.lobby_config.gamemode == crate::protocol::Gamemode::TeamDeathmatch {
+            st.world.balance_teams_for_match();
+        }
     }
     Ok(())
 }

@@ -1,5 +1,6 @@
 import { type CSSProperties } from 'react';
 import { getWeapon } from '../../content/weapons';
+import { TEAM_OPTIONS } from '../constants';
 import { getCharacter, rgbCss } from '../character';
 import { EditableName } from '../components/EditableName';
 import type { LobbyPlayerView } from './types';
@@ -7,17 +8,25 @@ import type { LobbyPlayerView } from './types';
 export function PlayerSlot({
   player,
   isMe,
+  isHost,
+  showTeamPicker,
   onNameSubmit,
   onReadyToggle,
+  onTeamChange,
 }: {
   player: LobbyPlayerView;
   isMe: boolean;
+  isHost: boolean;
+  showTeamPicker: boolean;
   onNameSubmit: (name: string) => void;
   onReadyToggle: () => void;
+  onTeamChange: (team: number) => void;
 }) {
   const character = getCharacter(player.character_id);
   const weapon = getWeapon(player.primary_weapon_id);
   const accent = rgbCss(character.color);
+  const canEditTeam = showTeamPicker && (isHost || isMe);
+  const teamChoice = player.team ?? 0;
 
   return (
     <div
@@ -48,6 +57,27 @@ export function PlayerSlot({
         <span className="slot-ability">{character.abilityName}</span>
         <span className="slot-ability-desc">{character.abilityDescription}</span>
         <span className="slot-weapon">{weapon.name}</span>
+        {showTeamPicker && (
+          <div className="slot-team-row" role="group" aria-label={`Team for ${player.name}`}>
+            {TEAM_OPTIONS.map((option) => {
+              const selected = teamChoice === option.id;
+              const disabled = !canEditTeam;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`slot-team-btn ${selected ? 'is-selected' : ''}`}
+                  style={{ '--team-color': option.color } as CSSProperties}
+                  disabled={disabled}
+                  aria-pressed={selected}
+                  onClick={() => onTeamChange(option.id)}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {isMe ? (

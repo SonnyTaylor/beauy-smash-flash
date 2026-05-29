@@ -541,7 +541,7 @@ export class ArenaRenderer {
           effect.radius,
         );
       } else if (effect.kind === 'chi_channel') {
-        this.vfx.emitChiChannel(effect.x, effect.y, effect.radius);
+        // Channel ring is drawn on the Isaak player aura (no per-tick VFX spawn).
       } else if (effect.kind === 'boat_splash') {
         this.vfx.emitBoatSplash(effect.x, effect.y, effect.radius);
       } else if (effect.kind === 'malice_zone') {

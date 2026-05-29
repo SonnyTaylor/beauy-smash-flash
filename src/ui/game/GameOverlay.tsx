@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterDefinition, GameSettings, PlayerSnapshot, StateSnapshot } from '../../shared/types';
-import { formatMatchTime } from '../constants';
+import { formatMatchTime, teamLabel } from '../constants';
 import { getCharacter } from '../character';
 import { isLucaCharacter } from '../../content/characters';
 import { MatchScoreboard } from './MatchScoreboard';
@@ -35,6 +35,14 @@ function matchGoalLabel(state: StateSnapshot | null): string {
       return `Horde survival · ${formatMatchTime(state.time_limit_secs)}`;
     }
     return 'Survive the zombie horde';
+  }
+  if (state.gamemode === 'team_deathmatch') {
+    const goal =
+      state.score_limit > 0 ? `first team to ${state.score_limit} kills` : 'most team kills';
+    if (state.win_condition === 'time' && state.time_limit_secs > 0) {
+      return `Team Deathmatch · ${goal} or ${formatMatchTime(state.time_limit_secs)}`;
+    }
+    return `Team Deathmatch · ${goal}`;
   }
   if (state.gamemode === 'last_mate_standing') {
     if (state.time_limit_secs > 0) {
@@ -183,7 +191,15 @@ export function GameOverlay({
   const inBoatMode = (me?.boat_mode_remaining ?? 0) > 0;
   const inKartMode = (me?.kart_mode_remaining ?? 0) > 0;
   const isLastMateStanding = state?.gamemode === 'last_mate_standing';
+  const isTeamDeathmatch = state?.gamemode === 'team_deathmatch';
   const isZombieHorde = state?.gamemode === 'zombie_horde';
+  const teamScores = state?.team_scores ?? [0, 0];
+  const matchWinnerTitle =
+    isTeamDeathmatch && state?.winner_team
+      ? `${teamLabel(state.winner_team)} wins`
+      : winner
+        ? `${winner.name} wins`
+        : 'Draw';
   const hordeWave = state?.wave ?? 0;
   const hordeRemaining = state?.zombies_remaining ?? 0;
   const hordeIntermission = state?.wave_intermission_secs ?? 0;
@@ -773,7 +789,12 @@ export function GameOverlay({
           <div className="game-over-panel game-over-panel-wide">
             <div className="game-over-body">
               <p className="screen-kicker">Match Over</p>
-              <h2>{winner ? `${winner.name} wins` : 'Draw'}</h2>
+              <h2>{matchWinnerTitle}</h2>
+              {isTeamDeathmatch && (
+                <p className="game-over-subtitle">
+                  Alpha {teamScores[0]} — Bravo {teamScores[1]}
+                </p>
+              )}
               <p className="game-over-subtitle">{endReasonLabel(state)}</p>
 
               <Podium players={humanPlayers} winnerId={state?.winner_id ?? null} />

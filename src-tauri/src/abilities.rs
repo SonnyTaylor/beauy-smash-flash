@@ -61,7 +61,6 @@ const ISAAC_CHI_RANGE: f32 = 900.0;
 const ISAAC_CHI_SLOW_DURATION: f32 = 1.0;
 const ISAAC_CHI_SLOW_MULT: f32 = 0.65;
 const ISAAC_CHI_VFX_LIFE: f32 = 0.4;
-const ISAAC_CHI_CHANNEL_VFX_LIFE: f32 = 0.25;
 
 pub const TAJ_REEL_COUNT: u8 = 5;
 
@@ -314,7 +313,6 @@ pub fn process_abilities(world: &mut GameWorld, dt: f32) {
                     player.ability_aim_y = dir_y;
                 }
             }
-            emit_isaak_channel_pulse(world, player_id);
         }
 
         let new_windup = windup - dt;
@@ -818,27 +816,6 @@ fn fire_isaak_chi_blast(world: &mut GameWorld, player_id: u8, dir_x: f32, dir_y:
         player.stillness_stacks = 0;
         player.stillness_timer = 0.0;
     }
-}
-
-fn emit_isaak_channel_pulse(world: &mut GameWorld, player_id: u8) {
-    let Some(player) = world.players.get(&player_id) else {
-        return;
-    };
-    if player.ability_windup <= 0.0 {
-        return;
-    }
-    let id = world.next_effect_id;
-    world.next_effect_id += 1;
-    let pulse = 28.0 + (ISAAC_CHI_WINDUP - player.ability_windup) * 18.0;
-    world.effects.push(WorldEffect::burst(
-        id,
-        EffectKind::ChiChannel,
-        player.x,
-        player.y,
-        pulse,
-        ISAAC_CHI_CHANNEL_VFX_LIFE,
-        player_id,
-    ));
 }
 
 fn find_reel_post_contacts(

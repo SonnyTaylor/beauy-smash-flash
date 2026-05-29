@@ -89,6 +89,7 @@ export function App() {
               onReadyChange={(ready) => void session.updateReady(ready)}
               onNameChange={(name) => void session.updateName(name)}
               onConfigChange={(config) => void session.updateLobbyConfig(config)}
+              onTeamChange={(playerId, team) => void session.setPlayerTeam(playerId, team)}
               onLeave={session.leaveLobby}
               onChangeLoadout={session.openLoadoutFromSession}
               onStart={() => void session.startMatch()}

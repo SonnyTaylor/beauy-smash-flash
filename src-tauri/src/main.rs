@@ -46,7 +46,8 @@ fn main() {
             commands::rematch,
             commands::set_match_paused,
             commands::send_input,
-            commands::set_bot_count
+            commands::set_bot_count,
+            commands::set_player_team
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
