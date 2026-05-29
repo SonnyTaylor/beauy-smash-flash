@@ -16,6 +16,7 @@
     "assets:weapon": "python scripts/process-weapon.py",
     "tauri": "bunx tauri",
     "tauri:build": "bunx tauri build",
+    "tauri:build:local": "bun scripts/build-local.ts",
     "assets:icon": "python scripts/generate-app-icon.py && bunx tauri icon branding/app-icon.png",
     "assets:heads": "python scripts/generate-head-placeholders.py",
     "assets:head": "python scripts/import-head.py",
