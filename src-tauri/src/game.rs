@@ -81,6 +81,16 @@ pub struct BotNavState {
     pub recover_secs: f32,
     pub recover_dx: f32,
     pub recover_dy: f32,
+    pub target_id: Option<u8>,
+    pub target_reacquire_timer: f32,
+    pub aim_jitter_x: f32,
+    pub aim_jitter_y: f32,
+    pub aim_jitter_timer: f32,
+    pub aim_smoothed_x: f32,
+    pub aim_smoothed_y: f32,
+    pub path_subgoal_x: f32,
+    pub path_subgoal_y: f32,
+    pub path_cooldown: f32,
 }
 
 const PALETTE: [[u8; 3]; 8] = [
@@ -100,6 +110,7 @@ pub struct GameMap {
     pub name: String,
     pub walls: Vec<Rect>,
     pub spawns: Vec<(f32, f32)>,
+    pub nav_grid: Option<crate::bots::pathfinding::NavGrid>,
 }
 
 impl GameMap {
@@ -1725,10 +1736,6 @@ impl GameWorld {
     }
 
     fn tick_poison_damage(&mut self, dt: f32) {
-        if !self.friendly_fire {
-            return;
-        }
-
         let mut damage_events: Vec<(u8, u8, u16)> = Vec::new();
         for player in self.players.values_mut() {
             if !player.alive || player.poison_until <= 0.0 || player.poison_dps == 0 {
@@ -1748,7 +1755,9 @@ impl GameWorld {
         }
 
         for (killer_id, victim_id, damage) in damage_events {
-            self.apply_damage(killer_id, victim_id, damage);
+            if self.damage_allowed(killer_id, victim_id) {
+                self.apply_damage(killer_id, victim_id, damage);
+            }
         }
     }
 
@@ -2192,10 +2201,6 @@ impl GameWorld {
         radius: f32,
         damage: u16,
     ) {
-        if !self.friendly_fire {
-            return;
-        }
-
         let id = self.next_effect_id;
         self.next_effect_id += 1;
         self.effects.push(WorldEffect::burst(
@@ -2222,7 +2227,9 @@ impl GameWorld {
             .collect();
 
         for victim_id in victims {
-            self.apply_damage(owner_id, victim_id, damage);
+            if self.damage_allowed(owner_id, victim_id) {
+                self.apply_damage(owner_id, victim_id, damage);
+            }
         }
     }
 

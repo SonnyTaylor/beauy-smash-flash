@@ -267,11 +267,13 @@ pub fn load_map(map_id: &str, width: f32, height: f32) -> GameMap {
     });
 
     let scaled = scale_compiled(compiled, width, height);
+    let nav_grid = crate::bots::pathfinding::NavGrid::new(width, height, &scaled.walls);
     GameMap {
         id: scaled.id,
         name: scaled.name,
         walls: scaled.walls,
         spawns: scaled.spawns,
+        nav_grid: Some(nav_grid),
     }
 }
 

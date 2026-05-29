@@ -1,9 +1,16 @@
 use crate::game::{circle_hits_walls, normalize, BotNavState, GameWorld, PLAYER_RADIUS};
 
+mod pathfinding_local {
+    pub use super::super::pathfinding::*;
+}
+
 const STEP_PROBE: f32 = 34.0;
 const STUCK_MOVE_EPS: f32 = 1.25;
 const STUCK_TIME_THRESHOLD: f32 = 0.4;
 const RECOVERY_TIME: f32 = 0.8;
+const PATH_REPLAN_INTERVAL: f32 = 0.25;
+const SEPARATION_RADIUS: f32 = 90.0;
+const SEPARATION_WEIGHT: f32 = 0.75;
 
 pub fn has_clear_path(world: &GameWorld, x1: f32, y1: f32, x2: f32, y2: f32) -> bool {
     let dx = x2 - x1;
@@ -36,8 +43,45 @@ pub fn navigate_toward(
     let mut nav = world.bot_nav.get(&id).copied().unwrap_or(BotNavState {
         last_x: x,
         last_y: y,
+        path_subgoal_x: target_x,
+        path_subgoal_y: target_y,
         ..BotNavState::default()
     });
+
+    // Re-plan subgoal periodically
+    nav.path_cooldown -= dt;
+    if nav.path_cooldown <= 0.0 {
+        nav.path_cooldown = PATH_REPLAN_INTERVAL;
+        if let Some(ref grid) = world.map.nav_grid {
+            if !has_clear_path(world, x, y, target_x, target_y) {
+                if let Some(path) = pathfinding_local::find_path(grid, x, y, target_x, target_y) {
+                    if let Some(&(wx, wy)) = path.iter().find(|&&(wx, wy)| {
+                        let dx = wx - x;
+                        let dy = wy - y;
+                        dx * dx + dy * dy > 50.0 * 50.0
+                    }) {
+                        nav.path_subgoal_x = wx;
+                        nav.path_subgoal_y = wy;
+                    } else if let Some(&(wx, wy)) = path.last() {
+                        nav.path_subgoal_x = wx;
+                        nav.path_subgoal_y = wy;
+                    }
+                } else {
+                    nav.path_subgoal_x = target_x;
+                    nav.path_subgoal_y = target_y;
+                }
+            } else {
+                nav.path_subgoal_x = target_x;
+                nav.path_subgoal_y = target_y;
+            }
+        } else {
+            nav.path_subgoal_x = target_x;
+            nav.path_subgoal_y = target_y;
+        }
+    }
+
+    let goal_x = nav.path_subgoal_x;
+    let goal_y = nav.path_subgoal_y;
 
     let moved = ((x - nav.last_x).powi(2) + (y - nav.last_y).powi(2)).sqrt();
     nav.last_x = x;
@@ -49,10 +93,10 @@ pub fn navigate_toward(
             (nav.recover_dx, nav.recover_dy)
         } else {
             nav.recover_secs = 0.0;
-            pick_best_direction(world, x, y, target_x, target_y)
+            pick_best_direction(world, x, y, goal_x, goal_y)
         }
     } else {
-        let desired = pick_best_direction(world, x, y, target_x, target_y);
+        let desired = pick_best_direction(world, x, y, goal_x, goal_y);
         let wants_move = desired.0.abs() > 0.001 || desired.1.abs() > 0.001;
 
         if wants_move && moved < STUCK_MOVE_EPS {
@@ -62,7 +106,7 @@ pub fn navigate_toward(
         }
 
         if nav.stuck_secs >= STUCK_TIME_THRESHOLD {
-            let (rx, ry) = pick_recovery_direction(world, x, y, target_x, target_y);
+            let (rx, ry) = pick_recovery_direction(world, x, y, goal_x, goal_y);
             nav.recover_dx = rx;
             nav.recover_dy = ry;
             nav.recover_secs = RECOVERY_TIME;
@@ -73,8 +117,34 @@ pub fn navigate_toward(
         }
     };
 
+    // Player separation
+    let (sep_x, sep_y) = separation_force(world, id, x, y);
+    let blended_x = direction.0 + sep_x * SEPARATION_WEIGHT;
+    let blended_y = direction.1 + sep_y * SEPARATION_WEIGHT;
+    let (final_dx, final_dy) = normalize(blended_x, blended_y);
+
     world.bot_nav.insert(id, nav);
-    direction
+    (final_dx, final_dy)
+}
+
+fn separation_force(world: &GameWorld, id: u8, x: f32, y: f32) -> (f32, f32) {
+    let mut sep_x = 0.0;
+    let mut sep_y = 0.0;
+    for player in world.players.values() {
+        if player.id == id || !player.alive {
+            continue;
+        }
+        let dx = x - player.x;
+        let dy = y - player.y;
+        let dist_sq = dx * dx + dy * dy;
+        if dist_sq < SEPARATION_RADIUS * SEPARATION_RADIUS && dist_sq > 0.001 {
+            let dist = dist_sq.sqrt();
+            let force = (SEPARATION_RADIUS - dist) / SEPARATION_RADIUS;
+            sep_x += (dx / dist) * force;
+            sep_y += (dy / dist) * force;
+        }
+    }
+    (sep_x, sep_y)
 }
 
 fn pick_best_direction(

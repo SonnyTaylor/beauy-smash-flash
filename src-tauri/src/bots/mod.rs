@@ -1,5 +1,6 @@
 mod deathmatch;
 mod navigation;
+pub mod pathfinding;
 mod zombie;
 
 use std::collections::HashSet;

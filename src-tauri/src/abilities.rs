@@ -419,10 +419,6 @@ pub fn process_active_modes(world: &mut GameWorld, dt: f32) {
 }
 
 pub fn process_boat_rams(world: &mut GameWorld) {
-    if !world.friendly_fire {
-        return;
-    }
-
     let boaters: Vec<(u8, f32, f32, f32, f32)> = world
         .players
         .values()
@@ -459,6 +455,9 @@ pub fn process_boat_rams(world: &mut GameWorld) {
             .collect();
 
         for target_id in targets {
+            if !world.damage_allowed(boater_id, target_id) {
+                continue;
+            }
             let on_cooldown = world
                 .players
                 .get(&boater_id)
@@ -804,28 +803,30 @@ fn fire_isaak_chi_blast(world: &mut GameWorld, player_id: u8, dir_x: f32, dir_y:
     });
 
     if let Some((victim_id, hit_x, hit_y, _)) = hit {
-        let damage = isaak_chi_damage(stacks);
-        world.apply_damage(player_id, victim_id, damage);
-        if stacks > 0 {
-            if let Some(victim) = world.players.get_mut(&victim_id) {
-                let stack_ratio = stacks as f32 / ISAAC_MAX_STILLNESS_STACKS as f32;
-                let slow_duration = ISAAC_CHI_SLOW_DURATION * stack_ratio;
-                let slow_mult = 1.0 - (1.0 - ISAAC_CHI_SLOW_MULT) * stack_ratio;
-                victim.slowed_until = victim.slowed_until.max(slow_duration);
-                victim.slow_multiplier = victim.slow_multiplier.min(slow_mult);
+        if world.damage_allowed(player_id, victim_id) {
+            let damage = isaak_chi_damage(stacks);
+            world.apply_damage(player_id, victim_id, damage);
+            if stacks > 0 {
+                if let Some(victim) = world.players.get_mut(&victim_id) {
+                    let stack_ratio = stacks as f32 / ISAAC_MAX_STILLNESS_STACKS as f32;
+                    let slow_duration = ISAAC_CHI_SLOW_DURATION * stack_ratio;
+                    let slow_mult = 1.0 - (1.0 - ISAAC_CHI_SLOW_MULT) * stack_ratio;
+                    victim.slowed_until = victim.slowed_until.max(slow_duration);
+                    victim.slow_multiplier = victim.slow_multiplier.min(slow_mult);
+                }
             }
+            let mark_id = world.next_effect_id;
+            world.next_effect_id += 1;
+            world.effects.push(WorldEffect::burst(
+                mark_id,
+                EffectKind::Mark,
+                hit_x,
+                hit_y,
+                36.0,
+                0.35,
+                player_id,
+            ));
         }
-        let mark_id = world.next_effect_id;
-        world.next_effect_id += 1;
-        world.effects.push(WorldEffect::burst(
-            mark_id,
-            EffectKind::Mark,
-            hit_x,
-            hit_y,
-            36.0,
-            0.35,
-            player_id,
-        ));
     }
 
     if let Some(player) = world.players.get_mut(&player_id) {
@@ -934,11 +935,7 @@ fn next_player_hit_distance(
     let mut best: Option<(u8, f32, f32, f32)> = None;
 
     for player in world.players.values() {
-        if !player.alive
-            || player.id == owner_id
-            || player.spawn_protected()
-            || !world.friendly_fire
-        {
+        if !player.alive || player.id == owner_id || player.spawn_protected() {
             continue;
         }
         if let Some(dist) = ray_hits_circle(
