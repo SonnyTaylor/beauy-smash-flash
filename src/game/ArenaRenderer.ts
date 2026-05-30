@@ -115,6 +115,7 @@ interface PlayerView {
   accentColor: number;
   meleeSwingRemaining: number;
   meleeSwingAngle: number;
+  recoilRemaining: number;
   hackedRemaining: number;
   markedRemaining: number;
   blurRemaining: number;
@@ -804,6 +805,12 @@ export class ArenaRenderer {
 
       const owner = playerById.get(bullet.owner_id);
       const angle = owner?.angle ?? Math.atan2(bullet.y, bullet.x);
+      
+      const ownerView = this.players.get(bullet.owner_id);
+      if (ownerView) {
+        ownerView.recoilRemaining = 0.1;
+      }
+      
       // Bullet spawn position from server is at the muzzle — use it directly.
       this.vfx.emitMuzzleFlash(bullet.x, bullet.y, angle);
     }
@@ -829,7 +836,21 @@ export class ArenaRenderer {
     }
 
     const orbit = weaponOrbitPosition(meta, aimAngle);
-    view.gun.position.set(orbit.x, orbit.y);
+    let offsetX = 0;
+    let offsetY = 0;
+    
+    // Apply recoil translation (pushes gun back toward player)
+    if (view.recoilRemaining > 0 && !view.isReloading) {
+      const progress = view.recoilRemaining / 0.1; // 0 to 1
+      const recoilDist = -8 * progress; // Push back by up to 8 units
+      offsetX = Math.cos(aimAngle) * recoilDist;
+      offsetY = Math.sin(aimAngle) * recoilDist;
+      
+      // Also apply a slight upward rotation tick
+      aimAngle -= 0.1 * progress; 
+    }
+
+    view.gun.position.set(orbit.x + offsetX, orbit.y + offsetY);
     view.gun.rotation = aimAngle + meta.defaultRotation;
   }
 
@@ -1170,6 +1191,7 @@ export class ArenaRenderer {
       accentColor: color,
       meleeSwingRemaining: 0,
       meleeSwingAngle: player.angle,
+      recoilRemaining: 0,
       hackedRemaining: player.hacked_remaining,
       markedRemaining: player.marked_remaining ?? 0,
       blurRemaining: player.blur_remaining ?? 0,
@@ -1549,6 +1571,9 @@ export class ArenaRenderer {
 
       if (view.meleeSwingRemaining > 0) {
         view.meleeSwingRemaining = Math.max(0, view.meleeSwingRemaining - dt);
+      }
+      if (view.recoilRemaining > 0) {
+        view.recoilRemaining = Math.max(0, view.recoilRemaining - dt);
       }
 
       if (view.gun) {
