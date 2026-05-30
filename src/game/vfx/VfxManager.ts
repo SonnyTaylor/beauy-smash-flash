@@ -425,7 +425,7 @@ export class VfxManager {
     this.bursts.push({ node: gfx, life: 0.45, maxLife: 0.45, fadeOnly: true });
   }
 
-  /** Persistent zone ring (Connor fog, Oscar tray, Arthur oil). */
+  /** Persistent zone ring (Connor fog, Oscar oil, Arthur oil). */
   emitZoneRing(x: number, y: number, radius: number, color: number, alpha: number) {
     const gfx = new Graphics();
     gfx.circle(0, 0, radius)

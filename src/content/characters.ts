@@ -106,8 +106,8 @@ export const PLAYABLE_CHARACTERS: CharacterDefinition[] = [
     color: [200, 80, 40],
     sprite: 'heads/arthur.png',
     initials: 'AT',
-    abilityId: 'hot_lap',
-    abilityName: 'Hot Lap',
+    abilityId: 'number_77',
+    abilityName: 'Number 77',
     abilityDescription:
       '5s kart mode — keep shooting, leave an oil trail that slows and chips enemies. Bigger hitbox, 110 HP.',
   },
@@ -117,10 +117,10 @@ export const PLAYABLE_CHARACTERS: CharacterDefinition[] = [
     color: [255, 220, 100],
     sprite: 'heads/oscar.png',
     initials: 'OG',
-    abilityId: 'chippys_special',
-    abilityName: "Chippy's Special",
+    abilityId: 'deep_fried',
+    abilityName: 'Deep Fried',
     abilityDescription:
-      'Deploy a food tray that heals allies inside. Enemies can shoot the tray to shut it down.',
+      'Toss a basket of boiling oil that shatters on impact, coating enemies in scorching grease. Deals immediate burst damage and burns them over time.',
   },
   {
     id: 'vlad',

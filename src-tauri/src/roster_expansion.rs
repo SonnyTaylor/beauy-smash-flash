@@ -45,14 +45,13 @@ const ARTHUR_OIL_RADIUS: f32 = 36.0;
 const ARTHUR_OIL_DPS: f32 = 6.0;
 const ARTHUR_OIL_SLOW_MULT: f32 = 0.7;
 
-// --- Oscar — Chippy's Special ---
+// --- Oscar — Deep Fried ---
 pub const OSCAR_CHARGE_PASSIVE_PER_SEC: f32 = 4.5;
-const OSCAR_TRAY_RANGE: f32 = 280.0;
-pub const OSCAR_TRAY_RADIUS: f32 = 140.0;
-pub const OSCAR_TRAY_DURATION: f32 = 6.0;
-pub const OSCAR_TRAY_HP: f32 = 60.0;
-const OSCAR_TRAY_HIT_RADIUS: f32 = 42.0;
-pub const OSCAR_HEAL_PER_SEC: f32 = 8.0;
+const OSCAR_OIL_RANGE: f32 = 280.0;
+pub const OSCAR_OIL_RADIUS: f32 = 140.0;
+pub const OSCAR_OIL_DURATION: f32 = 6.0;
+pub const OSCAR_OIL_DPS: f32 = 12.0;
+pub const OSCAR_OIL_BURST_DAMAGE: f32 = 40.0;
 
 // --- Vlad — Going Viral ---
 pub const VLAD_DRONE_COUNT: u8 = 3;
@@ -388,22 +387,42 @@ fn activate_arthur(world: &mut GameWorld, player_id: u8) {
 }
 
 fn activate_oscar(world: &mut GameWorld, player_id: u8) {
-    let Some((tx, ty)) = placement_point(world, player_id, OSCAR_TRAY_RANGE) else {
+    let Some((tx, ty)) = placement_point(world, player_id, OSCAR_OIL_RANGE) else {
         return;
     };
     if let Some(player) = world.players.get_mut(&player_id) {
         player.ability_charge = 0.0;
     }
+    
+    // Apply burst damage to enemies in the landing zone
+    for victim_id in players_in_zone(world, tx, ty, OSCAR_OIL_RADIUS, player_id, true) {
+        if world.damage_allowed(player_id, victim_id) {
+            world.apply_damage(player_id, victim_id, OSCAR_OIL_BURST_DAMAGE as u16);
+        }
+    }
+
     spawn_zone_effect(
         world,
         player_id,
         tx,
         ty,
-        EffectKind::FoodTray,
-        OSCAR_TRAY_RADIUS,
-        OSCAR_TRAY_DURATION,
-        OSCAR_TRAY_HP,
+        EffectKind::OilSlick,
+        OSCAR_OIL_RADIUS,
+        OSCAR_OIL_DURATION,
+        0.0,
     );
+    
+    let id = world.next_effect_id;
+    world.next_effect_id += 1;
+    world.effects.push(WorldEffect::burst(
+        id,
+        EffectKind::BoatSplash, // reuse splash/shatter fx
+        tx,
+        ty,
+        OSCAR_OIL_RADIUS,
+        0.4,
+        player_id,
+    ));
 }
 
 fn activate_vlad(world: &mut GameWorld, player_id: u8) {
@@ -849,15 +868,12 @@ fn process_zones(world: &mut GameWorld, dt: f32) {
                     damage_ticks += 1;
                 }
             }
-            EffectKind::FoodTray if effect.zone_hp > 0.0 => {
-                effect.zone_heal_accum += OSCAR_HEAL_PER_SEC * dt;
-                while effect.zone_heal_accum >= 1.0 {
-                    effect.zone_heal_accum -= 1.0;
-                    heal_ticks += 1;
-                }
+            EffectKind::FoodTray => {
+                // Not used anymore, replaced by Deep Fried
             }
             EffectKind::OilSlick => {
-                effect.zone_damage_accum += ARTHUR_OIL_DPS * dt;
+                let dps = if effect.owner_id == 11 { OSCAR_OIL_DPS } else { ARTHUR_OIL_DPS };
+                effect.zone_damage_accum += dps * dt;
                 while effect.zone_damage_accum >= 1.0 {
                     effect.zone_damage_accum -= 1.0;
                     damage_ticks += 1;
@@ -1177,7 +1193,7 @@ pub fn process_tray_bullet_hits(world: &mut GameWorld) {
                 bullet.radius,
                 *tx,
                 *ty,
-                OSCAR_TRAY_HIT_RADIUS,
+                42.0, // Former OSCAR_TRAY_HIT_RADIUS
             ) {
                 if let Some(effect) = world.effects.iter_mut().find(|e| e.id == *tray_id) {
                     effect.zone_hp -= bullet.damage as f32;
@@ -1399,7 +1415,7 @@ mod tests {
     }
 
     #[test]
-    fn arthur_hot_lap_enters_kart_mode() {
+    fn arthur_number_77_enters_kart_mode() {
         let mut world = GameWorld::default();
         world.add_player(0, "Arthur".into(), "arthur".into(), "glock".into());
         world.reset_for_match(

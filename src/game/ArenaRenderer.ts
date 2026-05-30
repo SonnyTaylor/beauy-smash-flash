@@ -572,7 +572,7 @@ export class ArenaRenderer {
       } else if (effect.kind === 'malice_zone') {
         // Persistent overlay handled in syncMaliceFogOverlays
       } else if (effect.kind === 'food_tray') {
-        this.vfx.emitZoneRing(effect.x, effect.y, effect.radius, 0xffd060, 0.4);
+        // Obsolete
       } else if (effect.kind === 'oil_slick') {
         // Persistent puddles: syncOilSlickOverlays
       }
