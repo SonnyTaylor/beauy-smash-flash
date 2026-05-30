@@ -1027,6 +1027,11 @@ impl GameWorld {
             .copied()
             .filter(|id| !self.players[id].is_zombie)
             .collect();
+
+        if gamemode == Gamemode::TeamDeathmatch {
+            self.assign_team_spawn_indices(&ids);
+        }
+
         for id in ids {
             if let Some(player) = self.players.get_mut(&id) {
                 player.score = 0;
@@ -2786,6 +2791,48 @@ impl GameWorld {
                 .count();
             let team = if count_1 <= count_2 { 1 } else { 2 };
             self.players.get_mut(&id).expect("player id").team = team;
+        }
+    }
+
+    /// In Team Deathmatch, split the map spawns by x-coordinate so each team
+    /// respawns on its own side of the arena.
+    pub fn assign_team_spawn_indices(&mut self, player_ids: &[u8]) {
+        let spawn_count = self.map.spawns.len();
+        if spawn_count < 2 {
+            return;
+        }
+        let mut indexed: Vec<(usize, f32)> = (0..spawn_count)
+            .map(|i| (i, self.map.spawns[i].0))
+            .collect();
+        indexed.sort_by(|a, b| {
+            a.1.partial_cmp(&b.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let mid = (indexed.len() + 1) / 2;
+        let team1_spawns: Vec<usize> = indexed[..mid].iter().map(|(i, _)| *i).collect();
+        let team2_spawns: Vec<usize> = indexed[mid..].iter().map(|(i, _)| *i).collect();
+
+        let mut t1_cursor = 0usize;
+        let mut t2_cursor = 0usize;
+        for &id in player_ids {
+            let Some(player) = self.players.get(&id) else { continue };
+            if player.is_zombie {
+                continue;
+            }
+            let pool = if player.team == 2 { &team2_spawns } else { &team1_spawns };
+            let (_cursor, idx) = if player.team == 2 {
+                let i = t2_cursor % pool.len();
+                t2_cursor += 1;
+                (t2_cursor, i)
+            } else {
+                let i = t1_cursor % pool.len();
+                t1_cursor += 1;
+                (t1_cursor, i)
+            };
+            let spawn_index = pool[idx];
+            if let Some(p) = self.players.get_mut(&id) {
+                p.spawn_index = spawn_index;
+            }
         }
     }
 

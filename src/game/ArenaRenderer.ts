@@ -17,6 +17,7 @@ import type {
   WorldConfig,
   DroneSnapshot,
   WorldEffectSnapshot,
+  Gamemode,
 } from '../shared/types';
 import {
   REEL_SHIELD_OFFSET,
@@ -227,6 +228,7 @@ export class ArenaRenderer {
   private fogEnabled = false;
   private directorsCutCasterId: number | null = null;
   private readonly directorsCutFilters = new Map<number, ColorMatrixFilter>();
+  private gamemode: Gamemode = 'deathmatch';
   private fogOriginX = 0;
   private fogOriginY = 0;
   private localPlayerX = 0;
@@ -417,6 +419,7 @@ export class ArenaRenderer {
   applyState(snapshot: StateSnapshot) {
     if (!this.mounted || !this.app) return;
 
+    this.gamemode = snapshot.gamemode ?? 'deathmatch';
     this.fogEnabled = snapshot.fog_of_war ?? false;
     this.directorsCutCasterId =
       snapshot.players.find((player) => (player.directors_cut_remaining ?? 0) > 0)?.id ?? null;
@@ -890,10 +893,13 @@ export class ArenaRenderer {
   }
 
   private updatePlayerVisuals(view: PlayerView, player: PlayerSnapshot) {
+    const isMe = player.id === this.myId;
+    const accent = this.teamAccentColor(player);
     const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
     const stillnessStacks = player.stillness_stacks ?? 0;
     if (label) {
       label.text = resolvePlayerDisplayName(player.name, player.character_id);
+      label.style.fill = isMe ? 0xffffff : accent;
       const stackLift =
         player.character_id === 'isaak' && stillnessStacks > 0 ? 14 : 0;
       label.y = -PLAYER_RADIUS - 18 - stackLift;
@@ -999,10 +1005,17 @@ export class ArenaRenderer {
     }
   }
 
+  private teamAccentColor(player: PlayerSnapshot): number {
+    if (this.gamemode === 'team_deathmatch' && player.team) {
+      return player.team === 1 ? 0xff5a5a : 0x5a9eff;
+    }
+    return rgbToHex(player.color);
+  }
+
   private createPlayer(player: PlayerSnapshot): PlayerView {
     const character = getCharacter(player.character_id);
     const isMe = player.id === this.myId;
-    const color = rgbToHex(player.color);
+    const color = this.teamAccentColor(player);
     const container = new Container();
 
     const shadow = new Graphics()
@@ -1079,6 +1092,7 @@ export class ArenaRenderer {
         align: 'center',
       },
     });
+    label.name = 'nameLabel';
     label.anchor.set(0.5);
     label.y = -PLAYER_RADIUS - 18;
     container.addChild(label);

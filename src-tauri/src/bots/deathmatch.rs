@@ -139,11 +139,17 @@ pub fn update_deathmatch_bot(world: &mut GameWorld, id: u8, dt: f32) {
 }
 
 fn pick_target(world: &GameWorld, bot_id: u8) -> Option<u8> {
+    let bot_team = world.players.get(&bot_id)?.team;
+    let is_tdm = world.gamemode == crate::protocol::Gamemode::TeamDeathmatch;
     world
         .players
         .values()
         .filter(|player| {
-            player.id != bot_id && player.alive && !player.spawn_protected() && !player.is_zombie
+            player.id != bot_id
+                && player.alive
+                && !player.spawn_protected()
+                && !player.is_zombie
+                && (!is_tdm || bot_team == 0 || player.team != bot_team)
         })
         .map(|player| {
             let dist_sq = (player.x - world.players[&bot_id].x).powi(2)

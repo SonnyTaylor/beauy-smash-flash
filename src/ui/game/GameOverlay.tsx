@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterDefinition, GameSettings, PlayerSnapshot, StateSnapshot } from '../../shared/types';
-import { formatMatchTime, teamLabel } from '../constants';
+import { formatMatchTime, teamLabel, TEAM_OPTIONS } from '../constants';
 import { getCharacter } from '../character';
 import { resolvePlayerDisplayName } from '../../shared/playerName';
 import { isLucaCharacter } from '../../content/characters';
@@ -454,16 +454,39 @@ export function GameOverlay({
               {(state?.kill_feed ?? []).length === 0 ? (
                 <div className="kill-feed-empty">No frags yet</div>
               ) : (
-                (state?.kill_feed ?? []).slice().reverse().slice(0, 5).map((entry, index) => (
-                  <div
-                    key={`${entry.killer_id}-${entry.victim_id}-${index}`}
-                    className="kill-feed-line"
-                  >
-                    <strong>{entry.killer_name}</strong>
-                    <span> fragged </span>
-                    <strong>{entry.victim_name}</strong>
-                  </div>
-                ))
+                (state?.kill_feed ?? []).slice().reverse().slice(0, 5).map((entry, index) => {
+                  const killer = humanPlayers.find((p) => p.id === entry.killer_id);
+                  const victim = humanPlayers.find((p) => p.id === entry.victim_id);
+                  const killerColor =
+                    state?.gamemode === 'team_deathmatch' && killer
+                      ? TEAM_OPTIONS[(killer.team ?? 1) - 1]?.color
+                      : undefined;
+                  const victimColor =
+                    state?.gamemode === 'team_deathmatch' && victim
+                      ? TEAM_OPTIONS[(victim.team ?? 1) - 1]?.color
+                      : undefined;
+                  const isTeamKill =
+                    state?.gamemode === 'team_deathmatch' &&
+                    killer &&
+                    victim &&
+                    killer.team === victim.team &&
+                    killer.id !== victim.id;
+                  return (
+                    <div
+                      key={`${entry.killer_id}-${entry.victim_id}-${index}`}
+                      className={`kill-feed-line ${isTeamKill ? 'kill-feed-teamkill' : ''}`}
+                    >
+                      <strong style={killerColor ? { color: killerColor } : undefined}>
+                        {entry.killer_name}
+                      </strong>
+                      <span> fragged </span>
+                      <strong style={victimColor ? { color: victimColor } : undefined}>
+                        {entry.victim_name}
+                      </strong>
+                      {isTeamKill && <span className="kill-feed-tag">team kill</span>}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

@@ -31,7 +31,7 @@ pub fn update_bot_inputs(world: &mut GameWorld, bot_ids: &HashSet<u8>, dt: f32) 
                 zombie::update_zombie_bot(world, id, step);
             }
         }
-        Gamemode::Deathmatch | Gamemode::LastMateStanding => {
+        Gamemode::Deathmatch | Gamemode::TeamDeathmatch | Gamemode::LastMateStanding => {
             for id in bot_ids {
                 if world
                     .players
@@ -42,7 +42,6 @@ pub fn update_bot_inputs(world: &mut GameWorld, bot_ids: &HashSet<u8>, dt: f32) 
                 }
             }
         }
-        _ => {}
     }
 }
 
