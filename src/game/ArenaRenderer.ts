@@ -1,4 +1,4 @@
-import { Application, ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { Application, ColorMatrixFilter, BlurFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { ALL_CHARACTERS, getCharacter } from '../content/characters';
 import { resolvePlayerDisplayName } from '../shared/playerName';
 import { ARTHUR_KART, arthurKartAssetUrl } from '../content/arthur-kart';
@@ -117,6 +117,7 @@ interface PlayerView {
   meleeSwingAngle: number;
   hackedRemaining: number;
   markedRemaining: number;
+  blurRemaining: number;
   abilityWindup: number;
   abilityAimX: number;
   abilityAimY: number;
@@ -206,6 +207,9 @@ export class ArenaRenderer {
   private droneViews = new Map<number, DroneView>();
   private lastDronePositions = new Map<number, { x: number; y: number }>();
   private texturesLoaded = false;
+  
+  private cameraShakeIntensity: number = 0;
+  private readonly CAMERA_SHAKE_DECAY = 15; // units per second
   private maliceFogLayer = new Container();
   private maliceFogViews = new Map<number, Graphics>();
   private maliceFogZones: MaliceFogZone[] = [];
@@ -228,6 +232,7 @@ export class ArenaRenderer {
   private fogEnabled = false;
   private directorsCutCasterId: number | null = null;
   private readonly directorsCutFilters = new Map<number, ColorMatrixFilter>();
+  private readonly blurFilters = new Map<number, BlurFilter>();
   private gamemode: Gamemode = 'deathmatch';
   private fogOriginX = 0;
   private fogOriginY = 0;
@@ -525,8 +530,22 @@ export class ArenaRenderer {
       }
       this.knownEffectIds.add(effect.id);
       if (effect.kind === 'explosion') {
+        const dx = effect.x - this.localPlayerX;
+        const dy = effect.y - this.localPlayerY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 800) {
+          const falloff = 1 - (dist / 800);
+          this.addCameraShake(this.vfx.emitScreenShake() * 0.8 * falloff);
+        }
         this.vfx.emitExplosion(effect.x, effect.y, effect.radius);
       } else if (effect.kind === 'truth_explosion') {
+        const dx = effect.x - this.localPlayerX;
+        const dy = effect.y - this.localPlayerY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 1200) {
+          const falloff = 1 - (dist / 1200);
+          this.addCameraShake(this.vfx.emitScreenShake() * 1.5 * falloff);
+        }
         this.vfx.emitTruthExplosion(effect.x, effect.y, effect.radius);
       } else if (effect.kind === 'aim_reticle') {
         this.vfx.emitAimReticle(effect.x, effect.y, effect.radius);
@@ -549,11 +568,28 @@ export class ArenaRenderer {
           const aimAngle = Math.atan2(effect.y - view.targetY, effect.x - view.targetX);
           view.meleeSwingRemaining = MELEE_SWING_DURATION;
           view.meleeSwingAngle = aimAngle;
+          const dx = view.targetX - this.localPlayerX;
+          const dy = view.targetY - this.localPlayerY;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < 300) {
+            const falloff = 1 - (dist / 300);
+            this.addCameraShake(this.vfx.emitScreenShake() * 0.25 * falloff);
+          }
           this.vfx.emitSlash(view.targetX, view.targetY, aimAngle, effect.radius);
         }
       } else if (effect.kind === 'wall_hit') {
         const dirX = effect.target_x ?? 1;
         const dirY = effect.target_y ?? 0;
+        
+        // Only shake camera slightly if the wall hit is somewhat close to the player
+        const dx = effect.x - this.localPlayerX;
+        const dy = effect.y - this.localPlayerY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 400) {
+          const falloff = 1 - (dist / 400);
+          this.addCameraShake(this.vfx.emitScreenShake() * 0.15 * falloff);
+        }
+        
         this.vfx.emitWallImpact(effect.x, effect.y, dirX, dirY, effect.radius);
       } else if (effect.kind === 'directors_cut') {
         this.vfx.emitDirectorsCut(effect.x, effect.y, effect.radius);
@@ -909,11 +945,18 @@ export class ArenaRenderer {
     view.shield.visible = player.spawn_protected;
       view.hackedRemaining = player.hacked_remaining;
       view.markedRemaining = player.marked_remaining ?? 0;
+      view.blurRemaining = player.blur_remaining ?? 0;
       view.hackAura.visible = player.hacked_remaining > 0;
-      view.container.filters =
-        this.directorsCutCasterId !== null && player.id !== this.directorsCutCasterId
-          ? [this.getDirectorsCutFilter(player.id)]
-          : null;
+      
+      const filters = [];
+      if (this.directorsCutCasterId !== null && player.id !== this.directorsCutCasterId) {
+        filters.push(this.getDirectorsCutFilter(player.id));
+      }
+      if (view.blurRemaining > 0) {
+        filters.push(this.getBlurFilter(player.id));
+      }
+      view.container.filters = filters.length > 0 ? filters : null;
+
       view.abilityWindup = player.ability_windup;
       view.abilityAimX = player.ability_aim_x ?? 0;
       view.abilityAimY = player.ability_aim_y ?? 0;
@@ -1129,6 +1172,7 @@ export class ArenaRenderer {
       meleeSwingAngle: player.angle,
       hackedRemaining: player.hacked_remaining,
       markedRemaining: player.marked_remaining ?? 0,
+      blurRemaining: player.blur_remaining ?? 0,
       abilityWindup: player.ability_windup,
       abilityAimX: player.ability_aim_x ?? 0,
       abilityAimY: player.ability_aim_y ?? 0,
@@ -1413,6 +1457,10 @@ export class ArenaRenderer {
     sprite.alpha = pulse;
   }
 
+  addCameraShake(intensity: number) {
+    this.cameraShakeIntensity = Math.max(this.cameraShakeIntensity, intensity);
+  }
+
   private renderFrame() {
     if (this.mountContainer) {
       const width = Math.max(1, this.mountContainer.clientWidth);
@@ -1425,6 +1473,27 @@ export class ArenaRenderer {
     const now = performance.now();
     const dt = Math.min(0.05, (now - this.lastFrameMs) / 1000);
     this.lastFrameMs = now;
+    
+    if (this.cameraShakeIntensity > 0) {
+      this.cameraShakeIntensity = Math.max(0, this.cameraShakeIntensity - this.CAMERA_SHAKE_DECAY * dt);
+      
+      const shakeOffsetX = (Math.random() - 0.5) * 2 * this.cameraShakeIntensity;
+      const shakeOffsetY = (Math.random() - 0.5) * 2 * this.cameraShakeIntensity;
+      
+      // We apply this over whatever fitWorldToViewport output for our root
+      // Because root's x/y are updated in syncViewport, we should apply it there or apply an offset here
+      // But syncViewport sets it exactly. Let's adjust it dynamically here.
+      // But wait, the easiest way is just to offset the root node slightly.
+      // We need to fetch the base position first. Let's do a lightweight syncViewport call or 
+      // just offset the root container.
+      
+      // We can just set the pivot on the root layer temporarily.
+      this.root.pivot.x = shakeOffsetX;
+      this.root.pivot.y = shakeOffsetY;
+    } else {
+      this.root.pivot.x = 0;
+      this.root.pivot.y = 0;
+    }
     this.vfx.tick(dt);
     this.drawBullets(dt);
     this.animatePickups(now, dt);
@@ -1747,6 +1816,17 @@ export class ArenaRenderer {
       filter.desaturate();
       filter.brightness(0.72, false);
       this.directorsCutFilters.set(playerId, filter);
+    }
+    return filter;
+  }
+
+  private getBlurFilter(playerId: number): BlurFilter {
+    let filter = this.blurFilters.get(playerId);
+    if (!filter) {
+      filter = new BlurFilter();
+      filter.strength = 8;
+      filter.quality = 4;
+      this.blurFilters.set(playerId, filter);
     }
     return filter;
   }

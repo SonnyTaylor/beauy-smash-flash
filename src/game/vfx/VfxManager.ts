@@ -110,6 +110,11 @@ export class VfxManager {
   }
 
   /** Dust at feet, trailing opposite movement direction. */
+  emitScreenShake() {
+    // Return intensity to be caught by caller
+    return 12;
+  }
+
   emitExplosion(x: number, y: number, radius: number) {
     const gfx = new Graphics();
     gfx.circle(0, 0, radius * 0.35)
