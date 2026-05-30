@@ -1900,14 +1900,42 @@ export class ArenaRenderer {
       .stroke({ color: border, width: 4, alpha: 0.7 });
 
     this.grid.clear();
-    const spacing = 80;
+    const spacing = 40; // Reduced to match typical grid size tighter
+    
+    // Draw secondary grid lines (fainter)
     for (let x = 0; x <= this.world.width; x += spacing) {
       this.grid.moveTo(x, 0).lineTo(x, this.world.height);
     }
     for (let y = 0; y <= this.world.height; y += spacing) {
       this.grid.moveTo(0, y).lineTo(this.world.width, y);
     }
-    this.grid.stroke({ color: gridColor, width: 1, alpha: 0.45 });
+    this.grid.stroke({ color: gridColor, width: 1, alpha: 0.25 });
+    
+    // Draw primary grid lines
+    this.grid.beginPath();
+    for (let x = 0; x <= this.world.width; x += spacing * 4) {
+      this.grid.moveTo(x, 0).lineTo(x, this.world.height);
+    }
+    for (let y = 0; y <= this.world.height; y += spacing * 4) {
+      this.grid.moveTo(0, y).lineTo(this.world.width, y);
+    }
+    this.grid.stroke({ color: gridColor, width: 2, alpha: 0.45 });
+    
+    // Add some corner accents to the floor
+    const accentColor = hexToNumber(this.mapTheme.accent);
+    const cSize = 60;
+    const inset = 10;
+    
+    // Top-Left
+    this.grid.moveTo(inset, inset + cSize).lineTo(inset, inset).lineTo(inset + cSize, inset);
+    // Top-Right
+    this.grid.moveTo(this.world.width - inset - cSize, inset).lineTo(this.world.width - inset, inset).lineTo(this.world.width - inset, inset + cSize);
+    // Bottom-Left
+    this.grid.moveTo(inset, this.world.height - inset - cSize).lineTo(inset, this.world.height - inset).lineTo(inset + cSize, this.world.height - inset);
+    // Bottom-Right
+    this.grid.moveTo(this.world.width - inset - cSize, this.world.height - inset).lineTo(this.world.width - inset, this.world.height - inset).lineTo(this.world.width - inset, this.world.height - inset - cSize);
+    
+    this.grid.stroke({ color: accentColor, width: 3, alpha: 0.5 });
   }
 
   private applyMap(map: MapSnapshot) {
@@ -1931,6 +1959,7 @@ export class ArenaRenderer {
 
     const fillColor = hexToNumber(this.mapTheme.walls);
     const strokeColor = hexToNumber(this.mapTheme.wallStroke);
+    const accentColor = hexToNumber(this.mapTheme.accent);
 
     for (const wall of walls) {
       if (wall.w <= 0 || wall.h <= 0) continue;
@@ -1948,8 +1977,29 @@ export class ArenaRenderer {
       block.height = wall.h;
       block.tint = fillColor;
       block.alpha = 1;
-
+      
       this.wallContainer.addChild(outline, block);
+      
+      // Draw subtle techno lines over large walls
+      if (wall.w > 80 && wall.h > 80) {
+        const detailLines = new Graphics();
+        // Inner inset rect
+        detailLines.rect(wall.x + 8, wall.y + 8, wall.w - 16, wall.h - 16)
+          .stroke({ color: strokeColor, width: 1, alpha: 0.3 });
+          
+        // Accent notch on the bottom edge
+        detailLines.moveTo(wall.x + wall.w / 2 - 10, wall.y + wall.h - 2)
+          .lineTo(wall.x + wall.w / 2 + 10, wall.y + wall.h - 2)
+          .stroke({ color: accentColor, width: 2, alpha: 0.6 });
+
+        // Accent notch on top edge
+        detailLines.beginPath()
+          .moveTo(wall.x + wall.w / 2 - 10, wall.y + 2)
+          .lineTo(wall.x + wall.w / 2 + 10, wall.y + 2)
+          .stroke({ color: accentColor, width: 2, alpha: 0.6 });
+          
+        this.wallContainer.addChild(detailLines);
+      }
     }
   }
 
