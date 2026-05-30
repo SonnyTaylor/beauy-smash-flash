@@ -195,7 +195,7 @@ pub fn find_path(
                 }
             }
 
-            let move_cost = if dx != 0 && dy != 0 { 1.4142 } else { 1.0 };
+            let move_cost = if dx != 0 && dy != 0 { std::f32::consts::SQRT_2 } else { 1.0 };
             let tentative_g = current.g + move_cost * grid.cell_size;
 
             if tentative_g < *g_score.get(&(nx, ny)).unwrap_or(&f32::MAX) {

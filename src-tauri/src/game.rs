@@ -2046,10 +2046,9 @@ impl GameWorld {
                 owner_id,
             ));
 
-            for victim_id in targets {
+            if let Some(victim_id) = targets.into_iter().next() {
                 self.apply_weapon_on_hit(owner_id, victim_id, &weapon_id, hit_x, hit_y, 0.0, 0.0);
                 self.apply_damage(owner_id, victim_id, damage);
-                break;
             }
         }
     }
