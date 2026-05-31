@@ -26,112 +26,81 @@ export function ProfileScreen({
   const isLuca = isLucaCharacter(selectedCharacterId);
 
   return (
-    <>
-      <div className="brand-panel profile-brand">
-        <p className="eyebrow">Player Profile</p>
-        <h1>
-          Your
-          <span>Mate</span>
-        </h1>
-        <p className="tagline">Set your defaults — name, character, and weapon.</p>
-        <ul className="join-tips">
-          <li>
-            <span className="join-tip-label">Name</span>
-            <span>Shown in lobbies, scoreboards, and kill feeds</span>
-          </li>
-          <li>
-            <span className="join-tip-label">Character</span>
-            <span>Each mate has a unique ability and personality</span>
-          </li>
-          <li>
-            <span className="join-tip-label">Weapon</span>
-            <span>Your default starting gun when joining a match</span>
-          </li>
-        </ul>
-      </div>
+    <div className="loadout-shell">
+      <header className="loadout-header">
+        <div className="loadout-heading">
+          <p className="screen-kicker">Player Profile</p>
+          <h2 className="loadout-title">Your Profile</h2>
+          <p className="loadout-subtitle">Set your defaults — name, character, and weapon.</p>
+        </div>
+        <div className="loadout-name-chip">
+          <span className="meta-label">Display name</span>
+          <EditableName value={playerName} onSubmit={onNameChange} />
+        </div>
+      </header>
 
-      <div className="screen-card profile-card">
-        <section className="settings-panel profile-panel">
-          <header className="panel-heading">
-            <h2>Profile</h2>
-            <span>Stored on this device</span>
-          </header>
-
-          <div className="profile-form">
-            <div className="settings-group profile-name-chip">
-              <div className="setting-row" style={{ padding: 0, border: 'none', background: 'transparent' }}>
-                <span className="setting-label">Display Name</span>
-                <EditableName value={playerName} onSubmit={onNameChange} />
-              </div>
-              <p className="setting-hint">Max 24 characters. Used everywhere your name appears.</p>
-            </div>
-
-            <div className="settings-group">
-              <div className="profile-character-focus" style={{ '--accent': rgbCss(character.color) } as CSSProperties}>
-                <span className="profile-focus-portrait" aria-hidden="true">
-                  <img
-                    src={`/assets/${character.sprite}`}
-                    alt=""
-                    onError={(event) => {
-                      event.currentTarget.style.display = 'none';
-                    }}
-                  />
-                  <span>{character.initials}</span>
-                </span>
-                <span className="profile-focus-copy">
-                  <span className="profile-focus-label">Default character</span>
-                  <strong>{character.name}</strong>
-                  <span className="ability-name">{character.abilityName}</span>
-                  <span className="ability-desc">{character.abilityDescription}</span>
-                </span>
-              </div>
-              <div className="profile-character-scroll lobby-settings-scroll">
-                <CharacterGrid
-                  selectedCharacterId={selectedCharacterId}
-                  onSelect={onCharacterChange}
+      <div className="loadout-sections lobby-settings-scroll">
+        <div className="loadout-body">
+          <section className="loadout-section loadout-section-character">
+            <header className="panel-heading">
+              <h3>Character</h3>
+              <span>{character.name}</span>
+            </header>
+            <div
+              className="loadout-character-focus"
+              style={{ '--accent': rgbCss(character.color) } as CSSProperties}
+            >
+              <span className="loadout-focus-portrait" aria-hidden="true">
+                <img
+                  src={`/assets/${character.sprite}`}
+                  alt=""
+                  onError={(event) => {
+                    event.currentTarget.style.display = 'none';
+                  }}
                 />
-              </div>
+                <span>{character.initials}</span>
+              </span>
+              <span className="loadout-focus-copy">
+                <span className="loadout-focus-label">Default character</span>
+                <strong>{character.name}</strong>
+                <span className="ability-name">{character.abilityName}</span>
+                <span className="ability-desc">{character.abilityDescription}</span>
+              </span>
             </div>
-
-            <div className="settings-group">
-              <header className="panel-heading panel-heading-inline">
-                <h3>Default Weapon</h3>
-                <span>{isLuca ? 'Not for Luca' : character.name}</span>
-              </header>
-              {isLuca ? (
-                <p className="setting-hint loadout-luca-weapon-note">
-                  Luca cannot equip weapons. You will spawn unarmed with 1 HP and reduced speed.
-                </p>
-              ) : (
-                <div className="profile-weapon-picker">
-                  <WeaponPicker selectedWeaponId={selectedWeaponId} onSelect={onWeaponChange} />
-                </div>
-              )}
+            <div className="loadout-character-scroll lobby-settings-scroll">
+              <CharacterGrid
+                selectedCharacterId={selectedCharacterId}
+                onSelect={onCharacterChange}
+              />
             </div>
+          </section>
 
-            <div className="settings-group profile-cosmetics-group">
-              <header className="panel-heading panel-heading-inline">
-                <h3>Cosmetics</h3>
-                <span>Coming soon</span>
-              </header>
-              <div className="profile-cosmetics-placeholder">
-                <p className="setting-hint">
-                  Skins, weapon charms, trails, and emotes are on the roadmap.
-                </p>
-              </div>
-            </div>
-          </div>
+          <section className="loadout-section loadout-section-weapon">
+            <header className="panel-heading">
+              <h3>Default Weapon</h3>
+              <span>{isLuca ? 'Not for Luca' : character.name}</span>
+            </header>
+            {isLuca ? (
+              <p className="setting-hint loadout-luca-weapon-note">
+                Luca cannot equip weapons. You will spawn unarmed with 1 HP and reduced speed.
+              </p>
+            ) : (
+              <WeaponPicker selectedWeaponId={selectedWeaponId} onSelect={onWeaponChange} />
+            )}
+          </section>
+        </div>
 
-          <div className="settings-actions">
-            <button type="button" className="ghost-button" onClick={onBack}>
-              Back
-            </button>
-            <button type="button" className="primary-action" onClick={onBack}>
-              Save Settings
-            </button>
-          </div>
-        </section>
+        <p className="loadout-cosmetics-note">Cosmetics coming later: skins, trails, emotes.</p>
       </div>
-    </>
+
+      <footer className="loadout-footer">
+        <button type="button" className="ghost-button" onClick={onBack}>
+          Back
+        </button>
+        <button type="button" className="primary-action" onClick={onBack}>
+          Save Settings
+        </button>
+      </footer>
+    </div>
   );
 }

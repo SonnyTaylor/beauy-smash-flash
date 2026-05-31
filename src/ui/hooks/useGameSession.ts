@@ -678,7 +678,7 @@ export function useGameSession() {
     if (screen === 'loadout') return 'loadout-screen';
     if (screen === 'server-select') return 'flow-screen join-screen';
     if (screen === 'settings') return 'flow-screen settings-flow';
-    if (screen === 'profile') return 'flow-screen profile-flow';
+    if (screen === 'profile') return 'loadout-screen';
     return 'flow-screen';
   }
 
