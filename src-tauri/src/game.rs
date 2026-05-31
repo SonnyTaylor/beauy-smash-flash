@@ -27,8 +27,8 @@ pub const ZOMBIE_ID_START: u8 = 200;
 pub const ZOMBIE_SPEED_MULT: f32 = 0.48;
 pub const HORDE_INTERMISSION_SECS: f32 = 5.0;
 pub const HORDE_INITIAL_DELAY: f32 = 4.0;
-pub const HORDE_BASE_ZOMBIES: u16 = 3;
-pub const HORDE_WAVE_SCALE: u16 = 1;
+pub const HORDE_BASE_ZOMBIES: u16 = 5;
+pub const HORDE_WAVE_SCALE: u16 = 3;
 pub const HORDE_SPAWN_STAGGER_SECS: f32 = 0.65;
 
 pub const LUCA_MAX_HP: u16 = 1;
@@ -56,10 +56,13 @@ fn max_hp_for_character(character_id: &str) -> u16 {
     }
 }
 
-fn base_move_speed_for_character(character_id: &str) -> f32 {
-    match character_id {
+fn base_move_speed_for_character(player: &Player) -> f32 {
+    if player.is_zombie {
+        let speed_mult = 0.45 + (player.max_hp as f32 / 100.0).min(0.35); // Gets faster as they get more max_hp, capped at +35% speed
+        return PLAYER_SPEED * speed_mult;
+    }
+    match player.character_id.as_str() {
         "jacob" => JACOB_BASE_SPEED,
-        "zombie" => PLAYER_SPEED * ZOMBIE_SPEED_MULT,
         "luca" => PLAYER_SPEED * LUCA_SPEED_MULT,
         _ => PLAYER_SPEED,
     }
@@ -922,7 +925,11 @@ impl GameWorld {
 
     pub fn spawn_zombie(&mut self, id: u8, spawn_index: usize, wave: u16) {
         let spawn = self.map.spawns[spawn_index % self.map.spawns.len()];
-        let max_hp = 65 + wave.saturating_mul(10);
+        let max_hp = if wave == 1 {
+            1
+        } else {
+            50 + wave.saturating_mul(15)
+        };
         self.add_player(
             id,
             "Zombie".to_string(),
@@ -1563,6 +1570,7 @@ impl GameWorld {
     }
 
     fn process_movement(&mut self, dt: f32) {
+        // First update positions without player-player collision
         for player in self.players.values_mut() {
             if !player.alive || is_casting(player) {
                 continue;
@@ -1577,7 +1585,7 @@ impl GameWorld {
                 normalize(input.dx, input.dy)
             };
 
-            let base_speed = base_move_speed_for_character(&player.character_id);
+            let base_speed = base_move_speed_for_character(player);
             let expansion_mult = crate::roster_expansion::movement_speed_multiplier(player);
             let speed = if player.slowed_until > 0.0 {
                 base_speed * player.slow_multiplier * expansion_mult
@@ -1611,6 +1619,58 @@ impl GameWorld {
 
             if input.aim_x != 0.0 || input.aim_y != 0.0 {
                 player.angle = input.aim_y.atan2(input.aim_x);
+            }
+        }
+
+        // Then apply soft-body separation between all living players
+        let mut adjustments = Vec::new();
+        let player_ids: Vec<u8> = self.players.keys().copied().collect();
+        
+        for i in 0..player_ids.len() {
+            let id1 = player_ids[i];
+            let p1 = &self.players[&id1];
+            if !p1.alive { continue; }
+            
+            let mut push_x = 0.0;
+            let mut push_y = 0.0;
+            let mut overlaps = 0;
+            
+            for j in 0..player_ids.len() {
+                if i == j { continue; }
+                let id2 = player_ids[j];
+                let p2 = &self.players[&id2];
+                if !p2.alive { continue; }
+                
+                let dx = p1.x - p2.x;
+                let dy = p1.y - p2.y;
+                let dist_sq = dx * dx + dy * dy;
+                let rad_sum = PLAYER_RADIUS + PLAYER_RADIUS;
+                
+                if dist_sq < rad_sum * rad_sum && dist_sq > 0.001 {
+                    let dist = dist_sq.sqrt();
+                    let overlap = rad_sum - dist;
+                    push_x += (dx / dist) * overlap;
+                    push_y += (dy / dist) * overlap;
+                    overlaps += 1;
+                }
+            }
+            
+            if overlaps > 0 {
+                adjustments.push((id1, push_x / overlaps as f32 * 0.5, push_y / overlaps as f32 * 0.5));
+            }
+        }
+        
+        for (id, px, py) in adjustments {
+            let p = self.players.get_mut(&id).unwrap();
+            let new_x = (p.x + px).clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
+            let new_y = (p.y + py).clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
+            
+            // Check wall collisions for the adjusted positions independently
+            if !circle_hits_walls(new_x, p.y, PLAYER_RADIUS, &self.map.walls) {
+                p.x = new_x;
+            }
+            if !circle_hits_walls(p.x, new_y, PLAYER_RADIUS, &self.map.walls) {
+                p.y = new_y;
             }
         }
 
@@ -4056,6 +4116,7 @@ mod tests {
             "sonny".to_string(),
             "glock".to_string(),
         );
+        world.next_zombie_id = 200;
         world.spawn_zombie(200, 0, 1);
         world.friendly_fire = false;
         let victim_hp = world.players.get(&0).unwrap().hp;
@@ -4068,16 +4129,18 @@ mod tests {
     #[test]
     fn human_bullets_damage_zombies_when_friendly_fire_is_off() {
         let mut world = GameWorld::default();
+        world.gamemode = Gamemode::ZombieHorde;
         world.add_player(
             0,
             "Host".to_string(),
             "sonny".to_string(),
             "glock".to_string(),
         );
-        world.spawn_zombie(200, 0, 1);
+        world.next_zombie_id = 200;
+        world.spawn_zombie(200, 0, 2);
         world.friendly_fire = false;
         let zombie_pos = {
-            let zombie = world.players.get(&200).unwrap();
+            let zombie = world.players.get(&200).expect("Zombie 200 should exist");
             (zombie.x, zombie.y)
         };
 
@@ -4092,7 +4155,10 @@ mod tests {
 
         world.process_bullets(1.0 / 60.0);
 
-        let zombie = world.players.get(&200).unwrap();
+        let zombie = world
+            .players
+            .get(&200)
+            .expect("Zombie 200 should exist after process_bullets");
         assert!(zombie.hp < zombie.max_hp);
         assert!(world.bullets.is_empty());
     }
