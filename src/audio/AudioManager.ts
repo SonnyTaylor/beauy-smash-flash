@@ -64,11 +64,24 @@ export class AudioManager {
   private paused = false;
   private lastGunshotByOwner = new Map<number, number>();
 
+  static getInstance(): AudioManager {
+    return _singleton ?? new AudioManager();
+  }
+
   constructor() {
     if (_singleton) {
       return _singleton;
     }
     _singleton = this;
+  }
+
+  connectMusicAnalyser(): AnalyserNode | null {
+    if (!this.ctx || !this.musicGain) return null;
+    const analyser = this.ctx.createAnalyser();
+    analyser.fftSize = 128;
+    analyser.smoothingTimeConstant = 0.85;
+    this.musicGain.connect(analyser);
+    return analyser;
   }
 
   setMasterVolume(volume: number) {

@@ -1,3 +1,5 @@
+import { MenuWaveform } from './MenuWaveform';
+
 export function MainMenu({
   onHost,
   onJoin,
@@ -16,6 +18,7 @@ export function MainMenu({
   return (
     <section className="menu-zone">
       <div className="title-stack">
+        <MenuWaveform />
         <h1 className="menu-title">Beauy Smash Flash</h1>
         <p className="tagline">Shoot your mates. No internet required.</p>
       </div>

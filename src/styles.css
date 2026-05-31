@@ -561,9 +561,19 @@ input {
 }
 
 .title-stack {
+  position: relative;
   display: grid;
   gap: 8px;
   justify-items: center;
+}
+
+.menu-waveform {
+  position: absolute;
+  inset: -20% -10%;
+  width: 120%;
+  height: 140%;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .menu-title {
