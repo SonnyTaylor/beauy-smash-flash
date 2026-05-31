@@ -5,6 +5,7 @@ import { useGameSession } from './hooks/useGameSession';
 import { Lobby } from './lobby/Lobby';
 import { LoadoutScreen } from './loadout/LoadoutScreen';
 import { MainMenuScreen } from './main-menu/MainMenuScreen';
+import { ProfileScreen } from './profile/ProfileScreen';
 import { ServerSelectScreen } from './server-select/ServerSelectScreen';
 import { SettingsScreen } from './settings/SettingsScreen';
 
@@ -21,12 +22,24 @@ export function App() {
         <div className={`screen-backdrop ${session.backdropClass()}`}>
           {session.screen === 'main-menu' && (
             <MainMenuScreen
-              localIp={session.localIp}
               isBusy={session.isBusy}
               error={session.error}
               onHost={() => session.goToLoadout('host')}
               onJoin={session.goToServerSelect}
+              onProfile={session.openProfile}
               onSettings={session.openSettings}
+            />
+          )}
+
+          {session.screen === 'profile' && (
+            <ProfileScreen
+              playerName={session.playerName}
+              selectedCharacterId={session.selectedCharacterId}
+              selectedWeaponId={session.selectedPrimaryWeaponId}
+              onNameChange={(name) => void session.updateName(name)}
+              onCharacterChange={session.setSelectedCharacterId}
+              onWeaponChange={session.setSelectedPrimaryWeaponId}
+              onBack={() => session.setScreen('main-menu')}
             />
           )}
 

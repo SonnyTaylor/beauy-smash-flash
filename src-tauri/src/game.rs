@@ -2803,10 +2803,7 @@ impl GameWorld {
         let mut indexed: Vec<(usize, f32)> = (0..spawn_count)
             .map(|i| (i, self.map.spawns[i].0))
             .collect();
-        indexed.sort_by(|a, b| {
-            a.1.partial_cmp(&b.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         let mid = (indexed.len() + 1) / 2;
         let team1_spawns: Vec<usize> = indexed[..mid].iter().map(|(i, _)| *i).collect();
         let team2_spawns: Vec<usize> = indexed[mid..].iter().map(|(i, _)| *i).collect();
@@ -2814,11 +2811,17 @@ impl GameWorld {
         let mut t1_cursor = 0usize;
         let mut t2_cursor = 0usize;
         for &id in player_ids {
-            let Some(player) = self.players.get(&id) else { continue };
+            let Some(player) = self.players.get(&id) else {
+                continue;
+            };
             if player.is_zombie {
                 continue;
             }
-            let pool = if player.team == 2 { &team2_spawns } else { &team1_spawns };
+            let pool = if player.team == 2 {
+                &team2_spawns
+            } else {
+                &team1_spawns
+            };
             let (_cursor, idx) = if player.team == 2 {
                 let i = t2_cursor % pool.len();
                 t2_cursor += 1;

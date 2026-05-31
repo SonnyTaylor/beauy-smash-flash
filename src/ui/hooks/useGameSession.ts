@@ -12,6 +12,7 @@ import type {
   SessionInfo,
   StateSnapshot,
 } from '../../shared/types';
+import { DEFAULT_GAME_SETTINGS } from '../../shared/types';
 import { getCharacter } from '../character';
 import type { Screen, SessionKind } from '../navigation';
 import {
@@ -24,6 +25,8 @@ import {
   writeStoredName,
   writeStoredPrimaryWeaponId,
 } from '../storage';
+import { PLAYABLE_CHARACTERS } from '../../content/characters';
+import { DEFAULT_WEAPON_ID } from '../../content/weapons';
 import { DEFAULT_LOBBY_CONFIG } from '../../shared/types';
 import { logGameEvent } from '../../shared/gameLog';
 import { closeApplicationWindow } from '../appClose';
@@ -44,10 +47,10 @@ export function useGameSession() {
 
   const [screen, setScreen] = useState<Screen>('main-menu');
   const [sessionKind, setSessionKind] = useState<SessionKind>('host');
-  const [playerName, setPlayerName] = useState(readStoredName);
+  const [playerName, setPlayerName] = useState('Sonny');
   const [joinIp, setJoinIp] = useState('127.0.0.1');
-  const [selectedCharacterId, setSelectedCharacterId] = useState(readStoredCharacterId);
-  const [selectedPrimaryWeaponId, setSelectedPrimaryWeaponId] = useState(readStoredPrimaryWeaponId);
+  const [selectedCharacterId, setSelectedCharacterId] = useState(PLAYABLE_CHARACTERS[0].id);
+  const [selectedPrimaryWeaponId, setSelectedPrimaryWeaponId] = useState(DEFAULT_WEAPON_ID);
   const pendingJoinIpRef = useRef<string | null>(null);
   const loadoutReturnScreenRef = useRef<Screen | null>(null);
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
@@ -64,7 +67,7 @@ export function useGameSession() {
   const [paused, setPaused] = useState(false);
   const [matchEnded, setMatchEnded] = useState(false);
   const [arenaLoading, setArenaLoading] = useState(false);
-  const [gameSettings, setGameSettings] = useState(readGameSettings);
+  const [gameSettings, setGameSettings] = useState<GameSettings>({ ...DEFAULT_GAME_SETTINGS });
   const pausedRef = useRef(false);
   const matchEndedRef = useRef(false);
   const gameSettingsRef = useRef(gameSettings);
@@ -72,6 +75,30 @@ export function useGameSession() {
 
   const selectedCharacter = getCharacter(selectedCharacterId);
   const players = latestState?.players ?? [];
+
+  // Hydrate persisted settings from Tauri Store on first mount
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrate() {
+      try {
+        const [name, char, weapon, settings] = await Promise.all([
+          readStoredName(),
+          readStoredCharacterId(),
+          readStoredPrimaryWeaponId(),
+          readGameSettings(),
+        ]);
+        if (cancelled) return;
+        setPlayerName(name);
+        setSelectedCharacterId(char);
+        setSelectedPrimaryWeaponId(weapon);
+        setGameSettings(settings);
+      } catch {
+        // If store init fails, keep defaults and keep playing
+      }
+    }
+    hydrate();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (screen !== 'server-select') return;
@@ -244,15 +271,15 @@ export function useGameSession() {
   }, [client]);
 
   useEffect(() => {
-    writeStoredName(playerName);
+    void writeStoredName(playerName);
   }, [playerName]);
 
   useEffect(() => {
-    writeStoredCharacterId(selectedCharacterId);
+    void writeStoredCharacterId(selectedCharacterId);
   }, [selectedCharacterId]);
 
   useEffect(() => {
-    writeStoredPrimaryWeaponId(selectedPrimaryWeaponId);
+    void writeStoredPrimaryWeaponId(selectedPrimaryWeaponId);
   }, [selectedPrimaryWeaponId]);
 
   async function scanForServers() {
@@ -535,11 +562,15 @@ export function useGameSession() {
 
   function saveGameSettings(next: GameSettings) {
     setGameSettings(next);
-    writeGameSettings(next);
+    void writeGameSettings(next);
   }
 
   function openSettings() {
     setScreen('settings');
+  }
+
+  function openProfile() {
+    setScreen('profile');
   }
 
   function goToServerSelect() {
@@ -575,7 +606,7 @@ export function useGameSession() {
       if (me) {
         setSelectedCharacterId(me.pending_character_id ?? me.character_id);
         const weaponId =
-          me.primary_weapon?.weapon_id ?? me.active_weapon ?? readStoredPrimaryWeaponId();
+          me.primary_weapon?.weapon_id ?? me.active_weapon ?? selectedPrimaryWeaponId;
         if (weaponId) {
           setSelectedPrimaryWeaponId(weaponId);
         }
@@ -584,7 +615,7 @@ export function useGameSession() {
       const me = lobby?.players.find((player) => player.id === myIdRef.current);
       if (me) {
         setSelectedCharacterId(me.character_id);
-        setSelectedPrimaryWeaponId(me.primary_weapon_id ?? readStoredPrimaryWeaponId());
+        setSelectedPrimaryWeaponId(me.primary_weapon_id ?? selectedPrimaryWeaponId);
       }
     }
     setError(null);
@@ -647,6 +678,7 @@ export function useGameSession() {
     if (screen === 'loadout') return 'loadout-screen';
     if (screen === 'server-select') return 'flow-screen join-screen';
     if (screen === 'settings') return 'flow-screen settings-flow';
+    if (screen === 'profile') return 'flow-screen profile-flow';
     return 'flow-screen';
   }
 
@@ -697,6 +729,7 @@ export function useGameSession() {
     applyLoadout,
     loadoutMode: sessionInfo ? ('session' as const) : ('pregame' as const),
     openSettings,
+    openProfile,
     gameSettings,
     saveGameSettings,
     testSound,

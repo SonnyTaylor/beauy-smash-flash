@@ -4,5 +4,6 @@ export type Screen =
   | 'loadout'
   | 'lobby'
   | 'game'
-  | 'settings';
+  | 'settings'
+  | 'profile';
 export type SessionKind = 'host' | 'join';

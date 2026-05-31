@@ -18,6 +18,7 @@ tokio = { version = "1", features = ["net", "time", "macros", "rt-multi-thread",
 if-addrs = "0.13"
 socket2 = { version = "0.5", features = ["all"] }
 flate2 = "1"
+tauri-plugin-store = "2"
 
 [features]
 default = ["custom-protocol"]

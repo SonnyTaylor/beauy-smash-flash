@@ -695,21 +695,40 @@ button:disabled {
 .menu-actions button {
   min-height: 58px;
   font-size: clamp(1rem, 1.5vw, 1.2rem);
+  white-space: nowrap;
 }
 
-/* LAN IP badge — bottom-right corner, like the Python build. */
-.lan-ip {
+.menu-character-button {
+  grid-column: 1 / -1;
+}
+
+/* Settings — small button in the bottom-right corner of the main menu. */
+.menu-settings-corner {
   position: fixed;
   right: 18px;
   bottom: 14px;
   z-index: 4;
-  pointer-events: auto;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8f9bb3);
+  background: transparent;
+  border: 1px solid var(--panel-stroke, rgba(148, 163, 184, 0.15));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 
-.lan-ip-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+.menu-settings-corner:hover {
+  color: var(--text, #e2e8f0);
+  border-color: var(--text-muted, #8f9bb3);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.menu-settings-corner:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .version-update-panel {

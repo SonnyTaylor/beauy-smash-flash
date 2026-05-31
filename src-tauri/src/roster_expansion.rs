@@ -393,7 +393,7 @@ fn activate_oscar(world: &mut GameWorld, player_id: u8) {
     if let Some(player) = world.players.get_mut(&player_id) {
         player.ability_charge = 0.0;
     }
-    
+
     // Apply burst damage to enemies in the landing zone
     for victim_id in players_in_zone(world, tx, ty, OSCAR_OIL_RADIUS, player_id, true) {
         if world.damage_allowed(player_id, victim_id) {
@@ -411,7 +411,7 @@ fn activate_oscar(world: &mut GameWorld, player_id: u8) {
         OSCAR_OIL_DURATION,
         0.0,
     );
-    
+
     let id = world.next_effect_id;
     world.next_effect_id += 1;
     world.effects.push(WorldEffect::burst(
@@ -872,7 +872,11 @@ fn process_zones(world: &mut GameWorld, dt: f32) {
                 // Not used anymore, replaced by Deep Fried
             }
             EffectKind::OilSlick => {
-                let dps = if effect.owner_id == 11 { OSCAR_OIL_DPS } else { ARTHUR_OIL_DPS };
+                let dps = if effect.owner_id == 11 {
+                    OSCAR_OIL_DPS
+                } else {
+                    ARTHUR_OIL_DPS
+                };
                 effect.zone_damage_accum += dps * dt;
                 while effect.zone_damage_accum >= 1.0 {
                     effect.zone_damage_accum -= 1.0;

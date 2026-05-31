@@ -1,4 +1,3 @@
-import { CopyChip } from '../components/CopyChip';
 import { UpdatePrompt } from '../components/UpdatePrompt';
 import { VersionUpdatePanel } from '../components/VersionUpdatePanel';
 import { useAppInfo } from '../hooks/useAppInfo';
@@ -7,18 +6,18 @@ import { FloatingHeads } from './FloatingHeads';
 import { MainMenu } from './MainMenu';
 
 export function MainMenuScreen({
-  localIp,
   isBusy,
   error,
   onHost,
   onJoin,
+  onProfile,
   onSettings,
 }: {
-  localIp: string | null;
   isBusy: boolean;
   error: string | null;
   onHost: () => void;
   onJoin: () => void;
+  onProfile: () => void;
   onSettings: () => void;
 }) {
   const appInfo = useAppInfo();
@@ -31,6 +30,7 @@ export function MainMenuScreen({
       <MainMenu
         onHost={onHost}
         onJoin={onJoin}
+        onProfile={onProfile}
         onSettings={onSettings}
         isBusy={isBusy}
         error={error}
@@ -41,11 +41,6 @@ export function MainMenuScreen({
         onCheck={() => void updatePrompt.checkForUpdates({ manual: true })}
         onInstall={() => void updatePrompt.installUpdate()}
       />
-      {localIp && (
-        <div className="lan-ip">
-          <CopyChip label="Your IP" value={localIp} className="meta-chip lan-ip-chip" />
-        </div>
-      )}
       {updatePrompt.status.showPrompt && (
         <UpdatePrompt
           state={updatePrompt.status.promptState}

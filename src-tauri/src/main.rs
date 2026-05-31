@@ -29,6 +29,7 @@ fn get_app_info() -> AppInfo {
 fn main() {
     game_log::init();
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Arc::new(Mutex::new(session::AppState::default())))
