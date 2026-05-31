@@ -1823,16 +1823,28 @@ impl GameWorld {
         let Some(victim) = self.players.get(&victim_id) else {
             return false;
         };
+        
+        // Bots shouldn't have special immunity to humans or each other just because they share bot status.
+        // But zombies definitely fight non-zombies unconditionally.
         if owner.is_zombie != victim.is_zombie {
             return true;
         }
+
+        // In Team Deathmatch, check team alignment
         if self.gamemode == Gamemode::TeamDeathmatch && owner.team != 0 && owner.team == victim.team
         {
             return self.friendly_fire;
         }
+
+        // Standard deathmatch scenarios (including bot vs human, bot vs bot, human vs human)
+        // If it's a regular match, friendly fire setting controls if you can hit people on your "side"
+        // But in standard free-for-all modes, everyone is an enemy, so friendly fire off means "no damage at all" (like a practice mode)
         if !self.friendly_fire {
+            // For standard bot match free-for-all, if friendly fire is false, bots and players can't hurt each other.
+            // Wait, actually, in a free-for-all, if friendly fire is off, no one can hurt anyone.
             return false;
         }
+        
         true
     }
 
