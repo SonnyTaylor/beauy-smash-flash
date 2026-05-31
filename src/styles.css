@@ -4543,3 +4543,158 @@ h2 {
     width: 100%;
   }
 }
+
+/* Profile Screen styles */
+.profile-brand {
+  align-content: start;
+}
+
+.profile-brand .join-tips {
+  margin-top: 14px;
+}
+
+.profile-card {
+  align-content: start;
+  width: min(580px, 100%);
+  max-height: 90vh;
+  overflow: hidden;
+  padding: clamp(16px, 2.4vw, 24px);
+}
+
+.profile-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 16px;
+}
+
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-width: thin;
+}
+
+.profile-character-focus {
+  --accent: var(--cyan);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 42px 36px, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70px),
+    rgba(8, 11, 22, 0.5);
+}
+
+.profile-focus-portrait {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 65%, white);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.profile-focus-portrait img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  clip-path: circle(50% at 50% 50%);
+}
+
+.profile-focus-portrait span {
+  position: relative;
+  z-index: 1;
+}
+
+.profile-focus-portrait img:not([style*="display: none"]) + span {
+  opacity: 0;
+}
+
+.profile-focus-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.profile-focus-label {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.profile-focus-copy strong {
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 2vw, 1.55rem);
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.profile-character-focus .ability-name {
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-character-focus .ability-desc {
+  color: var(--mute-strong);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.profile-character-scroll {
+  padding: 2px 4px 4px 2px;
+}
+
+.profile-character-scroll .character-grid {
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.profile-character-scroll .character-card {
+  padding: 10px;
+}
+
+.profile-cosmetics-placeholder {
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.015);
+  text-align: center;
+}
+
+.panel-heading-inline {
+  margin-bottom: 4px;
+}
+
+.profile-cosmetics-group {
+  margin-top: 8px;
+}
+
+.profile-form .setting-row {
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+}
+
+.profile-form .setting-hint {
+  padding: 0 10px;
+}
