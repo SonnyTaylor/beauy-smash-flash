@@ -20,9 +20,9 @@ export function MenuWaveform() {
 
       const audio = AudioManager.getInstance();
       const analyser = await audio.connectMusicAnalyser();
-      if (!mounted) return;
+      if (!mounted || !analyser) return;
 
-      const dataArray = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+      const timeData = new Uint8Array(analyser.fftSize);
       const totalWidth = BAR_COUNT * (BAR_WIDTH + BAR_GAP);
 
       function resize() {
@@ -44,17 +44,17 @@ export function MenuWaveform() {
         const h = rect.height;
         const time = performance.now() / 1000;
 
+        analyser!.getByteTimeDomainData(timeData);
+
+        // Check if there's actual audio signal (values deviating from 128)
         let hasAudioData = false;
-        if (analyser && dataArray) {
-          analyser.getByteFrequencyData(dataArray);
-          // check if any data is non-zero
-          for (let i = 0; i < dataArray.length; i++) {
-            if (dataArray[i] > 2) {
-              hasAudioData = true;
-              break;
-            }
-          }
+        let sumDeviation = 0;
+        for (let i = 0; i < timeData.length; i++) {
+          const dev = Math.abs(timeData[i] - 128);
+          sumDeviation += dev;
+          if (dev > 3) hasAudioData = true;
         }
+        const avgDeviation = sumDeviation / timeData.length;
 
         ctx.clearRect(0, 0, w, h);
 
@@ -65,29 +65,36 @@ export function MenuWaveform() {
         for (let i = 0; i < halfBars; i++) {
           let norm: number;
 
-          if (hasAudioData && dataArray) {
-            const dataIndex = Math.floor((i / halfBars) * (dataArray.length / 2));
-            const value = dataArray[dataIndex] ?? 0;
-            norm = value / 255;
+          if (hasAudioData) {
+            // Sample waveform amplitude at multiple points for this bar
+            const sampleStep = Math.floor(timeData.length / BAR_COUNT);
+            const idx = i * sampleStep;
+            let peak = 0;
+            for (let s = 0; s < sampleStep; s++) {
+              const dev = Math.abs(timeData[idx + s] - 128) / 128;
+              if (dev > peak) peak = dev;
+            }
+            // Scale up so it's visibly reactive
+            norm = Math.min(1, peak * 2.5 + avgDeviation / 128 * 0.3);
           } else {
-            // gentle idle pulse — multiple sine waves for organic feel
+            // gentle idle pulse
             const t = time * 1.5;
             const dist = i / halfBars;
             norm =
-              Math.sin(t + dist * 4) * 0.25 +
-              Math.sin(t * 0.7 + dist * 7 + 1) * 0.2 +
-              Math.sin(t * 0.4 + dist * 2 + 3) * 0.15 +
-              0.25; // baseline
+              Math.sin(t + dist * 4) * 0.22 +
+              Math.sin(t * 0.7 + dist * 7 + 1) * 0.18 +
+              Math.sin(t * 0.4 + dist * 2 + 3) * 0.12 +
+              0.22;
             norm = Math.max(0, Math.min(1, norm));
           }
 
-          const barH = norm * h * 0.85 + 3;
+          const barH = norm * h * 0.88 + 2;
           const xLeft = cx - (i + 1) * step;
           const xRight = cx + i * step;
           const y = (h - barH) / 2;
 
-          const alpha = 0.14 + norm * 0.42;
-          const glowAlpha = 0.1 + norm * 0.3;
+          const alpha = 0.12 + norm * 0.45;
+          const glowAlpha = 0.08 + norm * 0.28;
 
           ctx.shadowBlur = 10 + norm * 18;
           ctx.shadowColor = `rgba(70, 233, 255, ${glowAlpha})`;
@@ -112,11 +119,7 @@ export function MenuWaveform() {
         mounted = false;
         cancelAnimationFrame(rafRef.current);
         window.removeEventListener('resize', resize);
-        try {
-          analyser?.disconnect();
-        } catch {
-          // ignore
-        }
+        audio.disconnectMusicAnalyser(analyser);
       };
     }
 

@@ -75,14 +75,27 @@ export class AudioManager {
     _singleton = this;
   }
 
+  private musicAnalysers = new Set<AnalyserNode>();
+
   async connectMusicAnalyser(): Promise<AnalyserNode | null> {
     await this.ensureReady();
     if (!this.ctx || !this.musicGain) return null;
     const analyser = this.ctx.createAnalyser();
-    analyser.fftSize = 128;
-    analyser.smoothingTimeConstant = 0.85;
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
     this.musicGain.connect(analyser);
+    this.musicAnalysers.add(analyser);
     return analyser;
+  }
+
+  disconnectMusicAnalyser(analyser: AnalyserNode) {
+    if (!this.musicGain) return;
+    try {
+      this.musicGain.disconnect(analyser);
+    } catch {
+      // ignore
+    }
+    this.musicAnalysers.delete(analyser);
   }
 
   setMasterVolume(volume: number) {
@@ -168,6 +181,10 @@ export class AudioManager {
 
   dispose() {
     this.stopMusic();
+    for (const analyser of this.musicAnalysers) {
+      try { analyser.disconnect(); } catch {}
+    }
+    this.musicAnalysers.clear();
     if (this.ctx) {
       void this.ctx.close();
     }
