@@ -106,12 +106,16 @@ export class GameAudio {
       }
 
       const pan = panFromWorld(listenerX, sourceX, snapshot.world.width);
-      this.audio.playGunshot({
-        pan,
-        distance,
-        maxDistance,
-        isOwnShot,
-      });
+      const shotOptions = { pan, distance, maxDistance, isOwnShot };
+      if (bullet.weapon_id === 'raygun') {
+        this.audio.playRaygun(shotOptions);
+      } else if (bullet.weapon_id === 'shotgun') {
+        this.audio.playShotgun(shotOptions);
+      } else if (bullet.weapon_id === 'sword') {
+        this.audio.playSword(shotOptions);
+      } else {
+        this.audio.playGunshot(shotOptions);
+      }
     }
 
     const liveIds = new Set(snapshot.bullets.map((bullet) => bullet.id));
