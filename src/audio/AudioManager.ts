@@ -55,7 +55,9 @@ export class AudioManager {
   private swordBuffer: AudioBuffer | null = null;
   private laserGunBuffer: AudioBuffer | null = null;
   private yoghurtEffectBuffer: AudioBuffer | null = null;
+  private yoghurtEffectKillBuffer: AudioBuffer | null = null;
   private fecesBuffer: AudioBuffer | null = null;
+  private fecesKillBuffer: AudioBuffer | null = null;
   private truthNukeBuffer: AudioBuffer | null = null;
   private isaakChiBlastBuffer: AudioBuffer | null = null;
   private assetsPromise: Promise<void> | null = null;
@@ -207,7 +209,9 @@ export class AudioManager {
     this.swordBuffer = null;
     this.laserGunBuffer = null;
     this.yoghurtEffectBuffer = null;
+    this.yoghurtEffectKillBuffer = null;
     this.fecesBuffer = null;
+    this.fecesKillBuffer = null;
     this.truthNukeBuffer = null;
     this.isaakChiBlastBuffer = null;
     this.musicSequencer = null;
@@ -566,10 +570,26 @@ export class AudioManager {
   }
 
   private playYoghurtEffectKill(volume = 0.45) {
+    if (this.yoghurtEffectKillBuffer) {
+      void this.playSample({
+        buffer: this.yoghurtEffectKillBuffer,
+        volume: volume * 1.1,
+        playbackRate: 0.97 + Math.random() * 0.06,
+      });
+      return;
+    }
     this.playGenericKill(volume);
   }
 
   private playFecesKill(volume = 0.45) {
+    if (this.fecesKillBuffer) {
+      void this.playSample({
+        buffer: this.fecesKillBuffer,
+        volume: volume * 1.1,
+        playbackRate: 0.97 + Math.random() * 0.06,
+      });
+      return;
+    }
     this.playGenericKill(volume);
   }
 
@@ -707,9 +727,19 @@ export class AudioManager {
         console.warn('[audio] yoghurt effect sample failed to load', error);
       }
       try {
+        this.yoghurtEffectKillBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.yoghurtEffectKill);
+      } catch (error) {
+        console.warn('[audio] yoghurt effect kill sample failed to load', error);
+      }
+      try {
         this.fecesBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.feces);
       } catch (error) {
         console.warn('[audio] feces sample failed to load', error);
+      }
+      try {
+        this.fecesKillBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.fecesKill);
+      } catch (error) {
+        console.warn('[audio] feces kill sample failed to load', error);
       }
       try {
         this.truthNukeBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.truthNuke);
