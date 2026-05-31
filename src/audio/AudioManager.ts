@@ -46,6 +46,7 @@ export class AudioManager {
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
+  private musicPreGain: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private gunshotBuffer: AudioBuffer | null = null;
   private truthNukeBuffer: AudioBuffer | null = null;
@@ -77,21 +78,32 @@ export class AudioManager {
 
   private musicAnalysers = new Set<AnalyserNode>();
 
+  private analyserSink: GainNode | null = null;
+
   async connectMusicAnalyser(): Promise<AnalyserNode | null> {
     await this.ensureReady();
-    if (!this.ctx || !this.musicGain) return null;
+    if (!this.ctx || !this.musicPreGain) return null;
     const analyser = this.ctx.createAnalyser();
     analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.8;
-    this.musicGain.connect(analyser);
+    analyser.smoothingTimeConstant = 0.6;
+
+    // Browser engines may prune analyser branches that don't reach destination.
+    // Feed it through a zero-gain node into the destination to keep it alive.
+    if (!this.analyserSink) {
+      this.analyserSink = this.ctx.createGain();
+      this.analyserSink.gain.value = 0;
+      this.analyserSink.connect(this.ctx.destination);
+    }
+
+    this.musicPreGain.connect(analyser);
+    analyser.connect(this.analyserSink);
     this.musicAnalysers.add(analyser);
     return analyser;
   }
 
   disconnectMusicAnalyser(analyser: AnalyserNode) {
-    if (!this.musicGain) return;
     try {
-      this.musicGain.disconnect(analyser);
+      analyser.disconnect();
     } catch {
       // ignore
     }
@@ -130,9 +142,11 @@ export class AudioManager {
       this.masterGain = this.ctx.createGain();
       this.sfxGain = this.ctx.createGain();
       this.musicGain = this.ctx.createGain();
+      this.musicPreGain = this.ctx.createGain();
       this.masterGain.gain.value = this.masterVolume;
       this.sfxGain.gain.value = 0.75;
       this.musicGain.gain.value = 0.7;
+      this.musicPreGain.gain.value = 1;
       this.sfxGain.connect(this.masterGain);
       this.musicGain.connect(this.masterGain);
       this.masterGain.connect(this.ctx.destination);
@@ -192,6 +206,8 @@ export class AudioManager {
     this.masterGain = null;
     this.sfxGain = null;
     this.musicGain = null;
+    this.musicPreGain = null;
+    this.analyserSink = null;
     this.noiseBuffer = null;
     this.gunshotBuffer = null;
     this.truthNukeBuffer = null;
@@ -586,6 +602,7 @@ export class AudioManager {
     const sessionGain = ctx.createGain();
     sessionGain.gain.value = 0.0001;
     sessionGain.connect(this.musicGain);
+    sessionGain.connect(this.musicPreGain);
     this.musicSessionGain = sessionGain;
 
     if (mode === 'match' && this.matchTracks.length > 0) {

@@ -22,7 +22,7 @@ export function MenuWaveform() {
       const analyser = await audio.connectMusicAnalyser();
       if (!mounted || !analyser) return;
 
-      const timeData = new Uint8Array(analyser.fftSize);
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
       const totalWidth = BAR_COUNT * (BAR_WIDTH + BAR_GAP);
 
       function resize() {
@@ -42,19 +42,13 @@ export function MenuWaveform() {
         const rect = canvas.getBoundingClientRect();
         const w = rect.width;
         const h = rect.height;
-        const time = performance.now() / 1000;
 
-        analyser!.getByteTimeDomainData(timeData);
+        analyser!.getByteFrequencyData(freqData);
 
-        // Check if there's actual audio signal (values deviating from 128)
-        let hasAudioData = false;
-        let sumDeviation = 0;
-        for (let i = 0; i < timeData.length; i++) {
-          const dev = Math.abs(timeData[i] - 128);
-          sumDeviation += dev;
-          if (dev > 3) hasAudioData = true;
+        let freqMax = 0;
+        for (let i = 0; i < freqData.length; i++) {
+          if (freqData[i] > freqMax) freqMax = freqData[i];
         }
-        const avgDeviation = sumDeviation / timeData.length;
 
         ctx.clearRect(0, 0, w, h);
 
@@ -63,40 +57,40 @@ export function MenuWaveform() {
         const halfBars = Math.floor(BAR_COUNT / 2);
 
         for (let i = 0; i < halfBars; i++) {
-          let norm: number;
+          // Sample frequency bins
+          const binStart = Math.floor((i / halfBars) * (freqData.length * 0.7));
+          const binEnd = Math.floor(((i + 1) / halfBars) * (freqData.length * 0.7));
+          let peak = 0;
+          for (let b = binStart; b < binEnd; b++) {
+            const val = (freqData[b] ?? 0) / 255;
+            if (val > peak) peak = val;
+          }
 
-          if (hasAudioData) {
-            // Sample waveform amplitude at multiple points for this bar
-            const sampleStep = Math.floor(timeData.length / BAR_COUNT);
-            const idx = i * sampleStep;
-            let peak = 0;
-            for (let s = 0; s < sampleStep; s++) {
-              const dev = Math.abs(timeData[idx + s] - 128) / 128;
-              if (dev > peak) peak = dev;
-            }
-            // Scale up so it's visibly reactive
-            norm = Math.min(1, peak * 2.5 + avgDeviation / 128 * 0.3);
+          // Idle pulse when no audio, otherwise real data
+          const hasAudio = freqMax > 1;
+          let norm: number;
+          if (hasAudio) {
+            norm = peak;
           } else {
-            // gentle idle pulse
-            const t = time * 1.5;
+            const t = performance.now() / 1000 * 1.2;
             const dist = i / halfBars;
             norm =
-              Math.sin(t + dist * 4) * 0.22 +
-              Math.sin(t * 0.7 + dist * 7 + 1) * 0.18 +
-              Math.sin(t * 0.4 + dist * 2 + 3) * 0.12 +
-              0.22;
+              Math.sin(t + dist * 4) * 0.18 +
+              Math.sin(t * 0.7 + dist * 7 + 1) * 0.14 +
+              Math.sin(t * 0.4 + dist * 2 + 3) * 0.1 +
+              0.18;
             norm = Math.max(0, Math.min(1, norm));
           }
 
-          const barH = norm * h * 0.88 + 2;
+          const barH = norm * h * 0.55 + 3;
           const xLeft = cx - (i + 1) * step;
           const xRight = cx + i * step;
           const y = (h - barH) / 2;
 
-          const alpha = 0.12 + norm * 0.45;
-          const glowAlpha = 0.08 + norm * 0.28;
+          const alpha = 0.12 + norm * 0.35;
+          const glowAlpha = 0.08 + norm * 0.2;
 
-          ctx.shadowBlur = 10 + norm * 18;
+          ctx.shadowBlur = 8 + norm * 12;
           ctx.shadowColor = `rgba(70, 233, 255, ${glowAlpha})`;
 
           ctx.fillStyle = `rgba(70, 233, 255, ${alpha})`;
