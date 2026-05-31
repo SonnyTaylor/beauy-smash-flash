@@ -4663,6 +4663,7 @@ h2 {
 }
 
 .profile-character-scroll {
+  max-height: 240px;
   padding: 2px 4px 4px 2px;
 }
 
@@ -4697,4 +4698,58 @@ h2 {
 
 .profile-form .setting-hint {
   padding: 0 10px;
+}
+
+.profile-character-scroll {
+  max-height: 240px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.profile-weapon-picker {
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 6px 4px 2px;
+}
+
+.profile-name-chip {
+  display: grid;
+  gap: 7px;
+  min-width: min(210px, 100%);
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.profile-name-chip .slot-name-edit {
+  width: 100%;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 5px 9px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.profile-name-chip .slot-name-edit:hover {
+  border-color: color-mix(in srgb, var(--cyan) 45%, var(--line));
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.profile-name-chip .slot-name {
+  font-size: 1rem;
+}
+
+.profile-name-chip .slot-name-input {
+  width: 100%;
+  min-height: 34px;
+  margin: 0;
 }

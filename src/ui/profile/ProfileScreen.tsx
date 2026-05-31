@@ -58,8 +58,8 @@ export function ProfileScreen({
           </header>
 
           <div className="profile-form">
-            <div className="settings-group">
-              <div className="setting-row">
+            <div className="settings-group profile-name-chip">
+              <div className="setting-row" style={{ padding: 0, border: 'none', background: 'transparent' }}>
                 <span className="setting-label">Display Name</span>
                 <EditableName value={playerName} onSubmit={onNameChange} />
               </div>
@@ -103,7 +103,9 @@ export function ProfileScreen({
                   Luca cannot equip weapons. You will spawn unarmed with 1 HP and reduced speed.
                 </p>
               ) : (
-                <WeaponPicker selectedWeaponId={selectedWeaponId} onSelect={onWeaponChange} />
+                <div className="profile-weapon-picker">
+                  <WeaponPicker selectedWeaponId={selectedWeaponId} onSelect={onWeaponChange} />
+                </div>
               )}
             </div>
 
