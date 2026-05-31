@@ -502,7 +502,33 @@ export class AudioManager {
     this.playExplosion(pan, volume * 0.75, distance, maxDistance);
   }
 
-  playKill(volume = 0.45) {
+  playKill(weaponId?: string, volume = 0.45) {
+    // Per-weapon kill SFX routing — add new cases when audio files exist.
+    switch (weaponId) {
+      case 'raygun':
+        this.playRaygunKill(volume);
+        return;
+      case 'shotgun':
+        this.playShotgunKill(volume);
+        return;
+      case 'sword':
+        this.playSwordKill(volume);
+        return;
+      case 'laser_gun':
+        this.playLaserGunKill(volume);
+        return;
+      case 'yoghurt_effect':
+        this.playYoghurtEffectKill(volume);
+        return;
+      case 'feces':
+        this.playFecesKill(volume);
+        return;
+      default:
+        this.playGenericKill(volume);
+    }
+  }
+
+  private playGenericKill(volume = 0.45) {
     void this.playTone({
       frequency: 660,
       duration: 0.08,
@@ -521,6 +547,30 @@ export class AudioManager {
         decay: 0.1,
       });
     }, 70);
+  }
+
+  private playRaygunKill(volume = 0.45) {
+    this.playGenericKill(volume);
+  }
+
+  private playShotgunKill(volume = 0.45) {
+    this.playGenericKill(volume);
+  }
+
+  private playSwordKill(volume = 0.45) {
+    this.playGenericKill(volume);
+  }
+
+  private playLaserGunKill(volume = 0.45) {
+    this.playGenericKill(volume);
+  }
+
+  private playYoghurtEffectKill(volume = 0.45) {
+    this.playGenericKill(volume);
+  }
+
+  private playFecesKill(volume = 0.45) {
+    this.playGenericKill(volume);
   }
 
   playDeath(volume = 0.5) {

@@ -36,6 +36,8 @@ export class GameAudio {
   private lastPos: { x: number; y: number } | null = null;
   private matchStarted = false;
   private matchEndPlayed = false;
+  /** Tracks the last weapon_id each player fired, so kills can play per-weapon SFX. */
+  private lastWeaponIdByPlayer = new Map<number, string>();
 
   constructor(private audio: AudioManager) {}
 
@@ -43,6 +45,7 @@ export class GameAudio {
     this.knownBulletIds.clear();
     this.knownEffectIds.clear();
     this.hpByPlayer.clear();
+    this.lastWeaponIdByPlayer.clear();
     this.wasReloading = false;
     this.wasAlive = true;
     this.wasSpawnProtected = false;
@@ -103,6 +106,11 @@ export class GameAudio {
       const distance = distanceFromListener(listenerX, listenerY, sourceX, sourceY);
       if (distanceAttenuation(distance, maxDistance) <= 0.02) {
         continue;
+      }
+
+      // Track last weapon fired per player for kill-sound routing.
+      if (bullet.weapon_id) {
+        this.lastWeaponIdByPlayer.set(bullet.owner_id, bullet.weapon_id);
       }
 
       const pan = panFromWorld(listenerX, sourceX, snapshot.world.width);
@@ -190,7 +198,8 @@ export class GameAudio {
     this.killFeedCount = killFeed.length;
     for (const entry of fresh) {
       if (entry.killer_id === myId) {
-        this.audio.playKill();
+        const weaponId = this.lastWeaponIdByPlayer.get(entry.killer_id);
+        this.audio.playKill(weaponId);
       }
       if (entry.victim_id === myId) {
         this.audio.playDeath();
