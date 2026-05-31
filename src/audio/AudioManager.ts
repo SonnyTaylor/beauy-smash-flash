@@ -78,7 +78,8 @@ export class AudioManager {
 
   private musicAnalyser: AnalyserNode | null = null;
 
-  getMusicAnalyser(): AnalyserNode | null {
+  async getMusicAnalyser(): Promise<AnalyserNode | null> {
+    await this.ensureReady();
     if (this.musicAnalyser) return this.musicAnalyser;
     if (!this.ctx || !this.musicPreGain) return null;
 
