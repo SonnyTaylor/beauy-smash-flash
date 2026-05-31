@@ -38,6 +38,7 @@ async function loadAudioBuffer(ctx: AudioContext, url: string): Promise<AudioBuf
 }
 
 const CROSSFADE_SEC = 1.2;
+const IS_DEV = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV === true;
 
 let _singleton: AudioManager | null = null;
 
@@ -582,6 +583,13 @@ export class AudioManager {
   private startMusic(mode: Exclude<MusicMode, 'off'>, generation: number) {
     if (!this.ctx || !this.musicGain) return;
     if (this.musicGeneration !== generation) return;
+
+    // Dev mode: suppress music playback so React Strict Mode doesn't leave
+    // zombie oscillators and double-play tracks. Visualiser idles on zeros.
+    if (IS_DEV) {
+      this.musicVoice = { stop: () => {} };
+      return;
+    }
 
     const ctx = this.ctx;
     const sessionGain = ctx.createGain();
