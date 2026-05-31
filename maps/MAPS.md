@@ -125,5 +125,7 @@ bun run maps:list              # summary table
 | `midline` | Midline | Center pillar control, side flanks |
 | `rings` | Rings | Perimeter rotation, inner cross |
 | `fork` | Fork | Three-way mid hub, ambush angles |
+| `crossfire` | Crossfire | Long cross-lanes with staggered cover pockets |
+| `courtyard` | Courtyard | Ring routes with an enclosed inner duel lane |
 
 Default lobby map: **`split`**.

@@ -2,12 +2,14 @@ import split from '../../content/maps/split.map.json';
 import midline from '../../content/maps/midline.map.json';
 import rings from '../../content/maps/rings.map.json';
 import fork from '../../content/maps/fork.map.json';
+import crossfire from '../../content/maps/crossfire.map.json';
+import courtyard from '../../content/maps/courtyard.map.json';
 import { compileMap, scaleCompiledMap } from '../../maps/compile';
 import type { MapDefinition, MapTheme } from '../../maps/types';
 import { DEFAULT_THEME } from '../../maps/types';
 import type { MapSnapshot } from '../shared/types';
 
-const MAP_DEFINITIONS = [split, midline, rings, fork] as MapDefinition[];
+const MAP_DEFINITIONS = [split, midline, rings, fork, crossfire, courtyard] as MapDefinition[];
 
 export interface MapCatalogEntry extends MapSnapshot {
   theme: MapTheme;
