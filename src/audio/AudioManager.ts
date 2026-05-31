@@ -75,7 +75,8 @@ export class AudioManager {
     _singleton = this;
   }
 
-  connectMusicAnalyser(): AnalyserNode | null {
+  async connectMusicAnalyser(): Promise<AnalyserNode | null> {
+    await this.ensureReady();
     if (!this.ctx || !this.musicGain) return null;
     const analyser = this.ctx.createAnalyser();
     analyser.fftSize = 128;
