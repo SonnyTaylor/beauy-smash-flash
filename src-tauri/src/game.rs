@@ -59,6 +59,8 @@ fn max_hp_for_character(character_id: &str) -> u16 {
 fn base_move_speed_for_character(character_id: &str) -> f32 {
     match character_id {
         "jacob" => JACOB_BASE_SPEED,
+        "zombie" => PLAYER_SPEED * ZOMBIE_SPEED_MULT,
+        "luca" => PLAYER_SPEED * LUCA_SPEED_MULT,
         _ => PLAYER_SPEED,
     }
 }
@@ -1585,10 +1587,6 @@ impl GameWorld {
                 base_speed * abilities::FINN_HANGOVER_SPEED_MULT * expansion_mult
             } else if abilities::in_directors_cut(player) {
                 base_speed * abilities::JACOB_DIRECTORS_CUT_SPEED * expansion_mult
-            } else if player.is_zombie {
-                PLAYER_SPEED * ZOMBIE_SPEED_MULT
-            } else if is_luca_character(&player.character_id) {
-                PLAYER_SPEED * LUCA_SPEED_MULT
             } else {
                 base_speed * expansion_mult
             };
@@ -2954,7 +2952,7 @@ impl GameWorld {
     }
 }
 
-fn apply_hack_inversion(player: &Player, input: &InputSnapshot) -> InputSnapshot {
+pub(crate) fn apply_hack_inversion(player: &Player, input: &InputSnapshot) -> InputSnapshot {
     if player.controls_inverted_until <= 0.0 {
         return input.clone();
     }

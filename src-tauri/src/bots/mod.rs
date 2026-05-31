@@ -52,5 +52,8 @@ pub(crate) fn aim_input(from_x: f32, from_y: f32, to_x: f32, to_y: f32) -> (f32,
 }
 
 pub(crate) fn set_bot_input(world: &mut GameWorld, id: u8, input: crate::protocol::InputSnapshot) {
-    world.set_input(id, input);
+    if let Some(player) = world.players.get(&id) {
+        let input = crate::game::apply_hack_inversion(player, &input);
+        world.set_input(id, input);
+    }
 }
