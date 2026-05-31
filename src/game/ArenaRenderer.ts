@@ -317,6 +317,8 @@ export class ArenaRenderer {
     this.wallLayer = new Container();
     this.entityLayer = new Container();
     this.vfxLayer = this.vfx.container;
+    this.fogLayer = new Container();
+    this.fogOverlay = new Graphics();
     this.floorFill = new Graphics();
     this.grid = new Graphics();
     this.wallContainer = new Container();
@@ -1818,7 +1820,8 @@ export class ArenaRenderer {
     if (
       !this.players.has(this.myId) ||
       !Number.isFinite(this.fogOriginX) ||
-      !Number.isFinite(this.fogOriginY)
+      !Number.isFinite(this.fogOriginY) ||
+      this.visibilityPolygon.length < 3
     ) {
       this.fogLayer.visible = false;
       return;
@@ -1829,8 +1832,7 @@ export class ArenaRenderer {
     this.fogOverlay.rect(0, 0, this.world.width, this.world.height);
     this.fogOverlay.fill({ color: 0x020408, alpha: 0.97 });
 
-    // Circle cut is more reliable than polygon cut across Pixi builds/drivers.
-    this.fogOverlay.circle(this.fogOriginX, this.fogOriginY, FOG_VISION_RADIUS);
+    this.fogOverlay.poly(this.visibilityPolygon);
     this.fogOverlay.cut();
   }
 
