@@ -76,38 +76,26 @@ export class AudioManager {
     _singleton = this;
   }
 
-  private musicAnalysers = new Set<AnalyserNode>();
+  private musicAnalyser: AnalyserNode | null = null;
 
-  private analyserSink: GainNode | null = null;
-
-  async connectMusicAnalyser(): Promise<AnalyserNode | null> {
-    await this.ensureReady();
+  getMusicAnalyser(): AnalyserNode | null {
+    if (this.musicAnalyser) return this.musicAnalyser;
     if (!this.ctx || !this.musicPreGain) return null;
+
     const analyser = this.ctx.createAnalyser();
     analyser.fftSize = 256;
     analyser.smoothingTimeConstant = 0.6;
 
     // Browser engines may prune analyser branches that don't reach destination.
     // Feed it through a zero-gain node into the destination to keep it alive.
-    if (!this.analyserSink) {
-      this.analyserSink = this.ctx.createGain();
-      this.analyserSink.gain.value = 0;
-      this.analyserSink.connect(this.ctx.destination);
-    }
+    const sink = this.ctx.createGain();
+    sink.gain.value = 0;
+    sink.connect(this.ctx.destination);
 
     this.musicPreGain.connect(analyser);
-    analyser.connect(this.analyserSink);
-    this.musicAnalysers.add(analyser);
+    analyser.connect(sink);
+    this.musicAnalyser = analyser;
     return analyser;
-  }
-
-  disconnectMusicAnalyser(analyser: AnalyserNode) {
-    try {
-      analyser.disconnect();
-    } catch {
-      // ignore
-    }
-    this.musicAnalysers.delete(analyser);
   }
 
   setMasterVolume(volume: number) {
@@ -195,10 +183,6 @@ export class AudioManager {
 
   dispose() {
     this.stopMusic();
-    for (const analyser of this.musicAnalysers) {
-      try { analyser.disconnect(); } catch {}
-    }
-    this.musicAnalysers.clear();
     if (this.ctx) {
       void this.ctx.close();
     }
@@ -207,7 +191,7 @@ export class AudioManager {
     this.sfxGain = null;
     this.musicGain = null;
     this.musicPreGain = null;
-    this.analyserSink = null;
+    this.musicAnalyser = null;
     this.noiseBuffer = null;
     this.gunshotBuffer = null;
     this.truthNukeBuffer = null;
