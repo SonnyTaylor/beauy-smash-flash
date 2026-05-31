@@ -126,6 +126,9 @@ export function ProfileScreen({
             <button type="button" className="ghost-button" onClick={onBack}>
               Back
             </button>
+            <button type="button" className="primary-action" onClick={onBack}>
+              Save Settings
+            </button>
           </div>
         </section>
       </div>

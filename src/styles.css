@@ -4753,3 +4753,21 @@ h2 {
   min-height: 34px;
   margin: 0;
 }
+
+.profile-flow {
+  align-items: center;
+}
+
+.profile-card {
+  align-content: start;
+  width: min(580px, 100%);
+  max-height: 90vh;
+  overflow: hidden;
+  padding: clamp(16px, 2.4vw, 24px);
+}
+
+.profile-weapon-picker .weapon-picker {
+  display: flex;
+  flex-direction: column;
+}
+
