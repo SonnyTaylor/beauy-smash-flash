@@ -113,6 +113,12 @@ export class GameAudio {
         this.audio.playShotgun(shotOptions);
       } else if (bullet.weapon_id === 'sword') {
         this.audio.playSword(shotOptions);
+      } else if (bullet.weapon_id === 'laser_gun') {
+        this.audio.playLaserGun(shotOptions);
+      } else if (bullet.weapon_id === 'yoghurt_effect') {
+        this.audio.playYoghurtEffect(shotOptions);
+      } else if (bullet.weapon_id === 'feces') {
+        this.audio.playFeces(shotOptions);
       } else {
         this.audio.playGunshot(shotOptions);
       }

@@ -53,6 +53,9 @@ export class AudioManager {
   private raygunBuffer: AudioBuffer | null = null;
   private shotgunBuffer: AudioBuffer | null = null;
   private swordBuffer: AudioBuffer | null = null;
+  private laserGunBuffer: AudioBuffer | null = null;
+  private yoghurtEffectBuffer: AudioBuffer | null = null;
+  private fecesBuffer: AudioBuffer | null = null;
   private truthNukeBuffer: AudioBuffer | null = null;
   private isaakChiBlastBuffer: AudioBuffer | null = null;
   private assetsPromise: Promise<void> | null = null;
@@ -202,6 +205,9 @@ export class AudioManager {
     this.raygunBuffer = null;
     this.shotgunBuffer = null;
     this.swordBuffer = null;
+    this.laserGunBuffer = null;
+    this.yoghurtEffectBuffer = null;
+    this.fecesBuffer = null;
     this.truthNukeBuffer = null;
     this.isaakChiBlastBuffer = null;
     this.musicSequencer = null;
@@ -306,6 +312,78 @@ export class AudioManager {
 
     void this.playSample({
       buffer: this.swordBuffer,
+      volume,
+      pan,
+      playbackRate: pitch,
+      lowpassHz: lowpassForDistance(distance, maxDistance),
+    });
+  }
+
+  playLaserGun(options: GunshotOptions = {}) {
+    const {
+      pan = 0,
+      distance = 0,
+      maxDistance = 900,
+      isOwnShot = false,
+    } = options;
+
+    const attenuation = distanceAttenuation(distance, maxDistance);
+    if (attenuation <= 0.02) return;
+
+    const pitch = 0.97 + Math.random() * 0.06;
+    const baseVolume = isOwnShot ? 0.55 : 0.44;
+    const volume = baseVolume * attenuation;
+
+    void this.playSample({
+      buffer: this.laserGunBuffer,
+      volume,
+      pan,
+      playbackRate: pitch,
+      lowpassHz: lowpassForDistance(distance, maxDistance),
+    });
+  }
+
+  playYoghurtEffect(options: GunshotOptions = {}) {
+    const {
+      pan = 0,
+      distance = 0,
+      maxDistance = 900,
+      isOwnShot = false,
+    } = options;
+
+    const attenuation = distanceAttenuation(distance, maxDistance);
+    if (attenuation <= 0.02) return;
+
+    const pitch = 0.95 + Math.random() * 0.1;
+    const baseVolume = isOwnShot ? 0.52 : 0.42;
+    const volume = baseVolume * attenuation;
+
+    void this.playSample({
+      buffer: this.yoghurtEffectBuffer,
+      volume,
+      pan,
+      playbackRate: pitch,
+      lowpassHz: lowpassForDistance(distance, maxDistance),
+    });
+  }
+
+  playFeces(options: GunshotOptions = {}) {
+    const {
+      pan = 0,
+      distance = 0,
+      maxDistance = 900,
+      isOwnShot = false,
+    } = options;
+
+    const attenuation = distanceAttenuation(distance, maxDistance);
+    if (attenuation <= 0.02) return;
+
+    const pitch = 0.94 + Math.random() * 0.12;
+    const baseVolume = isOwnShot ? 0.58 : 0.46;
+    const volume = baseVolume * attenuation;
+
+    void this.playSample({
+      buffer: this.fecesBuffer,
       volume,
       pan,
       playbackRate: pitch,
@@ -567,6 +645,21 @@ export class AudioManager {
         this.swordBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.sword);
       } catch (error) {
         console.warn('[audio] sword sample failed to load', error);
+      }
+      try {
+        this.laserGunBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.laserGun);
+      } catch (error) {
+        console.warn('[audio] laser gun sample failed to load', error);
+      }
+      try {
+        this.yoghurtEffectBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.yoghurtEffect);
+      } catch (error) {
+        console.warn('[audio] yoghurt effect sample failed to load', error);
+      }
+      try {
+        this.fecesBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.feces);
+      } catch (error) {
+        console.warn('[audio] feces sample failed to load', error);
       }
       try {
         this.truthNukeBuffer = await loadAudioBuffer(ctx, AUDIO_ASSETS.truthNuke);

@@ -3,6 +3,9 @@ export const AUDIO_ASSETS = {
   raygun: '/assets/audio/raygun.mp3',
   shotgun: '/assets/audio/shotgun.mp3',
   sword: '/assets/audio/sword.mp3',
+  laserGun: '/assets/audio/laser_gun.mp3',
+  yoghurtEffect: '/assets/audio/yoghurt_effect.mp3',
+  feces: '/assets/audio/feces.mp3',
   truthNuke: '/assets/audio/truth_nuke.mp3',
   isaakChiBlast: '/assets/audio/isaak_chi_blast.ogg',
   music: {
