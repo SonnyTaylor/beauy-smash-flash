@@ -37,6 +37,10 @@ async function loadAudioBuffer(ctx: AudioContext, url: string): Promise<AudioBuf
   return ctx.decodeAudioData(data);
 }
 
+const CROSSFADE_SEC = 1.2;
+
+let _singleton: AudioManager | null = null;
+
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -47,6 +51,9 @@ export class AudioManager {
   private truthNukeBuffer: AudioBuffer | null = null;
   private isaakChiBlastBuffer: AudioBuffer | null = null;
   private assetsPromise: Promise<void> | null = null;
+  private musicBuffers: Map<MusicMode, AudioBuffer> = new Map();
+  private matchTracks: Array<{ buffer: AudioBuffer; startOffset?: number }> = [];
+  private currentMatchTrackIndex = -1;
   private musicSequencer: MusicSequencer | null = null;
   private musicSessionGain: GainNode | null = null;
   private musicVoice: ActiveVoice | null = null;
@@ -56,6 +63,13 @@ export class AudioManager {
   private masterVolume = 0.85;
   private paused = false;
   private lastGunshotByOwner = new Map<number, number>();
+
+  constructor() {
+    if (_singleton) {
+      return _singleton;
+    }
+    _singleton = this;
+  }
 
   setMasterVolume(volume: number) {
     this.masterVolume = clamp(volume, 0, 1);
@@ -73,7 +87,7 @@ export class AudioManager {
     if (this.musicEnabled === enabled) return;
     this.musicEnabled = enabled;
     if (!enabled) {
-      this.stopMusic();
+      this.fadeOutAndStop(0.4);
       return;
     }
     if (this.musicMode !== 'off') {
@@ -106,12 +120,21 @@ export class AudioManager {
   setMusicMode(mode: MusicMode, options?: { force?: boolean }) {
     if (!this.musicEnabled) {
       this.musicMode = mode;
-      this.stopMusic();
+      this.fadeOutAndStop(0.4);
       return;
     }
     if (!options?.force && this.musicMode === mode && this.musicVoice) return;
+
+    const sameModeRestart = this.musicMode === mode && !!options?.force;
     this.musicMode = mode;
-    this.stopMusic();
+    this.musicGeneration += 1;
+
+    if (sameModeRestart) {
+      this.stopMusic(); // immediate restart (e.g., audio unlock)
+    } else {
+      this.fadeOutAndStop(CROSSFADE_SEC);
+    }
+
     if (mode === 'off') return;
 
     const generation = this.musicGeneration;
@@ -145,8 +168,12 @@ export class AudioManager {
     this.musicSequencer = null;
     this.musicSessionGain = null;
     this.assetsPromise = null;
+    this.musicBuffers.clear();
+    this.matchTracks = [];
+    this.currentMatchTrackIndex = -1;
     this.musicGeneration = 0;
     this.lastGunshotByOwner.clear();
+    _singleton = null;
   }
 
   playGunshot(options: GunshotOptions = {}) {
@@ -425,6 +452,23 @@ export class AudioManager {
       } catch (error) {
         console.warn('[audio] isaak chi blast sample failed to load', error);
       }
+      for (const mode of ['menu', 'lobby'] as const) {
+        const track = AUDIO_ASSETS.music[mode] as { url: string };
+        try {
+          const buffer = await loadAudioBuffer(ctx, track.url);
+          this.musicBuffers.set(mode, buffer);
+        } catch (error) {
+          console.warn(`[audio] music track failed to load: ${track.url}`, error);
+        }
+      }
+      for (const track of AUDIO_ASSETS.music.match as readonly { url: string; startOffset?: number }[]) {
+        try {
+          const buffer = await loadAudioBuffer(ctx, track.url);
+          this.matchTracks.push({ buffer, startOffset: track.startOffset });
+        } catch (error) {
+          console.warn(`[audio] music track failed to load: ${track.url}`, error);
+        }
+      }
     })();
 
     await this.assetsPromise;
@@ -439,9 +483,18 @@ export class AudioManager {
 
   private stopMusic() {
     this.musicGeneration += 1;
-    this.musicVoice?.stop();
+    const voice = this.musicVoice;
     this.musicVoice = null;
-    this.musicSequencer?.stop();
+    try {
+      voice?.stop();
+    } catch {
+      // Ignore voice cleanup errors.
+    }
+    try {
+      this.musicSequencer?.stop();
+    } catch {
+      // Ignore sequencer cleanup errors.
+    }
     this.musicSequencer = null;
     if (this.musicSessionGain) {
       try {
@@ -453,25 +506,136 @@ export class AudioManager {
     }
   }
 
+  private fadeOutAndStop(durationSec: number) {
+    const voice = this.musicVoice;
+    const sequencer = this.musicSequencer;
+    const gain = this.musicSessionGain;
+
+    this.musicVoice = null;
+    this.musicSequencer = null;
+    this.musicSessionGain = null;
+
+    if (sequencer) {
+      try { sequencer.stop(); } catch {}
+    }
+
+    if (voice && gain && this.ctx) {
+      const now = this.ctx.currentTime;
+      try {
+        gain.gain.setValueAtTime(gain.gain.value, now);
+        gain.gain.linearRampToValueAtTime(0.0001, now + durationSec);
+      } catch {
+        try { voice.stop(); } catch {}
+        try { gain.disconnect(); } catch {}
+        return;
+      }
+
+      window.setTimeout(() => {
+        try { voice.stop(); } catch {}
+        try { gain.disconnect(); } catch {}
+      }, durationSec * 1000 + 50);
+    } else {
+      if (voice) try { voice.stop(); } catch {}
+      if (gain) try { gain.disconnect(); } catch {}
+    }
+  }
+
+  private fadeInSession(sessionGain: GainNode) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    sessionGain.gain.setValueAtTime(0.0001, now);
+    sessionGain.gain.linearRampToValueAtTime(1, now + CROSSFADE_SEC);
+  }
+
   private startMusic(mode: Exclude<MusicMode, 'off'>, generation: number) {
     if (!this.ctx || !this.musicGain) return;
     if (this.musicGeneration !== generation) return;
 
     const ctx = this.ctx;
     const sessionGain = ctx.createGain();
-    sessionGain.gain.value = 1;
+    sessionGain.gain.value = 0.0001;
     sessionGain.connect(this.musicGain);
     this.musicSessionGain = sessionGain;
+
+    if (mode === 'match' && this.matchTracks.length > 0) {
+      this.playMatchTrack(sessionGain, generation);
+      this.fadeInSession(sessionGain);
+      this.refreshMusicGain();
+      return;
+    }
+
+    const buffer = this.musicBuffers.get(mode);
+    if (buffer) {
+      const track = AUDIO_ASSETS.music[mode] as { url: string; startOffset?: number };
+      const offset = track.startOffset ?? 0;
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(sessionGain);
+      const now = ctx.currentTime;
+      source.start(now, offset);
+      this.musicVoice = {
+        stop: () => {
+          try { source.stop(); } catch { /* already stopped */ }
+          try { source.disconnect(); } catch { /* already disconnected */ }
+        },
+      };
+      this.fadeInSession(sessionGain);
+      this.refreshMusicGain();
+      return;
+    }
 
     const isActive = () => this.musicGeneration === generation;
     const sequencer = new MusicSequencer(ctx, sessionGain, isActive);
     sequencer.start(mode);
     this.musicSequencer = sequencer;
+    this.fadeInSession(sessionGain);
     this.refreshMusicGain();
 
     this.musicVoice = {
       stop: () => {
         sequencer.stop();
+      },
+    };
+  }
+
+  private playMatchTrack(sessionGain: GainNode, generation: number) {
+    if (!this.ctx) return;
+    if (this.musicGeneration !== generation || this.musicMode !== 'match') return;
+
+    const tracks = this.matchTracks;
+    if (tracks.length === 0) return;
+
+    const pick = () => Math.floor(Math.random() * tracks.length);
+    let index = pick();
+    if (tracks.length > 1) {
+      while (index === this.currentMatchTrackIndex) {
+        index = pick();
+      }
+    }
+    this.currentMatchTrackIndex = index;
+
+    const track = tracks[index];
+    const source = this.ctx.createBufferSource();
+    source.buffer = track.buffer;
+    source.loop = false;
+    source.connect(sessionGain);
+
+    const offset = track.startOffset ?? 0;
+    const now = this.ctx.currentTime;
+    source.start(now, offset);
+
+    const onEnded = () => {
+      if (this.musicGeneration !== generation || this.musicMode !== 'match') return;
+      this.playMatchTrack(sessionGain, generation);
+    };
+    source.addEventListener('ended', onEnded);
+
+    this.musicVoice = {
+      stop: () => {
+        try { source.stop(); } catch { /* already stopped */ }
+        try { source.removeEventListener('ended', onEnded); } catch { /* ignore */ }
+        try { source.disconnect(); } catch { /* already disconnected */ }
       },
     };
   }
