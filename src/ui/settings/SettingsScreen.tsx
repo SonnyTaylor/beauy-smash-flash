@@ -77,6 +77,24 @@ export function SettingsScreen({
             </div>
 
             <div className="settings-group">
+              <SettingRow label="Pause Audio When Tabbed Out">
+                <button
+                  type="button"
+                  className={`toggle-pill ${draft.pauseAudioWhenUnfocused ? 'on' : 'off'}`}
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      pauseAudioWhenUnfocused: !draft.pauseAudioWhenUnfocused,
+                    })
+                  }
+                >
+                  {draft.pauseAudioWhenUnfocused ? 'On' : 'Off'}
+                </button>
+              </SettingRow>
+              <p className="setting-hint">Stops music and all sound while the game window is inactive.</p>
+            </div>
+
+            <div className="settings-group">
               <div className="setting-row settings-volume-row">
                 <span className="setting-label">Master Volume</span>
                 <div className="setting-control settings-volume-control">

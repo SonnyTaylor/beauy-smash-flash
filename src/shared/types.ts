@@ -95,6 +95,7 @@ export interface GameSettings {
   serverName: string;
   masterVolume: number;
   musicEnabled: boolean;
+  pauseAudioWhenUnfocused: boolean;
   showControlsHint: boolean;
 }
 
@@ -102,6 +103,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   serverName: 'LAN Game',
   masterVolume: 0.85,
   musicEnabled: true,
+  pauseAudioWhenUnfocused: true,
   showControlsHint: true,
 };
 

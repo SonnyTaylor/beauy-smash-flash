@@ -88,6 +88,10 @@ function sanitizeGameSettings(parsed: Partial<GameSettings> | null | undefined):
       typeof parsed.musicEnabled === 'boolean'
         ? parsed.musicEnabled
         : DEFAULT_GAME_SETTINGS.musicEnabled,
+    pauseAudioWhenUnfocused:
+      typeof parsed.pauseAudioWhenUnfocused === 'boolean'
+        ? parsed.pauseAudioWhenUnfocused
+        : DEFAULT_GAME_SETTINGS.pauseAudioWhenUnfocused,
     showControlsHint:
       typeof parsed.showControlsHint === 'boolean'
         ? parsed.showControlsHint

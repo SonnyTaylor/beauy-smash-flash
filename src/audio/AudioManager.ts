@@ -72,6 +72,7 @@ export class AudioManager {
   private musicEnabled = true;
   private masterVolume = 0.85;
   private paused = false;
+  private mutedForBackground = false;
   private lastGunshotByOwner = new Map<number, number>();
 
   static getInstance(): AudioManager {
@@ -120,6 +121,12 @@ export class AudioManager {
     this.refreshMusicGain();
   }
 
+  setMutedForBackground(muted: boolean) {
+    if (this.mutedForBackground === muted) return;
+    this.mutedForBackground = muted;
+    void this.syncContextState();
+  }
+
   setMusicEnabled(enabled: boolean) {
     if (this.musicEnabled === enabled) return;
     this.musicEnabled = enabled;
@@ -149,7 +156,7 @@ export class AudioManager {
       this.musicGain.connect(this.masterGain);
       this.masterGain.connect(this.ctx.destination);
     }
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx.state === 'suspended' && !this.mutedForBackground) {
       await this.ctx.resume();
     }
     await this.loadAssets();
@@ -780,6 +787,28 @@ export class AudioManager {
     this.musicGain.gain.value = this.paused ? base * 0.4 : base;
   }
 
+  private async syncContextState() {
+    if (!this.ctx) return;
+    if (this.mutedForBackground) {
+      if (this.ctx.state === 'running') {
+        try {
+          await this.ctx.suspend();
+        } catch {
+          // Ignore suspend failures.
+        }
+      }
+      return;
+    }
+
+    if (this.ctx.state === 'suspended') {
+      try {
+        await this.ctx.resume();
+      } catch {
+        // Ignore resume failures; user interaction unlock will retry.
+      }
+    }
+  }
+
   private stopMusic() {
     this.musicGeneration += 1;
     const voice = this.musicVoice;
@@ -861,7 +890,9 @@ export class AudioManager {
     const sessionGain = ctx.createGain();
     sessionGain.gain.value = 0.0001;
     sessionGain.connect(this.musicGain);
-    sessionGain.connect(this.musicPreGain);
+    if (this.musicPreGain) {
+      sessionGain.connect(this.musicPreGain);
+    }
     this.musicSessionGain = sessionGain;
 
     if (mode === 'match' && this.matchTracks.length > 0) {
@@ -954,6 +985,7 @@ export class AudioManager {
     playbackRate?: number;
     lowpassHz?: number;
   }) {
+    if (this.mutedForBackground) return;
     await this.ensureReady();
     if (!this.ctx || !this.sfxGain || !options.buffer) return;
 
@@ -996,6 +1028,7 @@ export class AudioManager {
     filterType?: BiquadFilterType;
     filterFreq?: number;
   }) {
+    if (this.mutedForBackground) return;
     await this.ensureReady();
     if (!this.ctx || !this.sfxGain || !this.noiseBuffer) return;
 
@@ -1041,6 +1074,7 @@ export class AudioManager {
     attack?: number;
     decay?: number;
   }) {
+    if (this.mutedForBackground) return;
     await this.ensureReady();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -1076,6 +1110,7 @@ export class AudioManager {
     volume: number;
     pan?: number;
   }) {
+    if (this.mutedForBackground) return;
     await this.ensureReady();
     if (!this.ctx || !this.sfxGain) return;
 

@@ -22,10 +22,11 @@ export function MenuWaveform() {
       const audio = AudioManager.getInstance();
       const analyser = await audio.getMusicAnalyser();
       if (!mounted || !analyser) return;
+      const analyserNode = analyser;
 
       setReady(true);
 
-      const freqData = new Uint8Array(analyser.frequencyBinCount);
+      const freqData = new Uint8Array(analyserNode.frequencyBinCount);
       const totalWidth = BAR_COUNT * (BAR_WIDTH + BAR_GAP);
 
       function resize() {
@@ -46,7 +47,7 @@ export function MenuWaveform() {
         const w = rect.width;
         const h = rect.height;
 
-        analyser.getByteFrequencyData(freqData);
+        analyserNode.getByteFrequencyData(freqData);
 
         let freqMax = 0;
         for (let i = 0; i < freqData.length; i++) {

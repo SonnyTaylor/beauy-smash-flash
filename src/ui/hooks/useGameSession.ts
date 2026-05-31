@@ -68,6 +68,10 @@ export function useGameSession() {
   const [matchEnded, setMatchEnded] = useState(false);
   const [arenaLoading, setArenaLoading] = useState(false);
   const [gameSettings, setGameSettings] = useState<GameSettings>({ ...DEFAULT_GAME_SETTINGS });
+  const [windowFocused, setWindowFocused] = useState(() => {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible';
+  });
   const pausedRef = useRef(false);
   const matchEndedRef = useRef(false);
   const gameSettingsRef = useRef(gameSettings);
@@ -144,6 +148,29 @@ export function useGameSession() {
     audio.setMasterVolume(gameSettings.masterVolume);
     audio.setMusicEnabled(gameSettings.musicEnabled);
   }, [audio, gameSettings]);
+
+  useEffect(() => {
+    const updateFocus = () => {
+      const isVisible = document.visibilityState === 'visible';
+      const hasFocus = typeof document.hasFocus === 'function' ? document.hasFocus() : true;
+      setWindowFocused(isVisible && hasFocus);
+    };
+
+    window.addEventListener('focus', updateFocus);
+    window.addEventListener('blur', updateFocus);
+    document.addEventListener('visibilitychange', updateFocus);
+    updateFocus();
+
+    return () => {
+      window.removeEventListener('focus', updateFocus);
+      window.removeEventListener('blur', updateFocus);
+      document.removeEventListener('visibilitychange', updateFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    audio.setMutedForBackground(gameSettings.pauseAudioWhenUnfocused && !windowFocused);
+  }, [audio, gameSettings.pauseAudioWhenUnfocused, windowFocused]);
 
   useEffect(() => {
     const unlockAudio = () => {
