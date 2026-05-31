@@ -31,6 +31,7 @@ import { GAME_SAFE_AREA_INSETS } from './safeArea';
 import {
   computeVisibilityPolygon,
   hasLineOfSight,
+  isSimpleVisibilityPolygon,
   rectsToSegments,
   type Point,
   type Segment,
@@ -78,6 +79,7 @@ const RELOAD_GUN_TILT = Math.PI * 0.42;
 const MELEE_SWING_DURATION = 0.18;
 const MELEE_SWING_ARC = Math.PI * 0.72;
 const FOG_VISION_RADIUS = 420;
+const FOG_FALLBACK_STEPS = 48;
 
 const HACK_GREEN_BRIGHT = 0x00ff41;
 const HACK_GREEN_NEON = 0x39ff14;
@@ -1787,7 +1789,8 @@ export class ArenaRenderer {
       this.visibilityPolygon = [];
       return;
     }
-    this.visibilityPolygon = computeVisibilityPolygon(
+
+    const polygon = computeVisibilityPolygon(
       this.fogOriginX,
       this.fogOriginY,
       this.wallSegments,
@@ -1795,6 +1798,38 @@ export class ArenaRenderer {
       this.world.width,
       this.world.height,
     );
+
+    const polygonFinite = polygon.every(
+      (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
+    );
+    if (
+      polygon.length >= 3 &&
+      polygonFinite &&
+      isSimpleVisibilityPolygon(this.fogOriginX, this.fogOriginY, polygon)
+    ) {
+      this.visibilityPolygon = polygon;
+      return;
+    }
+
+    this.visibilityPolygon = this.buildFallbackVisibilityPolygon();
+  }
+
+  private buildFallbackVisibilityPolygon(): Point[] {
+    const originX = Math.max(0, Math.min(this.world.width, this.fogOriginX));
+    const originY = Math.max(0, Math.min(this.world.height, this.fogOriginY));
+    const points: Point[] = [];
+
+    for (let i = 0; i < FOG_FALLBACK_STEPS; i += 1) {
+      const angle = (i / FOG_FALLBACK_STEPS) * Math.PI * 2;
+      const x = originX + Math.cos(angle) * FOG_VISION_RADIUS;
+      const y = originY + Math.sin(angle) * FOG_VISION_RADIUS;
+      points.push({
+        x: Math.max(0, Math.min(this.world.width, x)),
+        y: Math.max(0, Math.min(this.world.height, y)),
+      });
+    }
+
+    return points;
   }
 
   private applyFogEntityVisibility() {

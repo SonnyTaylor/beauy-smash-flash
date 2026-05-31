@@ -51,12 +51,16 @@ export function isBlockedByMaliceFog(
     const originInside = distance(originX, originY, zone.x, zone.y) <= zone.radius;
     const targetInside = distance(targetX, targetY, zone.x, zone.y) <= zone.radius;
 
+    // Standing inside hostile malice should not hard-black your own visibility.
+    if (originInside) {
+      continue;
+    }
+
     if (targetInside) {
       return true;
     }
 
     if (
-      !originInside &&
       segmentIntersectsCircle(originX, originY, targetX, targetY, zone.x, zone.y, zone.radius)
     ) {
       return true;
