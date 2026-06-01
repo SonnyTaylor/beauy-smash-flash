@@ -1715,31 +1715,36 @@ export class ArenaRenderer {
   }
 
   private drawOilPuddle(gfx: Graphics, radius: number, lifeRatio: number, variant: number) {
-    const fade = Math.max(0.15, lifeRatio);
+    if (!Number.isFinite(radius) || radius <= 0 || !Number.isFinite(lifeRatio)) {
+      return;
+    }
+
+    const safeRadius = Math.min(Math.max(radius, 8), 280);
+    const fade = Math.max(0.15, Math.min(1, lifeRatio));
     const wobble = 0.9 + (variant % 5) * 0.04;
-    const rx = radius * 1.08 * wobble;
-    const ry = radius * 0.88 * (1.1 - (variant % 3) * 0.05);
+    const rx = safeRadius * 1.08 * wobble;
+    const ry = safeRadius * 0.88 * (1.1 - (variant % 3) * 0.05);
 
     gfx.ellipse(0, 0, rx, ry)
       .fill({ color: 0x0c0a06, alpha: 0.78 * fade })
       .ellipse(0, 0, rx * 0.92, ry * 0.92)
       .stroke({ color: 0x1e1810, width: 2.5, alpha: 0.55 * fade });
 
-    gfx.ellipse(radius * 0.12, -radius * 0.08, radius * 0.55, radius * 0.42)
+    gfx.ellipse(safeRadius * 0.12, -safeRadius * 0.08, safeRadius * 0.55, safeRadius * 0.42)
       .fill({ color: 0x1f1810, alpha: 0.65 * fade });
 
-    gfx.ellipse(-radius * 0.18, radius * 0.1, radius * 0.38, radius * 0.28)
+    gfx.ellipse(-safeRadius * 0.18, safeRadius * 0.1, safeRadius * 0.38, safeRadius * 0.28)
       .fill({ color: 0x2a2218, alpha: 0.45 * fade });
 
     // Iridescent sheen (rainbow oil)
     const sheenColors = [0x4a3060, 0x305848, 0x484830, 0x603040];
     const sheen = sheenColors[variant % sheenColors.length];
-    gfx.ellipse(radius * 0.15, -radius * 0.2, radius * 0.4, radius * 0.22)
+    gfx.ellipse(safeRadius * 0.15, -safeRadius * 0.2, safeRadius * 0.4, safeRadius * 0.22)
       .fill({ color: sheen, alpha: 0.28 * fade })
-      .ellipse(-radius * 0.22, radius * 0.05, radius * 0.25, radius * 0.18)
+      .ellipse(-safeRadius * 0.22, safeRadius * 0.05, safeRadius * 0.25, safeRadius * 0.18)
       .fill({ color: 0x88b0c8, alpha: 0.14 * fade });
 
-    gfx.circle(0, 0, radius * 0.95)
+    gfx.circle(0, 0, safeRadius * 0.95)
       .stroke({ color: 0x3d3020, width: 1.5, alpha: 0.35 * fade });
   }
 
@@ -1767,6 +1772,15 @@ export class ArenaRenderer {
           : 1;
       const spawnPop = isNew ? 0.85 + 0.15 * Math.abs(Math.sin(now / 80)) : 1;
       const fade = lifeRatio * spawnPop;
+
+      if (
+        !Number.isFinite(effect.x) ||
+        !Number.isFinite(effect.y) ||
+        !Number.isFinite(effect.radius)
+      ) {
+        gfx.visible = false;
+        continue;
+      }
 
       gfx.clear();
       this.drawOilPuddle(gfx, effect.radius, fade, effect.id);
