@@ -15,6 +15,14 @@
   ; Idempotent: drop any previous rule of the same name before re-adding.
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${BSF_FW_RULE}"'
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${BSF_FW_RULE}" dir=in action=allow protocol=UDP localport=5554-5555 profile=any'
+
+  ; Clear out a legacy per-user install so the Start Menu does not keep launching
+  ; an older copy after this per-machine install/update completes.
+  Delete "$APPDATA\Microsoft\Windows\Start Menu\Programs\Beauy Smash Flash.lnk"
+  Delete "$APPDATA\Microsoft\Windows\Start Menu\Programs\Beauy Smash Flash\*.*"
+  RMDir /r "$APPDATA\Microsoft\Windows\Start Menu\Programs\Beauy Smash Flash"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Beauy Smash Flash"
+  RMDir /r "$LOCALAPPDATA\Beauy Smash Flash"
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
