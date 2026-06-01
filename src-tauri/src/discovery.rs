@@ -95,8 +95,16 @@ pub async fn scan_servers(timeout_ms: u64) -> Result<Vec<ServerInfo>, String> {
         };
 
         if let Ok(DiscoveryMessage::Host(mut info)) = decode_discovery(&buf[..n]) {
-            info.address = addr.ip().to_string();
-            servers.insert(format!("{}:{}", info.address, info.game_port), info);
+            let sender_address = addr.ip().to_string();
+            let advertised_address = info.address.trim();
+            let host_address = if advertised_address.is_empty() {
+                sender_address
+            } else {
+                advertised_address.to_string()
+            };
+
+            info.address = host_address.clone();
+            servers.insert(format!("{}:{}", host_address, info.game_port), info);
         }
     }
 

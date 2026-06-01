@@ -2,6 +2,20 @@
 
 pub static MAP_BLOBS: &[(&str, &str)] = &[
     (
+        "courtyard",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../content/maps/courtyard.map.json"
+        )),
+    ),
+    (
+        "crossfire",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../content/maps/crossfire.map.json"
+        )),
+    ),
+    (
         "fork",
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),

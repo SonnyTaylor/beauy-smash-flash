@@ -80,8 +80,9 @@ export function ServerSelect({
                     disabled={isBusy || blocked}
                     title={!compatibility.ok ? compatibility.reason : compatibility.warning}
                     onClick={() => {
-                      onJoinIpChange(server.address);
-                      onContinue(server.address);
+                      const hostAddress = `${server.address}:${server.game_port}`;
+                      onJoinIpChange(hostAddress);
+                      onContinue(hostAddress);
                     }}
                   >
                     <span className="host-card-main">
