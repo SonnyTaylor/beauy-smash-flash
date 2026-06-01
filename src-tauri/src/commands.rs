@@ -104,6 +104,78 @@ pub async fn kick_player(
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+pub struct LegacyCleanupResult {
+    pub install_dir_removed: bool,
+    pub start_menu_shortcut_removed: bool,
+    pub uninstall_reg_removed: bool,
+}
+
+/// Remove a legacy per-user install and its Start Menu shortcut.
+/// This runs **before** the updater launches the elevated per-machine installer,
+/// so it operates in the real user's context (not the admin context).
+#[tauri::command]
+pub fn cleanup_legacy_install() -> Result<LegacyCleanupResult, String> {
+    use std::path::PathBuf;
+
+    let mut result = LegacyCleanupResult {
+        install_dir_removed: false,
+        start_menu_shortcut_removed: false,
+        uninstall_reg_removed: false,
+    };
+
+    // Remove old per-user install directory — skip if the currently running
+    // exe lives inside it (Windows locks the running binary).
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let old_install = PathBuf::from(&local_app_data).join("Beauy Smash Flash");
+        if old_install.exists() {
+            let should_remove = std::env::current_exe()
+                .map(|exe| !exe.starts_with(&old_install))
+                .unwrap_or(true);
+            if should_remove {
+                let _ = std::fs::remove_dir_all(&old_install);
+                result.install_dir_removed = !old_install.exists();
+            }
+        }
+    }
+
+    // Remove old per-user Start Menu shortcut.
+    if let Ok(app_data) = std::env::var("APPDATA") {
+        let old_shortcut = PathBuf::from(&app_data)
+            .join("Microsoft")
+            .join("Windows")
+            .join("Start Menu")
+            .join("Programs")
+            .join("Beauy Smash Flash.lnk");
+        if old_shortcut.exists() {
+            let _ = std::fs::remove_file(&old_shortcut);
+            result.start_menu_shortcut_removed = !old_shortcut.exists();
+        }
+    }
+
+    // Best-effort removal of the old per-user uninstall registry key.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let _ = std::process::Command::new("reg")
+            .args([
+                "delete",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Beauy Smash Flash",
+                "/f",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        result.uninstall_reg_removed = true;
+    }
+    #[cfg(not(windows))]
+    {
+        result.uninstall_reg_removed = true;
+    }
+
+    Ok(result)
+}
+
 #[tauri::command]
 pub fn write_client_log(tag: String, message: String) -> Result<(), String> {
     crate::game_log::info(&tag, &message);

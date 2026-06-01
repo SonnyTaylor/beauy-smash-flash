@@ -38,6 +38,7 @@ fn main() {
             commands::stop_session,
             commands::kick_player,
             commands::write_client_log,
+            commands::cleanup_legacy_install,
             commands::start_host,
             commands::join_game,
             commands::scan_servers,

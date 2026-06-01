@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { invoke } from '@tauri-apps/api/core';
 import { isVersionNewer } from '../../shared/versionCompare';
 
 export type UpdatePromptState =
@@ -94,6 +95,13 @@ export function useUpdatePrompt(enabled: boolean, currentVersion: string) {
 
     setPromptState({ status: 'downloading', progress: 0, version: update.version });
     try {
+      // Remove legacy per-user installs while we still run as the real user.
+      // The elevated installer cannot reliably target the correct user profile,
+      // so doing this here prevents stale Start Menu shortcuts and old exes.
+      await invoke('cleanup_legacy_install').catch(() => {
+        // best-effort; don't block the update if cleanup fails
+      });
+
       let downloaded = 0;
       let total = 0;
       await update.downloadAndInstall((event) => {

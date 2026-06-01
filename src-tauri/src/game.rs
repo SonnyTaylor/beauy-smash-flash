@@ -1625,27 +1625,33 @@ impl GameWorld {
         // Then apply soft-body separation between all living players
         let mut adjustments = Vec::new();
         let player_ids: Vec<u8> = self.players.keys().copied().collect();
-        
+
         for i in 0..player_ids.len() {
             let id1 = player_ids[i];
             let p1 = &self.players[&id1];
-            if !p1.alive { continue; }
-            
+            if !p1.alive {
+                continue;
+            }
+
             let mut push_x = 0.0;
             let mut push_y = 0.0;
             let mut overlaps = 0;
-            
+
             for j in 0..player_ids.len() {
-                if i == j { continue; }
+                if i == j {
+                    continue;
+                }
                 let id2 = player_ids[j];
                 let p2 = &self.players[&id2];
-                if !p2.alive { continue; }
-                
+                if !p2.alive {
+                    continue;
+                }
+
                 let dx = p1.x - p2.x;
                 let dy = p1.y - p2.y;
                 let dist_sq = dx * dx + dy * dy;
                 let rad_sum = PLAYER_RADIUS + PLAYER_RADIUS;
-                
+
                 if dist_sq < rad_sum * rad_sum && dist_sq > 0.001 {
                     let dist = dist_sq.sqrt();
                     let overlap = rad_sum - dist;
@@ -1654,17 +1660,21 @@ impl GameWorld {
                     overlaps += 1;
                 }
             }
-            
+
             if overlaps > 0 {
-                adjustments.push((id1, push_x / overlaps as f32 * 0.5, push_y / overlaps as f32 * 0.5));
+                adjustments.push((
+                    id1,
+                    push_x / overlaps as f32 * 0.5,
+                    push_y / overlaps as f32 * 0.5,
+                ));
             }
         }
-        
+
         for (id, px, py) in adjustments {
             let p = self.players.get_mut(&id).unwrap();
             let new_x = (p.x + px).clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
             let new_y = (p.y + py).clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
-            
+
             // Check wall collisions for the adjusted positions independently
             if !circle_hits_walls(new_x, p.y, PLAYER_RADIUS, &self.map.walls) {
                 p.x = new_x;
@@ -1823,7 +1833,7 @@ impl GameWorld {
         let Some(victim) = self.players.get(&victim_id) else {
             return false;
         };
-        
+
         // Bots shouldn't have special immunity to humans or each other just because they share bot status.
         // But zombies definitely fight non-zombies unconditionally.
         if owner.is_zombie != victim.is_zombie {
@@ -1844,7 +1854,7 @@ impl GameWorld {
             // Wait, actually, in a free-for-all, if friendly fire is off, no one can hurt anyone.
             return false;
         }
-        
+
         true
     }
 
