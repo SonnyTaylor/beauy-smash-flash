@@ -991,6 +991,12 @@ export class ArenaRenderer {
   private updatePlayerVisuals(view: PlayerView, player: PlayerSnapshot) {
     const isMe = player.id === this.myId;
     const accent = this.teamAccentColor(player);
+
+    // Update scale for big head mode
+    const playerRadius = player.radius ?? PLAYER_RADIUS;
+    const scaleFactor = playerRadius / PLAYER_RADIUS;
+    view.container.scale.set(scaleFactor);
+
     const label = view.container.children.find((child) => child instanceof Text) as Text | undefined;
     const stillnessStacks = player.stillness_stacks ?? 0;
     if (label) {
@@ -1209,6 +1215,13 @@ export class ArenaRenderer {
 
     container.x = player.x;
     container.y = player.y;
+
+    // Scale container for big head mode (or any non-default radius)
+    const playerRadius = player.radius ?? PLAYER_RADIUS;
+    if (playerRadius !== PLAYER_RADIUS) {
+      const scaleFactor = playerRadius / PLAYER_RADIUS;
+      container.scale.set(scaleFactor);
+    }
 
     return {
       container,

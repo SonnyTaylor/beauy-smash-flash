@@ -78,6 +78,15 @@ export interface LobbyConfig {
   aim_assist: AimAssistLevel;
   bot_count: number;
   wave_goal: number;
+  infinite_ammo: boolean;
+  big_head_mode: boolean;
+  no_power_charge: boolean;
+  health_multiplier: number;
+  speed_boost: number;
+  one_hit_kill: boolean;
+  ricochet_bullets: boolean;
+  tiny_mode: boolean;
+  double_fire_rate: boolean;
 }
 
 export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
@@ -93,6 +102,15 @@ export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
   aim_assist: 'off',
   bot_count: 0,
   wave_goal: 0,
+  infinite_ammo: false,
+  big_head_mode: false,
+  no_power_charge: false,
+  health_multiplier: 1,
+  speed_boost: 1,
+  one_hit_kill: false,
+  ricochet_bullets: false,
+  tiny_mode: false,
+  double_fire_rate: false,
 };
 
 export interface GameSettings {
@@ -266,6 +284,7 @@ export interface PlayerSnapshot {
   liquid_courage_remaining?: number;
   invulnerable_remaining?: number;
   aim_assist_target?: number;
+  radius?: number;
 }
 
 export interface StateSnapshot {
@@ -295,6 +314,15 @@ export interface StateSnapshot {
   wave_state?: WaveState;
   wave_intermission_secs?: number;
   wave_goal?: number;
+  big_head_mode?: boolean;
+  no_power_charge?: boolean;
+  health_multiplier?: number;
+  infinite_ammo?: boolean;
+  speed_boost?: number;
+  one_hit_kill?: boolean;
+  ricochet_bullets?: boolean;
+  tiny_mode?: boolean;
+  double_fire_rate?: boolean;
 }
 
 export interface CharacterDefinition {

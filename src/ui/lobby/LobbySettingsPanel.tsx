@@ -8,6 +8,7 @@ import {
   GAMEMODE_OPTIONS,
   MAX_PLAYERS_OPTIONS,
   SCORE_LIMIT_OPTIONS,
+  SPEED_BOOST_OPTIONS,
   TIME_LIMIT_OPTIONS,
   WAVE_GOAL_OPTIONS,
   WIN_CONDITION_OPTIONS,
@@ -78,13 +79,14 @@ export function LobbySettingsPanel({
   }
 
   return (
-    <section className="lobby-settings">
-      <header className="panel-heading">
-        <h3>Server Settings</h3>
-        <span>{isHost ? 'Host-only — changes broadcast live' : 'Set by the host'}</span>
-      </header>
+    <div className="lobby-settings-column">
+      <section className="lobby-settings">
+        <header className="panel-heading">
+          <h3>Server Settings</h3>
+          <span>{isHost ? 'Host-only — changes broadcast live' : 'Set by the host'}</span>
+        </header>
 
-      <div className="lobby-settings-scroll">
+        <div className="lobby-settings-scroll">
         <SettingRow label="Server Name">
           <input
             type="text"
@@ -282,9 +284,10 @@ export function LobbySettingsPanel({
             </p>
           </>
         )}
-      </div>
+        </div>
+      </section>
 
-      <div className="lobby-modifiers">
+      <section className="lobby-modifiers">
         <header className="panel-heading">
           <h3>Modifiers</h3>
           <span>Optional house rules — changes apply to everyone</span>
@@ -305,8 +308,153 @@ export function LobbySettingsPanel({
               ? 'Raw input only — full manual aim control.'
               : `${AIM_ASSIST_OPTIONS.find((o) => o.id === config.aim_assist)?.label} lock-on assist — helps trackpad and casual players.`}
           </p>
+
+          <SettingRow label="Infinite Ammo">
+            <button
+              type="button"
+              className={`toggle-pill ${config.infinite_ammo ? 'on' : 'off'}`}
+              disabled={!isHost}
+              onClick={() => patch({ infinite_ammo: !config.infinite_ammo })}
+            >
+              {config.infinite_ammo ? 'On' : 'Off'}
+            </button>
+          </SettingRow>
+          <p className="setting-hint">
+            {config.infinite_ammo
+              ? 'Never reload — guns fire endlessly.'
+              : 'Standard ammo and reload mechanics.'}
+          </p>
+
+          <SettingRow label="Big Head Mode">
+            <button
+              type="button"
+              className={`toggle-pill ${config.big_head_mode ? 'on' : 'off'}`}
+              disabled={!isHost}
+              onClick={() => patch({ big_head_mode: !config.big_head_mode })}
+            >
+              {config.big_head_mode ? 'On' : 'Off'}
+            </button>
+          </SettingRow>
+          <p className="setting-hint">
+            {config.big_head_mode
+              ? 'Players are 80% bigger — easier to hit!'
+              : 'Standard player size.'}
+          </p>
+
+          <SettingRow label="Instant Powers">
+            <button
+              type="button"
+              className={`toggle-pill ${config.no_power_charge ? 'on' : 'off'}`}
+              disabled={!isHost}
+              onClick={() => patch({ no_power_charge: !config.no_power_charge })}
+            >
+              {config.no_power_charge ? 'On' : 'Off'}
+            </button>
+          </SettingRow>
+          <p className="setting-hint">
+            {config.no_power_charge
+              ? 'Abilities are always fully charged — no waiting.'
+              : 'Abilities charge over time as normal.'}
+          </p>
+
+          <SettingRow label="Health Multiplier">
+            <Cycle
+              value={String(config.health_multiplier)}
+              values={[1, 2, 5, 10].map((mult) => ({
+                id: String(mult),
+                label: `${mult}×`,
+              }))}
+              disabled={!isHost}
+              onChange={(id) => patch({ health_multiplier: Number(id) })}
+              fallback={`${config.health_multiplier}×`}
+            />
+          </SettingRow>
+          <p className="setting-hint">
+            {config.health_multiplier === 1
+              ? 'Standard health pools.'
+              : `All players get ${config.health_multiplier}× max HP — longer fights!`}
+          </p>
+
+          <SettingRow label="Speed Boost">
+            <Cycle
+              value={String(config.speed_boost)}
+              values={SPEED_BOOST_OPTIONS}
+              disabled={!isHost}
+              onChange={(id) => patch({ speed_boost: Number(id) })}
+              fallback={`${config.speed_boost}×`}
+            />
+          </SettingRow>
+          <p className="setting-hint">
+            {config.speed_boost <= 1
+              ? 'Normal movement speed.'
+              : `All players move at ${config.speed_boost}× speed — pure chaos!`}
+          </p>
+
+          <SettingRow label="One Hit Kill">
+            <button
+              type="button"
+              className={`toggle-pill ${config.one_hit_kill ? 'on' : 'off'}`}
+              disabled={!isHost}
+              onClick={() => patch({ one_hit_kill: !config.one_hit_kill })}
+            >
+              {config.one_hit_kill ? 'On' : 'Off'}
+            </button>
+          </SettingRow>
+          <p className="setting-hint">
+            {config.one_hit_kill
+              ? 'Any hit is instant death — tense and deadly!'
+              : 'Standard damage and health.'}
+          </p>
+
+          <SettingRow label="Ricochet Bullets">
+            <button
+              type="button"
+              className={`toggle-pill ${config.ricochet_bullets ? 'on' : 'off'}`}
+              disabled={!isHost}
+              onClick={() => patch({ ricochet_bullets: !config.ricochet_bullets })}
+            >
+              {config.ricochet_bullets ? 'On' : 'Off'}
+            </button>
+          </SettingRow>
+          <p className="setting-hint">
+            {config.ricochet_bullets
+              ? 'Bullets bounce off walls once — watch your angles!'
+              : 'Bullets stop on wall impact.'}
+          </p>
+
+          <SettingRow label="Tiny Mode">
+            <button
+              type="button"
+              className={`toggle-pill ${config.tiny_mode ? 'on' : 'off'}`}
+              disabled={!isHost}
+              onClick={() => patch({ tiny_mode: !config.tiny_mode })}
+            >
+              {config.tiny_mode ? 'On' : 'Off'}
+            </button>
+          </SettingRow>
+          <p className="setting-hint">
+            {config.tiny_mode
+              ? 'Players are 50% smaller — hard to hit!'
+              : 'Standard player size.'}
+          </p>
+
+          <SettingRow label="Double Fire Rate">
+            <button
+              type="button"
+              className={`toggle-pill ${config.double_fire_rate ? 'on' : 'off'}`}
+              disabled={!isHost}
+              onClick={() => patch({ double_fire_rate: !config.double_fire_rate })}
+            >
+              {config.double_fire_rate ? 'On' : 'Off'}
+            </button>
+          </SettingRow>
+          <p className="setting-hint">
+            {config.double_fire_rate
+              ? 'All weapons fire twice as fast — bullet hell!'
+              : 'Standard fire rate.'}
+          </p>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }

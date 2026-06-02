@@ -346,6 +346,7 @@ pub struct Player {
     /// 0 = unassigned, 1 = Alpha, 2 = Bravo (team deathmatch).
     pub team: u8,
     pub aim_assist_target: Option<u8>,
+    pub radius: f32,
 }
 
 impl Player {
@@ -442,6 +443,7 @@ impl Player {
             is_zombie: false,
             team: 0,
             aim_assist_target: None,
+            radius: PLAYER_RADIUS,
         }
     }
 
@@ -591,6 +593,7 @@ impl Player {
             is_zombie: self.is_zombie,
             team: self.team,
             aim_assist_target: self.aim_assist_target,
+            radius: self.radius,
         }
     }
 
@@ -791,6 +794,15 @@ pub struct GameWorld {
     horde_spawn_queue: Vec<(f32, usize)>,
     pub next_zombie_id: u8,
     pub wave_goal: u16,
+    pub infinite_ammo: bool,
+    pub big_head_mode: bool,
+    pub no_power_charge: bool,
+    pub health_multiplier: u8,
+    pub speed_boost: f32,
+    pub one_hit_kill: bool,
+    pub ricochet_bullets: bool,
+    pub tiny_mode: bool,
+    pub double_fire_rate: bool,
     pub bot_nav: HashMap<u8, BotNavState>,
 }
 
@@ -870,6 +882,15 @@ impl GameWorld {
             horde_spawn_queue: Vec::new(),
             next_zombie_id: ZOMBIE_ID_START,
             wave_goal: 0,
+            infinite_ammo: false,
+            big_head_mode: false,
+            no_power_charge: false,
+            health_multiplier: 1,
+            speed_boost: 1.0,
+            one_hit_kill: false,
+            ricochet_bullets: false,
+            tiny_mode: false,
+            double_fire_rate: false,
             bot_nav: HashMap::new(),
         }
     }
@@ -997,6 +1018,15 @@ impl GameWorld {
         fog_of_war: bool,
         aim_assist: AimAssistLevel,
         wave_goal: u16,
+        infinite_ammo: bool,
+        big_head_mode: bool,
+        no_power_charge: bool,
+        health_multiplier: u8,
+        speed_boost: f32,
+        one_hit_kill: bool,
+        ricochet_bullets: bool,
+        tiny_mode: bool,
+        double_fire_rate: bool,
     ) {
         self.remove_zombies();
         self.tick = 0;
@@ -1032,6 +1062,15 @@ impl GameWorld {
         self.horde_spawn_queue.clear();
         self.next_zombie_id = ZOMBIE_ID_START;
         self.wave_goal = wave_goal;
+        self.infinite_ammo = infinite_ammo;
+        self.big_head_mode = big_head_mode;
+        self.no_power_charge = no_power_charge;
+        self.health_multiplier = health_multiplier.max(1);
+        self.speed_boost = speed_boost.max(1.0);
+        self.one_hit_kill = one_hit_kill;
+        self.ricochet_bullets = ricochet_bullets;
+        self.tiny_mode = tiny_mode;
+        self.double_fire_rate = double_fire_rate;
         self.bot_nav.clear();
 
         if gamemode == Gamemode::TeamDeathmatch {
@@ -1128,7 +1167,20 @@ impl GameWorld {
             player.x = spawn.0;
             player.y = spawn.1;
             player.max_hp = max_hp_for_character(&player.character_id);
+            if self.health_multiplier > 1 {
+                player.max_hp = player.max_hp.saturating_mul(self.health_multiplier as u16);
+            }
+            if self.one_hit_kill {
+                player.max_hp = 1;
+            }
             player.hp = player.max_hp;
+            player.radius = if self.big_head_mode {
+                PLAYER_RADIUS * 1.8
+            } else if self.tiny_mode {
+                PLAYER_RADIUS * 0.5
+            } else {
+                PLAYER_RADIUS
+            };
             if is_luca_character(&player.character_id) {
                 strip_player_weapons(player);
             } else {
@@ -1531,7 +1583,13 @@ impl GameWorld {
             }
         }
 
-        abilities::passive_charge_tick(&mut self.players, &self.inputs, dt, self.dev_mode);
+        abilities::passive_charge_tick(
+            &mut self.players,
+            &self.inputs,
+            dt,
+            self.dev_mode,
+            self.no_power_charge,
+        );
         abilities::tick_status_effects(&mut self.players, dt);
         abilities::tick_character_passives(&mut self.players, &self.inputs, dt);
         crate::roster_expansion::tick_player_buffs(&mut self.players, dt);
@@ -1645,17 +1703,17 @@ impl GameWorld {
                     crate::roster_expansion::XANDER_HYPERFIXATION_MOVE_MULT
                 } else {
                     1.0
-                };
+                }
+                * self.speed_boost;
 
-            let next_x = (player.x + move_x * speed * dt)
-                .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
-            if !circle_hits_walls(next_x, player.y, PLAYER_RADIUS, &self.map.walls) {
+            let r = player.radius;
+            let next_x = (player.x + move_x * speed * dt).clamp(r, self.config.width - r);
+            if !circle_hits_walls(next_x, player.y, r, &self.map.walls) {
                 player.x = next_x;
             }
 
-            let next_y = (player.y + move_y * speed * dt)
-                .clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
-            if !circle_hits_walls(player.x, next_y, PLAYER_RADIUS, &self.map.walls) {
+            let next_y = (player.y + move_y * speed * dt).clamp(r, self.config.height - r);
+            if !circle_hits_walls(player.x, next_y, r, &self.map.walls) {
                 player.y = next_y;
             }
 
@@ -1700,7 +1758,7 @@ impl GameWorld {
                 let dx = p1.x - p2.x;
                 let dy = p1.y - p2.y;
                 let dist_sq = dx * dx + dy * dy;
-                let rad_sum = PLAYER_RADIUS + PLAYER_RADIUS;
+                let rad_sum = p1.radius + p2.radius;
 
                 if dist_sq < rad_sum * rad_sum && dist_sq > 0.001 {
                     let dist = dist_sq.sqrt();
@@ -1722,14 +1780,14 @@ impl GameWorld {
 
         for (id, px, py) in adjustments {
             let p = self.players.get_mut(&id).unwrap();
-            let new_x = (p.x + px).clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
-            let new_y = (p.y + py).clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
+            let r = p.radius;
+            let new_x = (p.x + px).clamp(r, self.config.width - r);
+            let new_y = (p.y + py).clamp(r, self.config.height - r);
 
-            // Check wall collisions for the adjusted positions independently
-            if !circle_hits_walls(new_x, p.y, PLAYER_RADIUS, &self.map.walls) {
+            if !circle_hits_walls(new_x, p.y, r, &self.map.walls) {
                 p.x = new_x;
             }
-            if !circle_hits_walls(p.x, new_y, PLAYER_RADIUS, &self.map.walls) {
+            if !circle_hits_walls(p.x, new_y, r, &self.map.walls) {
                 p.y = new_y;
             }
         }
@@ -2076,7 +2134,7 @@ impl GameWorld {
             }
 
             let weapon = player.active_weapon();
-            if weapon.can_reload() && player.reload_timer > 0.0 {
+            if !self.infinite_ammo && weapon.can_reload() && player.reload_timer > 0.0 {
                 player.reload_timer = (player.reload_timer - dt).max(0.0);
                 if player.reload_timer <= 0.0 {
                     player.ammo = player.max_ammo;
@@ -2099,7 +2157,11 @@ impl GameWorld {
             };
             player.aim_assist_target = target_id;
 
-            if weapon.can_reload() && input.reload && player.ammo < player.max_ammo {
+            if !self.infinite_ammo
+                && weapon.can_reload()
+                && input.reload
+                && player.ammo < player.max_ammo
+            {
                 let reload_time = weapons::reload_duration_for(weapon.id, player.ammo);
                 reload_requests.push((player.id, reload_time));
                 continue;
@@ -2113,7 +2175,8 @@ impl GameWorld {
                 continue;
             }
 
-            let fire_rate = crate::roster_expansion::effective_fire_rate(player, weapon.fire_rate);
+            let fire_rate = crate::roster_expansion::effective_fire_rate(player, weapon.fire_rate)
+                * if self.double_fire_rate { 0.5 } else { 1.0 };
 
             match weapon.kind {
                 weapons::WeaponKind::Melee { range, arc_deg } => {
@@ -2131,18 +2194,20 @@ impl GameWorld {
                     ));
                 }
                 weapons::WeaponKind::Pellets { count, spread_deg } => {
-                    if player.ammo == 0 {
+                    if !self.infinite_ammo && player.ammo == 0 {
                         let reload_time = weapons::reload_duration_for(weapon.id, player.ammo);
                         reload_requests.push((player.id, reload_time));
                         continue;
                     }
-                    player.ammo -= 1;
-                    player.save_ammo_to_active_slot();
+                    if !self.infinite_ammo {
+                        player.ammo -= 1;
+                        player.save_ammo_to_active_slot();
+                    }
                     player.fire_cooldown = fire_rate;
                     abilities::notify_shot(player);
 
-                    let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
-                    let spawn_y = player.y + aim_y * (PLAYER_RADIUS + weapon.muzzle_offset);
+                    let spawn_x = player.x + aim_x * (player.radius + weapon.muzzle_offset);
+                    let spawn_y = player.y + aim_y * (player.radius + weapon.muzzle_offset);
                     for (dir_x, dir_y) in
                         weapons::pellet_directions(aim_x, aim_y, count, spread_deg)
                     {
@@ -2161,18 +2226,20 @@ impl GameWorld {
                     }
                 }
                 weapons::WeaponKind::Bullet => {
-                    if player.ammo == 0 {
+                    if !self.infinite_ammo && player.ammo == 0 {
                         let reload_time = weapons::reload_duration_for(weapon.id, player.ammo);
                         reload_requests.push((player.id, reload_time));
                         continue;
                     }
-                    player.ammo -= 1;
-                    player.save_ammo_to_active_slot();
+                    if !self.infinite_ammo {
+                        player.ammo -= 1;
+                        player.save_ammo_to_active_slot();
+                    }
                     player.fire_cooldown = fire_rate;
                     abilities::notify_shot(player);
 
-                    let spawn_x = player.x + aim_x * (PLAYER_RADIUS + weapon.muzzle_offset);
-                    let spawn_y = player.y + aim_y * (PLAYER_RADIUS + weapon.muzzle_offset);
+                    let spawn_x = player.x + aim_x * (player.radius + weapon.muzzle_offset);
+                    let spawn_y = player.y + aim_y * (player.radius + weapon.muzzle_offset);
                     shots.push((
                         player.id,
                         weapon.id.to_string(),
@@ -2223,7 +2290,7 @@ impl GameWorld {
                 vx: aim_x * bullet_speed,
                 vy: aim_y * bullet_speed,
                 life: bullet_life,
-                bounces_remaining: 0,
+                bounces_remaining: if self.ricochet_bullets { 1 } else { 0 },
             });
         }
 
@@ -2313,8 +2380,7 @@ impl GameWorld {
                     bullet.radius,
                     &self.map.walls,
                 );
-                if bullet.weapon_id == abilities::POPCORN_WEAPON_ID && bullet.bounces_remaining > 0
-                {
+                if bullet.bounces_remaining > 0 {
                     if let Some((nx, ny)) = wall_normal_at(
                         impact_x,
                         impact_y,
@@ -2324,13 +2390,19 @@ impl GameWorld {
                         &self.map.walls,
                     ) {
                         bullet.bounces_remaining -= 1;
-                        let (vx, vy) = abilities::deflect_popcorn(
-                            bullet.vx,
-                            bullet.vy,
-                            nx,
-                            ny,
-                            bullet.id ^ bullet.bounces_remaining as u32,
-                        );
+                        let (vx, vy) = if bullet.weapon_id == abilities::POPCORN_WEAPON_ID {
+                            abilities::deflect_popcorn(
+                                bullet.vx,
+                                bullet.vy,
+                                nx,
+                                ny,
+                                bullet.id ^ bullet.bounces_remaining as u32,
+                            )
+                        } else {
+                            // Simple reflection: v' = v - 2(v·n)n
+                            let dot = bullet.vx * nx + bullet.vy * ny;
+                            (bullet.vx - 2.0 * dot * nx, bullet.vy - 2.0 * dot * ny)
+                        };
                         bullet.vx = vx;
                         bullet.vy = vy;
                         bullet.x = impact_x;
@@ -2491,7 +2563,7 @@ impl GameWorld {
                     && !player.spawn_protected()
                     && player.id != owner_id
                     && player.id != primary_victim_id
-                    && circle_hits_circle(player.x, player.y, PLAYER_RADIUS, x, y, radius)
+                    && circle_hits_circle(player.x, player.y, player.radius, x, y, radius)
             })
             .map(|player| player.id)
             .collect();
@@ -2567,14 +2639,13 @@ impl GameWorld {
             } else {
                 normalize(victim.x - hit_x, victim.y - hit_y)
             };
-            let next_x = (victim.x + dir_x * impulse)
-                .clamp(PLAYER_RADIUS, self.config.width - PLAYER_RADIUS);
-            let next_y = (victim.y + dir_y * impulse)
-                .clamp(PLAYER_RADIUS, self.config.height - PLAYER_RADIUS);
-            if !circle_hits_walls(next_x, victim.y, PLAYER_RADIUS, &self.map.walls) {
+            let r = victim.radius;
+            let next_x = (victim.x + dir_x * impulse).clamp(r, self.config.width - r);
+            let next_y = (victim.y + dir_y * impulse).clamp(r, self.config.height - r);
+            if !circle_hits_walls(next_x, victim.y, r, &self.map.walls) {
                 victim.x = next_x;
             }
-            if !circle_hits_walls(victim.x, next_y, PLAYER_RADIUS, &self.map.walls) {
+            if !circle_hits_walls(victim.x, next_y, r, &self.map.walls) {
                 victim.y = next_y;
             }
         }
@@ -3159,6 +3230,15 @@ impl GameWorld {
             wave_state: self.wave_state,
             wave_intermission_secs: self.wave_intermission_timer.max(0.0),
             wave_goal: self.wave_goal,
+            big_head_mode: self.big_head_mode,
+            no_power_charge: self.no_power_charge,
+            health_multiplier: self.health_multiplier,
+            infinite_ammo: self.infinite_ammo,
+            speed_boost: self.speed_boost,
+            one_hit_kill: self.one_hit_kill,
+            ricochet_bullets: self.ricochet_bullets,
+            tiny_mode: self.tiny_mode,
+            double_fire_rate: self.double_fire_rate,
         }
     }
 }
@@ -3350,7 +3430,13 @@ pub fn wall_normal_at(
     walls: &[Rect],
 ) -> Option<(f32, f32)> {
     for wall in walls {
-        if !circle_hits_rect(x, y, radius, wall) {
+        // Expand the wall by radius so we match even when the bullet has been
+        // snapped to the wall face (exactly one radius away).
+        let closest_x = x.clamp(wall.x - radius, wall.x + wall.w + radius);
+        let closest_y = y.clamp(wall.y - radius, wall.y + wall.h + radius);
+        let dx = x - closest_x;
+        let dy = y - closest_y;
+        if dx * dx + dy * dy > radius * radius {
             continue;
         }
         if vx.abs() >= vy.abs() {
@@ -3406,7 +3492,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
@@ -3446,7 +3542,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
@@ -4271,7 +4377,17 @@ mod tests {
             Gamemode::ZombieHorde,
             false,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.wave_intermission_timer = 0.0;
         world.process_horde(0.0);
@@ -4317,7 +4433,17 @@ mod tests {
             Gamemode::ZombieHorde,
             false,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().alive = false;
         world.players.get_mut(&0).unwrap().respawn_timer = 0.0;
@@ -4344,7 +4470,17 @@ mod tests {
             Gamemode::ZombieHorde,
             false,
             false,
+            AimAssistLevel::Off,
             1,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.wave = 1;
         world.wave_state = WaveState::Active;

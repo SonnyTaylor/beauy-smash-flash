@@ -370,6 +370,15 @@ async fn join_game_inner(
                     wave_state: crate::protocol::WaveState::Intermission,
                     wave_intermission_secs: 0.0,
                     wave_goal: lobby_config.wave_goal,
+                    big_head_mode: lobby_config.big_head_mode,
+                    no_power_charge: lobby_config.no_power_charge,
+                    health_multiplier: lobby_config.health_multiplier,
+                    infinite_ammo: lobby_config.infinite_ammo,
+                    speed_boost: lobby_config.speed_boost,
+                    one_hit_kill: lobby_config.one_hit_kill,
+                    ricochet_bullets: lobby_config.ricochet_bullets,
+                    tiny_mode: lobby_config.tiny_mode,
+                    double_fire_rate: lobby_config.double_fire_rate,
                 });
             (id, world)
         }
@@ -525,6 +534,15 @@ pub async fn start_match(
             config.fog_of_war,
             config.aim_assist,
             config.wave_goal,
+            config.infinite_ammo,
+            config.big_head_mode,
+            config.no_power_charge,
+            config.health_multiplier,
+            config.speed_boost,
+            config.one_hit_kill,
+            config.ricochet_bullets,
+            config.tiny_mode,
+            config.double_fire_rate,
         );
         st.match_started = true;
         st.match_paused = true;
@@ -762,6 +780,15 @@ pub async fn rematch(
             config.fog_of_war,
             config.aim_assist,
             config.wave_goal,
+            config.infinite_ammo,
+            config.big_head_mode,
+            config.no_power_charge,
+            config.health_multiplier,
+            config.speed_boost,
+            config.one_hit_kill,
+            config.ricochet_bullets,
+            config.tiny_mode,
+            config.double_fire_rate,
         );
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
     };

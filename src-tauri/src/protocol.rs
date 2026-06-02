@@ -79,7 +79,7 @@ pub enum AimAssistLevel {
     Heavy,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LobbyConfig {
     pub server_name: String,
     pub map_id: String,
@@ -97,6 +97,28 @@ pub struct LobbyConfig {
     pub bot_count: u8,
     #[serde(default)]
     pub wave_goal: u16,
+    #[serde(default)]
+    pub infinite_ammo: bool,
+    #[serde(default)]
+    pub big_head_mode: bool,
+    #[serde(default)]
+    pub no_power_charge: bool,
+    #[serde(default = "default_health_multiplier")]
+    pub health_multiplier: u8,
+    #[serde(default)]
+    pub speed_boost: f32,
+    #[serde(default)]
+    pub one_hit_kill: bool,
+    #[serde(default)]
+    pub ricochet_bullets: bool,
+    #[serde(default)]
+    pub tiny_mode: bool,
+    #[serde(default)]
+    pub double_fire_rate: bool,
+}
+
+fn default_health_multiplier() -> u8 {
+    1
 }
 
 impl Default for LobbyConfig {
@@ -114,6 +136,15 @@ impl Default for LobbyConfig {
             aim_assist: AimAssistLevel::Off,
             bot_count: 0,
             wave_goal: 0,
+            infinite_ammo: false,
+            big_head_mode: false,
+            no_power_charge: false,
+            health_multiplier: 1,
+            speed_boost: 1.0,
+            one_hit_kill: false,
+            ricochet_bullets: false,
+            tiny_mode: false,
+            double_fire_rate: false,
         }
     }
 }
@@ -354,6 +385,12 @@ pub struct PlayerSnapshot {
     pub invulnerable_remaining: f32,
     #[serde(default)]
     pub aim_assist_target: Option<u8>,
+    #[serde(default = "default_player_radius")]
+    pub radius: f32,
+}
+
+fn default_player_radius() -> f32 {
+    24.0
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -397,6 +434,24 @@ pub struct StateSnapshot {
     pub match_end_reason: Option<MatchEndReason>,
     #[serde(default)]
     pub fog_of_war: bool,
+    #[serde(default)]
+    pub big_head_mode: bool,
+    #[serde(default)]
+    pub no_power_charge: bool,
+    #[serde(default = "default_health_multiplier")]
+    pub health_multiplier: u8,
+    #[serde(default)]
+    pub infinite_ammo: bool,
+    #[serde(default)]
+    pub speed_boost: f32,
+    #[serde(default)]
+    pub one_hit_kill: bool,
+    #[serde(default)]
+    pub ricochet_bullets: bool,
+    #[serde(default)]
+    pub tiny_mode: bool,
+    #[serde(default)]
+    pub double_fire_rate: bool,
     #[serde(default)]
     pub gamemode: Gamemode,
     #[serde(default)]

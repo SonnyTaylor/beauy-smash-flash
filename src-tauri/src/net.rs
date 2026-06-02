@@ -119,6 +119,8 @@ mod tests {
             ragebait_remaining: 0.0,
             liquid_courage_remaining: 0.0,
             invulnerable_remaining: 0.0,
+            aim_assist_target: None,
+            radius: 24.0,
         }
     }
 
@@ -314,6 +316,15 @@ mod tests {
             wave_state: WaveState::Intermission,
             wave_intermission_secs: 0.0,
             wave_goal: 0,
+            big_head_mode: false,
+            no_power_charge: false,
+            health_multiplier: 1,
+            infinite_ammo: false,
+            speed_boost: 1.0,
+            one_hit_kill: false,
+            ricochet_bullets: false,
+            tiny_mode: false,
+            double_fire_rate: false,
         });
         let bytes = encode_server(&msg).expect("encode");
         let decoded = decode_server(&bytes).expect("decode");
@@ -361,6 +372,15 @@ mod tests {
             wave_state: WaveState::Intermission,
             wave_intermission_secs: 0.0,
             wave_goal: 0,
+            big_head_mode: false,
+            no_power_charge: false,
+            health_multiplier: 1,
+            infinite_ammo: false,
+            speed_boost: 1.0,
+            one_hit_kill: false,
+            ricochet_bullets: false,
+            tiny_mode: false,
+            double_fire_rate: false,
         });
         let bytes = encode_server(&msg).expect("encode");
         assert!(bytes.len() > 0);

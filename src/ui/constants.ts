@@ -56,6 +56,13 @@ export const AIM_ASSIST_OPTIONS: Array<{ id: AimAssistLevel; label: string }> = 
   { id: 'heavy', label: 'Heavy' },
 ];
 
+export const SPEED_BOOST_OPTIONS = [
+  { id: '1', label: '1×' },
+  { id: '1.5', label: '1.5×' },
+  { id: '2', label: '2×' },
+  { id: '3', label: '3×' },
+];
+
 export function formatMatchTime(totalSecs: number): string {
   const mins = Math.floor(totalSecs / 60);
   const secs = totalSecs % 60;

@@ -121,10 +121,11 @@ pub fn is_kart_mode(player: &Player) -> bool {
 }
 
 pub fn hit_radius_for(player: &Player) -> f32 {
+    let base = player.radius;
     if player.character_id == "arthur" {
-        PLAYER_RADIUS * ARTHUR_HIT_RADIUS_MULT
+        base * ARTHUR_HIT_RADIUS_MULT
     } else {
-        PLAYER_RADIUS
+        base
     }
 }
 
@@ -1370,7 +1371,7 @@ fn distance_sq(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
 mod tests {
     use super::*;
     use crate::game::GameWorld;
-    use crate::protocol::{Gamemode, WinCondition};
+    use crate::protocol::{AimAssistLevel, Gamemode, WinCondition};
 
     #[test]
     fn sifan_drains_enemy_charge() {
@@ -1384,7 +1385,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().ability_charge = ABILITY_CHARGE_MAX;
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
@@ -1411,7 +1422,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         let start_x = world.players.get(&0).unwrap().x;
         blink_player(&mut world, 0, 1.0, 0.0, ARCHIE_BLINK_RANGE);
@@ -1429,7 +1450,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         activate_arthur(&mut world, 0);
@@ -1448,7 +1479,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         let (x, y) = {
@@ -1485,7 +1526,17 @@ mod tests {
             Gamemode::Deathmatch,
             false,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
         let (vx, vy) = {
@@ -1523,7 +1574,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         {
             let mango = world.players.get_mut(&0).unwrap();
@@ -1579,7 +1640,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1611,7 +1682,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1639,7 +1720,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1668,7 +1759,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1695,7 +1796,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1718,7 +1829,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1745,7 +1866,17 @@ mod tests {
             Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;

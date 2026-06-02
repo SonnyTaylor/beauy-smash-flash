@@ -3453,6 +3453,18 @@ h2 {
   overflow: hidden;
 }
 
+.lobby-settings-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(70, 233, 255, 0.5) rgba(255, 255, 255, 0.06);
+}
+
 .lobby-settings,
 .lobby-modifiers,
 .lobby-slots {
@@ -3467,6 +3479,21 @@ h2 {
     rgba(8, 11, 22, 0.54);
   min-height: 0;
   overflow: hidden;
+}
+
+/* Settings and modifiers grow inside the scrollable column; only slots clips. */
+.lobby-settings,
+.lobby-modifiers {
+  display: flex;
+  flex-direction: column;
+  min-height: auto;
+  overflow: visible;
+}
+
+/* Inner scroll divs inside lobby settings/modifiers: let the column scroll instead. */
+.lobby-settings-column .lobby-settings-scroll {
+  min-height: auto;
+  overflow-y: visible;
 }
 
 .lobby-settings-scroll {
@@ -3490,6 +3517,7 @@ h2 {
   scrollbar-color: rgba(70, 233, 255, 0.5) rgba(255, 255, 255, 0.06);
 }
 
+.lobby-settings-column::-webkit-scrollbar,
 .lobby-settings-scroll::-webkit-scrollbar,
 .slot-list::-webkit-scrollbar,
 .loadout-sections::-webkit-scrollbar,
@@ -3500,7 +3528,9 @@ h2 {
   width: 10px;
 }
 
+.lobby-settings-column::-webkit-scrollbar-track,
 .lobby-settings-scroll::-webkit-scrollbar-track,
+.slot-list::-webkit-scrollbar-track,
 .slot-list::-webkit-scrollbar-track,
 .loadout-sections::-webkit-scrollbar-track,
 .loadout-character-scroll::-webkit-scrollbar-track,
@@ -3513,6 +3543,7 @@ h2 {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.lobby-settings-column::-webkit-scrollbar-thumb,
 .lobby-settings-scroll::-webkit-scrollbar-thumb,
 .slot-list::-webkit-scrollbar-thumb,
 .loadout-sections::-webkit-scrollbar-thumb,
@@ -3526,6 +3557,7 @@ h2 {
   box-shadow: 0 0 12px rgba(70, 233, 255, 0.12);
 }
 
+.lobby-settings-column::-webkit-scrollbar-thumb:hover,
 .lobby-settings-scroll::-webkit-scrollbar-thumb:hover,
 .slot-list::-webkit-scrollbar-thumb:hover,
 .loadout-sections::-webkit-scrollbar-thumb:hover,

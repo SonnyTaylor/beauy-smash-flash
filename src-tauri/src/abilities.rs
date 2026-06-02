@@ -179,14 +179,15 @@ pub fn passive_charge_tick(
     inputs: &HashMap<u8, InputSnapshot>,
     dt: f32,
     dev_mode: bool,
+    no_power_charge: bool,
 ) {
-    if dev_mode {
+    if dev_mode || no_power_charge {
         for player in players.values_mut() {
             if !player.alive || player.ability_windup > 0.0 {
                 continue;
             }
             // Isaak stillness needs time standing still between blasts — keep normal charge in dev.
-            if player.character_id == "isaak" {
+            if player.character_id == "isaak" && !no_power_charge {
                 let rate = passive_charge_rate(player, inputs);
                 add_charge(player, rate * dt);
             } else {
@@ -1452,7 +1453,7 @@ fn activate_jacob_directors_cut(world: &mut GameWorld, caster_id: u8) {
 mod tests {
     use super::*;
     use crate::game::GameWorld;
-    use crate::protocol::WinCondition;
+    use crate::protocol::{AimAssistLevel, WinCondition};
     use std::collections::HashMap;
 
     fn test_world_with_taj() -> GameWorld {
@@ -1465,7 +1466,17 @@ mod tests {
             crate::protocol::Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;
@@ -1501,7 +1512,17 @@ mod tests {
             crate::protocol::Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;
@@ -1596,7 +1617,17 @@ mod tests {
             crate::protocol::Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         if let Some(finn) = world.players.get_mut(&0) {
             finn.spawn_protection = 0.0;
@@ -1649,7 +1680,17 @@ mod tests {
             crate::protocol::Gamemode::Deathmatch,
             true,
             false,
+            AimAssistLevel::Off,
             0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
         );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;
@@ -1661,7 +1702,7 @@ mod tests {
         assert_eq!(player.ability_charge, 0.0);
         assert!(in_directors_cut(player));
 
-        passive_charge_tick(&mut world.players, &HashMap::new(), 5.0, false);
+        passive_charge_tick(&mut world.players, &HashMap::new(), 5.0, false, false);
         add_charge(world.players.get_mut(&0).unwrap(), CHARGE_ON_DAMAGE);
 
         assert_eq!(world.players.get(&0).unwrap().ability_charge, 0.0);
