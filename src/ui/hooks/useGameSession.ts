@@ -528,6 +528,8 @@ export function useGameSession() {
     try {
       if (sessionKind === 'host') {
         await client.returnToLobby();
+      } else {
+        await client.stopSession();
       }
       await leaveLobbyToLobbyScreen();
     } catch (caught) {
