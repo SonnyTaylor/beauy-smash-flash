@@ -214,7 +214,14 @@ export function useGameSession() {
   }, [input, matchEnded, paused]);
 
   useEffect(() => {
+    let firstState = true;
+    let firstLobby = true;
+    let firstMatchStarted = true;
     client.listenForState((state) => {
+      if (firstState) {
+        firstState = false;
+        void client.writeLog('ui', `first State event: screen=${screenRef.current} players=${state.players.length}`);
+      }
       latestStateRef.current = state;
       setLatestState(state);
       setMatchEnded(state.match_ended);
@@ -239,12 +246,20 @@ export function useGameSession() {
       }
     });
     client.listenForLobby((nextLobby) => {
+      if (firstLobby) {
+        firstLobby = false;
+        void client.writeLog('ui', `first Lobby event: screen=${screenRef.current} players=${nextLobby.players.length}`);
+      }
       setLobby(nextLobby);
       if (!nextLobby.match_started && screenRef.current === 'game') {
         void leaveLobbyToLobbyScreen();
       }
     });
     client.listenForMatchStarted((state) => {
+      if (firstMatchStarted) {
+        firstMatchStarted = false;
+        void client.writeLog('ui', `first MatchStarted event: screen=${screenRef.current}`);
+      }
       latestStateRef.current = state;
       setLatestState(state);
       setMatchEnded(false);
@@ -268,6 +283,7 @@ export function useGameSession() {
       gameAudio.applyState(state, myIdRef.current);
     });
     client.listenForSessionLost((message) => {
+      void client.writeLog('ui', `session_lost: ${message}`);
       setError(message);
       void leaveLobby();
     });
@@ -332,8 +348,9 @@ export function useGameSession() {
     setIsBusy(true);
     setError(null);
     setSessionKind(kind);
+    const joinAddress = (ip ?? pendingJoinIpRef.current ?? joinIp).trim() || '127.0.0.1';
+    void client.writeLog('ui', `createLobbySession kind=${kind} addr=${joinAddress}`);
     try {
-      const joinAddress = (ip ?? pendingJoinIpRef.current ?? joinIp).trim() || '127.0.0.1';
       const session =
         kind === 'host'
           ? await client.host(
@@ -348,6 +365,7 @@ export function useGameSession() {
               selectedCharacterId,
               selectedPrimaryWeaponId,
             );
+      void client.writeLog('ui', `join returned: player_id=${session.player_id}`);
       pendingJoinIpRef.current = null;
       setSessionInfo(session);
       sessionInfoRef.current = session;
@@ -356,14 +374,18 @@ export function useGameSession() {
       setIsReady(false);
       setMatchEnded(false);
       setScreen('lobby');
+      void client.writeLog('ui', 'setScreen(lobby), calling setReady(false)');
       await client.setReady(false);
+      void client.writeLog('ui', 'setReady(false) done');
       if (kind === 'host') {
         await client.updateLobbyConfig({
           ...DEFAULT_LOBBY_CONFIG,
           server_name: gameSettingsRef.current.serverName,
         });
       }
+      void client.writeLog('ui', 'createLobbySession complete');
     } catch (caught) {
+      void client.writeLog('ui', `createLobbySession error: ${String(caught)}`);
       setError(String(caught));
     } finally {
       setIsBusy(false);

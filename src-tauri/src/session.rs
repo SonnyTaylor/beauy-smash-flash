@@ -307,8 +307,31 @@ async fn handle_host_message(
     addr: SocketAddr,
 ) {
     let Ok(message) = decode_client(bytes) else {
+        game_log::warn(
+            "host",
+            &format!(
+                "failed to decode client message ({bytes} bytes from {addr})",
+                bytes = bytes.len()
+            ),
+        );
         return;
     };
+
+    let msg_label = match &message {
+        ClientMessage::Join { .. } => "Join",
+        ClientMessage::SetReady { .. } => "SetReady",
+        ClientMessage::SelectCharacter { .. } => "SelectCharacter",
+        ClientMessage::UpdateLoadout { .. } => "UpdateLoadout",
+        ClientMessage::SetName { .. } => "SetName",
+        ClientMessage::UpdateConfig { .. } => "UpdateConfig",
+        ClientMessage::Input(_) => "",
+        ClientMessage::SetTeam { .. } => "SetTeam",
+        ClientMessage::Leave => "Leave",
+        ClientMessage::ArenaReady => "ArenaReady",
+    };
+    if !msg_label.is_empty() {
+        game_log::info("host", &format!("received {msg_label} from {addr}"));
+    }
 
     match message {
         ClientMessage::Join {
@@ -328,9 +351,17 @@ async fn handle_host_message(
                 return;
             }
 
+            game_log::info(
+                "host",
+                &format!("processing Join from {addr}, name={name}, char={character_id}"),
+            );
             let response = {
                 let mut st = state.lock().await;
                 if let Some(peer) = st.peers.iter_mut().find(|peer| peer.addr == addr) {
+                    game_log::info(
+                        "host",
+                        &format!("re-join from existing peer id={}", peer.id),
+                    );
                     peer.last_seen = Instant::now();
                     ServerMessage::Assigned {
                         id: peer.id,
@@ -339,6 +370,7 @@ async fn handle_host_message(
                         players: st.world.snapshot().players,
                     }
                 } else if st.world.players.len() >= effective_max_players(&st) {
+                    game_log::warn("host", "game is full, rejecting join");
                     ServerMessage::Error {
                         message: "Game is full".to_string(),
                     }
@@ -347,6 +379,10 @@ async fn handle_host_message(
                     remove_orphan_players(&mut st);
                     let id = next_player_id(&st);
                     let resolved_name = crate::names::resolve_player_name(&name, &character_id);
+                    game_log::info(
+                        "host",
+                        &format!("assigning id={id} to {resolved_name} from {addr}"),
+                    );
                     st.peers.push(Peer {
                         id,
                         addr,
@@ -359,17 +395,28 @@ async fn handle_host_message(
                         let _ = st.world.assign_team(id, team);
                     }
                     st.ready_players.remove(&id);
+                    let snap_players = st.world.snapshot().players;
+                    game_log::info(
+                        "host",
+                        &format!("sending Assigned with {} players", snap_players.len()),
+                    );
                     ServerMessage::Assigned {
                         id,
                         world: st.world.config.clone(),
                         map: st.world.map.snapshot(),
-                        players: st.world.snapshot().players,
+                        players: snap_players,
                     }
                 }
             };
 
             if let Ok(bytes) = encode_server(&response) {
+                game_log::info(
+                    "host",
+                    &format!("sending Assigned ({} bytes) to {addr}", bytes.len()),
+                );
                 let _ = socket.send_to(&bytes, addr).await;
+            } else {
+                game_log::error("host", "failed to encode Assigned response");
             }
 
             // If a match is already in progress, push the new peer straight into the game.
@@ -639,22 +686,39 @@ fn clean_name(name: &str) -> String {
 }
 
 pub async fn client_loop(socket: Arc<UdpSocket>, state: SharedState, window: tauri::Window) {
+    game_log::info("client", "client_loop entered");
     let mut buf = [0u8; 65535];
     let mut last_message = Instant::now();
+    let mut msg_count: u64 = 0;
 
     loop {
         let recv =
             tokio::time::timeout(Duration::from_millis(500), socket.recv_from(&mut buf)).await;
 
         match recv {
-            Ok(Ok((n, _))) => {
+            Ok(Ok((n, addr))) => {
                 last_message = Instant::now();
+                msg_count += 1;
                 let Ok(message) = decode_server(&buf[..n]) else {
+                    game_log::warn(
+                        "client",
+                        &format!("failed to decode message #{msg_count} ({n} bytes from {addr})"),
+                    );
                     continue;
                 };
 
                 match message {
                     ServerMessage::State(snapshot) => {
+                        if msg_count <= 5 {
+                            game_log::info(
+                                "client",
+                                &format!(
+                                    "msg#{msg_count}: State tick={} players={}",
+                                    snapshot.tick,
+                                    snapshot.players.len()
+                                ),
+                            );
+                        }
                         {
                             let mut st = state.lock().await;
                             st.world.sync_from_snapshot(&snapshot);
@@ -662,6 +726,7 @@ pub async fn client_loop(socket: Arc<UdpSocket>, state: SharedState, window: tau
                         let _ = window.emit("state", snapshot);
                     }
                     ServerMessage::MatchEnded(snapshot) => {
+                        game_log::info("client", &format!("msg#{msg_count}: MatchEnded"));
                         {
                             let mut st = state.lock().await;
                             st.world.sync_from_snapshot(&snapshot);
@@ -671,9 +736,16 @@ pub async fn client_loop(socket: Arc<UdpSocket>, state: SharedState, window: tau
                         let _ = window.emit("state", snapshot);
                     }
                     ServerMessage::Lobby(lobby) => {
+                        if msg_count <= 5 {
+                            game_log::info(
+                                "client",
+                                &format!("msg#{msg_count}: Lobby players={}", lobby.players.len()),
+                            );
+                        }
                         let _ = window.emit("lobby", lobby);
                     }
                     ServerMessage::MatchStarted(snapshot) => {
+                        game_log::info("client", &format!("msg#{msg_count}: MatchStarted"));
                         {
                             let mut st = state.lock().await;
                             st.world.sync_from_snapshot(&snapshot);
@@ -683,15 +755,17 @@ pub async fn client_loop(socket: Arc<UdpSocket>, state: SharedState, window: tau
                         let _ = window.emit("state", snapshot);
                     }
                     ServerMessage::Error { message } => {
-                        game_log::warn("session", &message);
+                        game_log::warn("client", &format!("msg#{msg_count}: Error: {message}"));
                         let _ = window.emit("session_lost", message);
                         break;
                     }
-                    _ => {}
+                    _ => {
+                        game_log::info("client", &format!("msg#{msg_count}: unknown message type"));
+                    }
                 }
             }
             Ok(Err(error)) => {
-                game_log::warn("session", &format!("client recv error: {error}"));
+                game_log::warn("client", &format!("recv error: {error}"));
             }
             Err(_) => {
                 let should_disconnect = {

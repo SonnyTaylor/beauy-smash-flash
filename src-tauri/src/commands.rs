@@ -253,7 +253,9 @@ pub async fn join_game(
     window: tauri::Window,
     state: tauri::State<'_, SharedState>,
 ) -> Result<SessionInfo, String> {
+    crate::game_log::info("join", &format!("starting join to {ip}"));
     shutdown_session(state.inner()).await;
+    crate::game_log::info("join", "session shut down, binding socket");
 
     let socket = Arc::new(
         UdpSocket::bind("0.0.0.0:0")
@@ -262,6 +264,10 @@ pub async fn join_game(
     );
     let host_addr = game_addr(&ip)?;
     let character_id = clean_character_id(character_id);
+    crate::game_log::info(
+        "join",
+        &format!("host_addr={host_addr}, character={character_id}"),
+    );
 
     let join = ClientMessage::Join {
         name: crate::names::resolve_player_name(
@@ -275,7 +281,19 @@ pub async fn join_game(
         protocol_version: crate::protocol::PROTOCOL_VERSION,
     };
     let bytes = encode_client(&join)?;
+    crate::game_log::info("join", "encoded join message, waiting for assignment");
     let assigned = wait_for_assignment(&socket, &host_addr, &bytes).await?;
+    crate::game_log::info(
+        "join",
+        &format!(
+            "got response from host: {}",
+            match &assigned {
+                ServerMessage::Assigned { .. } => "Assigned",
+                ServerMessage::Error { .. } => "Error",
+                _ => "Other",
+            }
+        ),
+    );
 
     let (player_id, world) = match assigned {
         ServerMessage::Assigned {
@@ -293,7 +311,17 @@ pub async fn join_game(
             st.match_end_emitted = false;
             st.host_addr = Some(host_addr);
             st.my_id = id;
+            crate::game_log::info(
+                "join",
+                &format!(
+                    "creating world {}x{}, {} players",
+                    world.width,
+                    world.height,
+                    players.len()
+                ),
+            );
             st.world = GameWorld::new(world.clone());
+            crate::game_log::info("join", "world created, syncing snapshot");
             let lobby_config = st.lobby_config.clone();
             st.world
                 .sync_from_snapshot(&crate::protocol::StateSnapshot {
@@ -333,9 +361,12 @@ pub async fn join_game(
         | ServerMessage::MatchEnded(_) => return Err("Expected assignment from host".to_string()),
     };
 
+    crate::game_log::info("join", "snapshot synced, spawning client_loop");
     let state_clone = state.inner().clone();
     let client_handle = tokio::spawn(async move {
+        crate::game_log::info("client", "client_loop task started");
         client_loop(socket, state_clone, window).await;
+        crate::game_log::info("client", "client_loop task exited");
     });
 
     {
@@ -343,6 +374,10 @@ pub async fn join_game(
         st.client_task = Some(client_handle);
     }
 
+    crate::game_log::info(
+        "join",
+        &format!("join_game complete, player_id={player_id}"),
+    );
     Ok(SessionInfo { player_id, world })
 }
 
