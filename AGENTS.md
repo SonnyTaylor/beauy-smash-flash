@@ -85,6 +85,7 @@ Releases: sync app version in the three files above, tag `vX.Y.Z`, push tag — 
 - Map authoring lives in `content/maps/*.map.json`. Read `maps/MAPS.md` before creating or editing maps.
 - When adding mechanics, add small Rust tests for deterministic rules such as movement, collision, bullet hits, reload timing, and scoring.
 - When changing `PROTOCOL_VERSION`, update join/discovery handling and expect all LAN peers to update before playing together.
+- **Async Tauri commands with large locals must use `Box::pin`.** If a `#[tauri::command] async fn` holds protocol or game types (`StateSnapshot`, `ServerMessage`, `GameWorld`, etc.) across `.await` points, the compiled state machine can overflow the IPC thread's ~1 MB stack — killing the process silently with no panic or crash log. Split the body into a helper `async fn` and call it via `Box::pin(helper(...)).await`. See `docs/ASYNC_STACK_OVERFLOW.md`.
 
 ## Product Notes
 

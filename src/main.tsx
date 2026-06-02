@@ -3,6 +3,10 @@ import './styles.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
+import { CrashBoundary } from './app/CrashBoundary';
+import { installCrashLogging } from './app/crashLog';
+
+installCrashLogging();
 
 const rootElement = document.getElementById('root');
 
@@ -12,6 +16,8 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <CrashBoundary>
+      <App />
+    </CrashBoundary>
   </StrictMode>,
 );

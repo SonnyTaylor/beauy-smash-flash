@@ -183,6 +183,11 @@ pub fn write_client_log(tag: String, message: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn ping() -> Result<String, String> {
+    Ok("pong".to_string())
+}
+
+#[tauri::command]
 pub async fn start_host(
     player_name: Option<String>,
     character_id: Option<String>,
@@ -244,6 +249,10 @@ pub async fn start_host(
     Ok(info)
 }
 
+/// Thin Tauri command wrapper — delegates to `join_game_inner` via `Box::pin`
+/// to move the large async state machine off the IPC thread's stack.
+/// The inner function holds `StateSnapshot`, `GameWorld`, `ServerMessage::Assigned`
+/// across await points, which can exceed the default 1 MB Windows stack.
 #[tauri::command]
 pub async fn join_game(
     ip: String,
@@ -254,20 +263,37 @@ pub async fn join_game(
     state: tauri::State<'_, SharedState>,
 ) -> Result<SessionInfo, String> {
     crate::game_log::info("join", &format!("starting join to {ip}"));
-    shutdown_session(state.inner()).await;
-    crate::game_log::info("join", "session shut down, binding socket");
+    let state_ref = state.inner().clone();
+    Box::pin(join_game_inner(
+        ip,
+        player_name,
+        character_id,
+        primary_weapon_id,
+        window,
+        state_ref,
+    ))
+    .await
+}
 
-    let socket = Arc::new(
-        UdpSocket::bind("0.0.0.0:0")
-            .await
-            .map_err(|error| error.to_string())?,
-    );
-    let host_addr = game_addr(&ip)?;
+async fn join_game_inner(
+    ip: String,
+    player_name: Option<String>,
+    character_id: Option<String>,
+    primary_weapon_id: Option<String>,
+    window: tauri::Window,
+    state: SharedState,
+) -> Result<SessionInfo, String> {
+    shutdown_session(&state).await;
+
+    let socket = Arc::new(UdpSocket::bind("0.0.0.0:0").await.map_err(|error| {
+        crate::game_log::error("join", &format!("socket bind failed: {error}"));
+        error.to_string()
+    })?);
+    let host_addr = game_addr(&ip).map_err(|error| {
+        crate::game_log::error("join", &format!("game_addr failed: {error}"));
+        error
+    })?;
     let character_id = clean_character_id(character_id);
-    crate::game_log::info(
-        "join",
-        &format!("host_addr={host_addr}, character={character_id}"),
-    );
 
     let join = ClientMessage::Join {
         name: crate::names::resolve_player_name(
@@ -281,16 +307,19 @@ pub async fn join_game(
         protocol_version: crate::protocol::PROTOCOL_VERSION,
     };
     let bytes = encode_client(&join)?;
-    crate::game_log::info("join", "encoded join message, waiting for assignment");
-    let assigned = wait_for_assignment(&socket, &host_addr, &bytes).await?;
+    let assigned = wait_for_assignment(&socket, &host_addr, &bytes)
+        .await
+        .map_err(|error| {
+            crate::game_log::error("join", &format!("wait_for_assignment failed: {error}"));
+            error
+        })?;
     crate::game_log::info(
         "join",
         &format!(
-            "got response from host: {}",
+            "assigned id={}, host={host_addr}",
             match &assigned {
-                ServerMessage::Assigned { .. } => "Assigned",
-                ServerMessage::Error { .. } => "Error",
-                _ => "Other",
+                ServerMessage::Assigned { id, .. } => *id,
+                _ => 0,
             }
         ),
     );
@@ -311,17 +340,7 @@ pub async fn join_game(
             st.match_end_emitted = false;
             st.host_addr = Some(host_addr);
             st.my_id = id;
-            crate::game_log::info(
-                "join",
-                &format!(
-                    "creating world {}x{}, {} players",
-                    world.width,
-                    world.height,
-                    players.len()
-                ),
-            );
             st.world = GameWorld::new(world.clone());
-            crate::game_log::info("join", "world created, syncing snapshot");
             let lobby_config = st.lobby_config.clone();
             st.world
                 .sync_from_snapshot(&crate::protocol::StateSnapshot {
@@ -361,12 +380,9 @@ pub async fn join_game(
         | ServerMessage::MatchEnded(_) => return Err("Expected assignment from host".to_string()),
     };
 
-    crate::game_log::info("join", "snapshot synced, spawning client_loop");
-    let state_clone = state.inner().clone();
+    let state_clone = state.clone();
     let client_handle = tokio::spawn(async move {
-        crate::game_log::info("client", "client_loop task started");
         client_loop(socket, state_clone, window).await;
-        crate::game_log::info("client", "client_loop task exited");
     });
 
     {
@@ -826,10 +842,16 @@ async fn wait_for_assignment(
         let remaining = deadline.saturating_duration_since(Instant::now());
         let recv_timeout = remaining.min(Duration::from_millis(250));
         match tokio::time::timeout(recv_timeout, socket.recv_from(&mut buf)).await {
-            Ok(Ok((n, _))) => match decode_server(&buf[..n]) {
+            Ok(Ok((n, src))) => match decode_server(&buf[..n]) {
                 Ok(message @ ServerMessage::Assigned { .. })
                 | Ok(message @ ServerMessage::Error { .. }) => return Ok(message),
-                Ok(_) | Err(_) => {}
+                Ok(_) => {}
+                Err(error) => {
+                    crate::game_log::warn(
+                        "join",
+                        &format!("failed to decode message from {src} ({n} bytes): {error}"),
+                    );
+                }
             },
             Ok(Err(error)) => return Err(error.to_string()),
             Err(_) => {}
@@ -896,4 +918,47 @@ fn clean_weapon_id(weapon_id: Option<String>) -> String {
         .trim()
         .to_ascii_lowercase();
     weapons::validate_weapon_id(&id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `join_game` command holds these types across `.await` points.
+    /// If their combined size grows too large, the async state machine will
+    /// overflow the IPC thread's stack (~1 MB on Windows).
+    ///
+    /// This test documents the sizes and flags unexpected growth early.
+    /// If you hit this limit, use `Box::pin()` to heap-allocate the future.
+    ///
+    /// See docs/ASYNC_STACK_OVERFLOW.md for the full story.
+    #[test]
+    fn future_locals_stay_within_budget() {
+        // Budget: the state machine should stay well under 1 MB (the IPC
+        // thread stack).  We use 256 KB as a generous ceiling.
+        const FUTURE_LOCALS_BUDGET: usize = 256 * 1024;
+
+        let snapshot_size = std::mem::size_of::<crate::protocol::StateSnapshot>();
+        let assigned_size = std::mem::size_of::<crate::protocol::ServerMessage>();
+        let world_size = std::mem::size_of::<GameWorld>();
+        let socket_size = std::mem::size_of::<UdpSocket>();
+
+        // Upper bound for the state machine: sum of all locals held across
+        // await points (generous overestimate).
+        let estimated = snapshot_size + assigned_size + world_size + socket_size + 4096;
+
+        eprintln!("  StateSnapshot : {snapshot_size} bytes");
+        eprintln!("  ServerMessage : {assigned_size} bytes");
+        eprintln!("  GameWorld     : {world_size} bytes");
+        eprintln!("  UdpSocket     : {socket_size} bytes");
+        eprintln!("  estimated sum : {estimated} bytes");
+        eprintln!("  budget        : {FUTURE_LOCALS_BUDGET} bytes");
+
+        assert!(
+            estimated <= FUTURE_LOCALS_BUDGET,
+            "join_game future locals ({estimated} bytes) exceed {FUTURE_LOCALS_BUDGET} byte budget. \
+             The Box::pin wrapper in join_game keeps this off the stack — verify it's still there. \
+             See docs/ASYNC_STACK_OVERFLOW.md"
+        );
+    }
 }

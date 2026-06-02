@@ -4555,3 +4555,64 @@ h2 {
     width: 100%;
   }
 }
+
+.crash-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 16, 0.92);
+  z-index: 9999;
+  padding: 24px;
+}
+
+.crash-card {
+  max-width: 560px;
+  width: 100%;
+  background: #161a24;
+  border: 1px solid #2a3040;
+  border-radius: 12px;
+  padding: 28px 32px;
+  color: #e6e8ee;
+  text-align: center;
+}
+
+.crash-card h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.crash-card p {
+  margin: 0 0 16px;
+  color: #aab0c0;
+}
+
+.crash-detail {
+  text-align: left;
+  background: #0d1018;
+  border: 1px solid #2a3040;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  color: #ff9b9b;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+  margin: 0 0 18px;
+}
+
+.crash-card button {
+  background: #3a6df0;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.crash-card button:hover {
+  background: #2f5ad0;
+}

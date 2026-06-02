@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { AudioManager } from '../../audio/AudioManager';
 import { GameAudio } from '../../audio/GameAudio';
 import { ArenaRenderer } from '../../game/ArenaRenderer';
@@ -54,6 +55,7 @@ export function useGameSession() {
   const [selectedPrimaryWeaponId, setSelectedPrimaryWeaponId] = useState(DEFAULT_WEAPON_ID);
   const pendingJoinIpRef = useRef<string | null>(null);
   const loadoutReturnScreenRef = useRef<Screen | null>(null);
+  const lobbyKeepAliveRef = useRef<number | null>(null);
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [servers, setServers] = useState<ServerInfo[]>([]);
@@ -256,6 +258,11 @@ export function useGameSession() {
       }
     });
     client.listenForMatchStarted((state) => {
+      // Match is starting — the 60fps input loop will keep the connection alive.
+      if (lobbyKeepAliveRef.current !== null) {
+        window.clearInterval(lobbyKeepAliveRef.current);
+        lobbyKeepAliveRef.current = null;
+      }
       if (firstMatchStarted) {
         firstMatchStarted = false;
         void client.writeLog('ui', `first MatchStarted event: screen=${screenRef.current}`);
@@ -359,12 +366,23 @@ export function useGameSession() {
               selectedPrimaryWeaponId,
               gameSettingsRef.current.serverName,
             )
-          : await client.join(
-              joinAddress,
-              playerName,
-              selectedCharacterId,
-              selectedPrimaryWeaponId,
-            );
+          : await (async () => {
+              void client.writeLog('ui', `invoking join_game ip=${joinAddress}`);
+              try {
+                const pong = await invoke<string>('ping');
+                void client.writeLog('ui', `ping result: ${pong}`);
+              } catch (e) {
+                void client.writeLog('ui', `ping FAILED: ${String(e)}`);
+              }
+              const result = await client.join(
+                joinAddress,
+                playerName,
+                selectedCharacterId,
+                selectedPrimaryWeaponId,
+              );
+              void client.writeLog('ui', 'join_game invoke resolved');
+              return result;
+            })();
       void client.writeLog('ui', `join returned: player_id=${session.player_id}`);
       pendingJoinIpRef.current = null;
       setSessionInfo(session);
@@ -384,6 +402,25 @@ export function useGameSession() {
         });
       }
       void client.writeLog('ui', 'createLobbySession complete');
+
+      // Start lobby keepalive — the host removes peers that go 6s without
+      // receiving any client message.  During the lobby the client only sends
+      // on explicit user actions, so a periodic empty input prevents stale
+      // timeouts while the host is loading the match.
+      if (lobbyKeepAliveRef.current !== null) {
+        window.clearInterval(lobbyKeepAliveRef.current);
+      }
+      lobbyKeepAliveRef.current = window.setInterval(async () => {
+        try {
+          await client.sendInput({
+            seq: 0, dx: 0, dy: 0, aim_x: 0, aim_y: 0,
+            fire: false, reload: false, ability: false,
+            dash: false, switch_weapon: false, drop_weapon: false, interact: false,
+          });
+        } catch {
+          // Best-effort.
+        }
+      }, 2000);
     } catch (caught) {
       void client.writeLog('ui', `createLobbySession error: ${String(caught)}`);
       setError(String(caught));
@@ -462,6 +499,10 @@ export function useGameSession() {
     if (inputTimerRef.current !== null) {
       window.clearInterval(inputTimerRef.current);
       inputTimerRef.current = null;
+    }
+    if (lobbyKeepAliveRef.current !== null) {
+      window.clearInterval(lobbyKeepAliveRef.current);
+      lobbyKeepAliveRef.current = null;
     }
     input.detach();
     input.setEnabled(true);

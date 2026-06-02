@@ -48,12 +48,15 @@ export class TauriGameClient {
     characterId: string,
     primaryWeaponId: string,
   ): Promise<SessionInfo> {
-    return invoke<SessionInfo>('join_game', {
+    void this.writeLog('debug', `TauriGameClient.join called, invoking join_game...`);
+    const result = await invoke<SessionInfo>('join_game', {
       ip,
       playerName,
       characterId,
       primaryWeaponId,
     });
+    void this.writeLog('debug', `TauriGameClient.join resolved, player_id=${result.player_id}`);
+    return result;
   }
 
   async sendInput(input: InputSnapshot): Promise<void> {

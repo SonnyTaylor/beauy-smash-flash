@@ -35,6 +35,7 @@ fn main() {
         .manage(Arc::new(Mutex::new(session::AppState::default())))
         .invoke_handler(tauri::generate_handler![
             get_app_info,
+            commands::ping,
             commands::stop_session,
             commands::kick_player,
             commands::write_client_log,

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 static LOG_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
+static PROCESS_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 pub fn init() {
     let Some(dir) = log_dir() else {
@@ -16,6 +17,8 @@ pub fn init() {
     if let Ok(mut guard) = LOG_PATH.lock() {
         *guard = Some(path);
     }
+    PROCESS_ID.store(std::process::id(), std::sync::atomic::Ordering::Relaxed);
+    install_panic_hook();
 }
 
 pub fn info(tag: &str, message: &str) {
@@ -51,8 +54,29 @@ fn write_line(level: &str, tag: &str, message: &str) {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    let line = format!("[{timestamp}] {level} [{tag}] {message}\n");
+    let pid = PROCESS_ID.load(std::sync::atomic::Ordering::Relaxed);
+    let line = format!("[{timestamp}] pid={pid} {level} [{tag}] {message}\n");
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         let _ = file.write_all(line.as_bytes());
     }
+}
+
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "non-string panic payload".to_string()
+        };
+        write_line("ERROR", "panic", &format!("{location}: {payload}"));
+        // Chain to default hook so we still get a console backtrace in dev.
+        default_hook(info);
+    }));
 }
