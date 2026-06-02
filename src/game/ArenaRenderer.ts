@@ -269,10 +269,12 @@ export class ArenaRenderer {
     this.bulletStates.clear();
     this.vfx.clear();
     for (const view of this.truthNukes.values()) {
+      view.gfx.parent?.removeChild(view.gfx);
       view.gfx.destroy();
     }
     this.truthNukes.clear();
     for (const view of this.pickups.values()) {
+      view.container.parent?.removeChild(view.container);
       view.container.destroy({ children: true });
     }
     this.pickups.clear();
@@ -320,6 +322,8 @@ export class ArenaRenderer {
     this.entityLayer = new Container();
     this.vfxLayer = this.vfx.container;
     this.fogLayer = new Container();
+    this.maliceFogLayer = new Container();
+    this.oilSlickLayer = new Container();
     this.fogOverlay = new Graphics();
     this.floorFill = new Graphics();
     this.grid = new Graphics();
@@ -483,7 +487,9 @@ export class ArenaRenderer {
         if (view.tajReelShield) {
           this.tajReels.destroyShield(view.tajReelShield);
         }
+        view.truthReticle.parent?.removeChild(view.truthReticle);
         view.truthReticle.destroy();
+        view.container.parent?.removeChild(view.container);
         view.container.destroy({ children: true });
         this.players.delete(player.id);
         view = undefined;
@@ -525,7 +531,9 @@ export class ArenaRenderer {
         if (view.tajReelShield) {
           this.tajReels.destroyShield(view.tajReelShield);
         }
+        view.truthReticle.parent?.removeChild(view.truthReticle);
         view.truthReticle.destroy();
+        view.container.parent?.removeChild(view.container);
         view.container.destroy({ children: true });
         this.players.delete(id);
       }
@@ -698,6 +706,7 @@ export class ArenaRenderer {
 
     for (const [id, view] of this.droneViews) {
       if (!live.has(id)) {
+        view.container.parent?.removeChild(view.container);
         view.container.destroy({ children: true });
         this.droneViews.delete(id);
         this.lastDronePositions.delete(id);
@@ -730,6 +739,7 @@ export class ArenaRenderer {
 
     for (const [id, view] of this.truthNukes) {
       if (!liveIds.has(id)) {
+        view.gfx.parent?.removeChild(view.gfx);
         view.gfx.destroy();
         this.truthNukes.delete(id);
       }
@@ -916,6 +926,7 @@ export class ArenaRenderer {
 
     for (const [id, view] of this.pickups) {
       if (!liveIds.has(id)) {
+        view.container.parent?.removeChild(view.container);
         view.container.destroy({ children: true });
         this.pickups.delete(id);
       }
@@ -1717,6 +1728,7 @@ export class ArenaRenderer {
     }
     for (const [id, gfx] of this.maliceFogViews) {
       if (!live.has(id)) {
+        gfx.parent?.removeChild(gfx);
         gfx.destroy();
         this.maliceFogViews.delete(id);
       }
@@ -1801,6 +1813,7 @@ export class ArenaRenderer {
 
     for (const [id, gfx] of this.oilSlickViews) {
       if (!live.has(id)) {
+        gfx.parent?.removeChild(gfx);
         gfx.destroy();
         this.oilSlickViews.delete(id);
       }
