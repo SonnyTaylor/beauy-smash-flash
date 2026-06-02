@@ -44,6 +44,7 @@ export function useGameSession() {
   const sessionInfoRef = useRef<SessionInfo | null>(null);
   const myIdRef = useRef(0);
   const screenRef = useRef<Screen>('main-menu');
+  const enterGamePromiseRef = useRef<Promise<void> | null>(null);
 
   const [screen, setScreen] = useState<Screen>('main-menu');
   const [sessionKind, setSessionKind] = useState<SessionKind>('host');
@@ -538,6 +539,22 @@ export function useGameSession() {
   }
 
   async function enterGame(initialState: StateSnapshot) {
+    // Guard against concurrent match_started events racing on the same renderer.
+    // Without this, a second event can observe renderer.isMounted === false while
+    // the first mount() is still awaiting app.init() and start a second mount.
+    if (enterGamePromiseRef.current) {
+      return enterGamePromiseRef.current;
+    }
+    const promise = enterGameImpl(initialState);
+    enterGamePromiseRef.current = promise;
+    try {
+      await promise;
+    } finally {
+      enterGamePromiseRef.current = null;
+    }
+  }
+
+  async function enterGameImpl(initialState: StateSnapshot) {
     const container = gameContainerRef.current;
     if (!container) return;
     const playerId = sessionInfoRef.current?.player_id ?? myIdRef.current;

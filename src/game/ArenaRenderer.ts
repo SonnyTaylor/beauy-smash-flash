@@ -203,7 +203,7 @@ export class ArenaRenderer {
   private arthurKartTexture: Texture | null = null;
   private isaakUltTexture: Texture | null = null;
   private lachyTexture: Texture | null = null;
-  private vfx = new VfxManager();
+  private vfx: VfxManager = new VfxManager();
   private tajReels = new TajReelVisuals();
   private reelPosts = new Map<number, ReelPostRuntime>();
   private truthNukes = new Map<number, TruthNukeView>();
@@ -374,9 +374,19 @@ export class ArenaRenderer {
     this.viewportHeight = 0;
     if (!this.mounted || !this.app) return;
 
+    // Stop the ticker FIRST so no renderFrame() can run on a half-destroyed app.
+    try {
+      this.app.ticker.stop();
+    } catch {
+      // Ticker may already be torn down.
+    }
     this.app.canvas.remove();
     this.app.destroy(true, { children: true });
     this.app = null;
+    // Recreate VFX/reel managers so the next mount() doesn't reuse containers
+    // that were just destroyed by app.destroy(true, { children: true }).
+    this.vfx = new VfxManager();
+    this.tajReels = new TajReelVisuals();
     this.players.clear();
     for (const view of this.pickups.values()) {
       view.container.destroy({ children: true });
@@ -1160,7 +1170,7 @@ export class ArenaRenderer {
         align: 'center',
       },
     });
-    label.name = 'nameLabel';
+    label.label = 'nameLabel';
     label.anchor.set(0.5);
     label.y = -PLAYER_RADIUS - 18;
     container.addChild(label);
@@ -1963,7 +1973,6 @@ export class ArenaRenderer {
     this.grid.stroke({ color: gridColor, width: 1, alpha: 0.25 });
     
     // Draw primary grid lines
-    this.grid.beginPath();
     for (let x = 0; x <= this.world.width; x += spacing * 4) {
       this.grid.moveTo(x, 0).lineTo(x, this.world.height);
     }
@@ -2044,7 +2053,7 @@ export class ArenaRenderer {
           .stroke({ color: accentColor, width: 2, alpha: 0.6 });
 
         // Accent notch on top edge
-        detailLines.beginPath()
+        detailLines
           .moveTo(wall.x + wall.w / 2 - 10, wall.y + 2)
           .lineTo(wall.x + wall.w / 2 + 10, wall.y + 2)
           .stroke({ color: accentColor, width: 2, alpha: 0.6 });
