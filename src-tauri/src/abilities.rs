@@ -516,6 +516,7 @@ pub fn process_boat_rams(world: &mut GameWorld) {
     }
 }
 
+#[cfg(test)]
 pub fn check_shield_block(
     world: &GameWorld,
     bullet_owner_id: u8,
@@ -724,7 +725,6 @@ fn post_taj_reel_shield(world: &mut GameWorld, player_id: u8) {
         hit_players: Vec::new(),
         zone_hp: 0.0,
         zone_damage_accum: 0.0,
-        zone_heal_accum: 0.0,
     });
 }
 
@@ -800,7 +800,6 @@ fn fire_isaak_chi_blast(world: &mut GameWorld, player_id: u8, dir_x: f32, dir_y:
         hit_players: Vec::new(),
         zone_hp: 0.0,
         zone_damage_accum: 0.0,
-        zone_heal_accum: 0.0,
     });
 
     if let Some((victim_id, hit_x, hit_y, _)) = hit {
@@ -1171,7 +1170,6 @@ fn launch_bailey_nuke(
         hit_players: Vec::new(),
         zone_hp: 0.0,
         zone_damage_accum: 0.0,
-        zone_heal_accum: 0.0,
     });
 }
 
@@ -1230,7 +1228,6 @@ fn activate_sonny_reverse_shell(world: &mut GameWorld, caster_id: u8, x: f32, y:
         hit_players: Vec::new(),
         zone_hp: 0.0,
         zone_damage_accum: 0.0,
-        zone_heal_accum: 0.0,
     });
 }
 

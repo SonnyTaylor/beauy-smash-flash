@@ -84,6 +84,7 @@ impl ActiveSlot {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum HitVfxKind {
     None,
     Splat,
@@ -405,6 +406,7 @@ pub fn melee_targets(
     hits.into_iter().map(|(id, _)| id).collect()
 }
 
+#[allow(dead_code)]
 pub fn all() -> &'static [WeaponDef] {
     REGISTRY
 }
@@ -425,6 +427,7 @@ pub fn validate_weapon_id(weapon_id: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn default_primary_slot() -> WeaponSlotState {
     primary_slot_for(DEFAULT_WEAPON_ID)
 }
@@ -458,6 +461,7 @@ pub fn reload_duration_for(weapon_id: &str, current_ammo: u8) -> f32 {
     }
 }
 
+#[allow(dead_code)]
 pub fn registry_map() -> HashMap<&'static str, &'static WeaponDef> {
     REGISTRY.iter().map(|weapon| (weapon.id, weapon)).collect()
 }

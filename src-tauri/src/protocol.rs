@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 16;
+pub const PROTOCOL_VERSION: u16 = 17;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerInfo {

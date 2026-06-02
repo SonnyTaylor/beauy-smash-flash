@@ -19,13 +19,13 @@ pub const PLAYER_RADIUS: f32 = 24.0;
 pub const PLAYER_SPEED: f32 = 360.0;
 
 pub const PLAYER_MAX_HP: u16 = 100;
-pub const BULLET_RADIUS: f32 = 4.0;
+pub const _BULLET_RADIUS: f32 = 4.0;
 pub const RESPAWN_TIME: f32 = 2.5;
 pub const SPAWN_PROTECTION_TIME: f32 = 1.5;
 pub const KILL_FEED_LIMIT: usize = 5;
 
 pub const ZOMBIE_ID_START: u8 = 200;
-pub const ZOMBIE_SPEED_MULT: f32 = 0.48;
+pub const _ZOMBIE_SPEED_MULT: f32 = 0.48;
 pub const HORDE_INTERMISSION_SECS: f32 = 5.0;
 pub const HORDE_INITIAL_DELAY: f32 = 4.0;
 pub const HORDE_BASE_ZOMBIES: u16 = 5;
@@ -193,7 +193,6 @@ pub struct WorldEffect {
     /// Destructible zone HP (food tray) or unused for other zones.
     pub zone_hp: f32,
     pub zone_damage_accum: f32,
-    pub zone_heal_accum: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -242,7 +241,6 @@ impl WorldEffect {
             hit_players: Vec::new(),
             zone_hp: 0.0,
             zone_damage_accum: 0.0,
-            zone_heal_accum: 0.0,
         }
     }
 }
@@ -1520,7 +1518,6 @@ impl GameWorld {
                 hit_players: Vec::new(),
                 zone_hp: 0.0,
                 zone_damage_accum: 0.0,
-                zone_heal_accum: 0.0,
             })
             .collect();
         self.follower_drones = snapshot

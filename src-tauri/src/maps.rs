@@ -13,6 +13,7 @@ pub const GRID_COLS: usize = 32;
 pub const GRID_ROWS: usize = 18;
 
 #[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)]
 struct MapThemeDef {
     #[serde(default = "default_floor")]
     floor: String,
@@ -52,6 +53,7 @@ struct MapGridDef {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct MapWallDef {
     id: Option<String>,
     x: f32,
@@ -61,6 +63,7 @@ struct MapWallDef {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct MapDefinition {
     id: String,
     name: String,
@@ -277,6 +280,7 @@ pub fn load_map(map_id: &str, width: f32, height: f32) -> GameMap {
     }
 }
 
+#[allow(dead_code)]
 pub fn list_map_ids() -> Vec<&'static str> {
     maps_embedded::MAP_BLOBS.iter().map(|(id, _)| *id).collect()
 }

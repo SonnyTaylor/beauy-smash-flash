@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use crate::abilities::{add_charge, aim_direction, ABILITY_CHARGE_MAX};
+use crate::abilities::{add_charge, aim_direction};
 use crate::game::{
     circle_hits_circle, circle_hits_walls, normalize, FollowerDrone, FollowerDroneKind, GameWorld,
     Player, WorldEffect, PLAYER_RADIUS,
@@ -621,7 +621,6 @@ fn activate_mango(world: &mut GameWorld, player_id: u8) {
         hit_players: Vec::new(),
         zone_hp: 0.0,
         zone_damage_accum: 0.0,
-        zone_heal_accum: 0.0,
     });
 }
 
@@ -830,7 +829,6 @@ fn spawn_zone_effect(
         hit_players: Vec::new(),
         zone_hp,
         zone_damage_accum: 0.0,
-        zone_heal_accum: 0.0,
     });
 }
 
@@ -842,9 +840,7 @@ fn process_zones(world: &mut GameWorld, dt: f32) {
         y: f32,
         radius: f32,
         owner_id: u8,
-        zone_hp: f32,
         damage_ticks: u32,
-        heal_ticks: u32,
     }
 
     let mut snaps: Vec<ZoneSnap> = Vec::new();
@@ -859,7 +855,6 @@ fn process_zones(world: &mut GameWorld, dt: f32) {
 
         effect.life -= dt;
         let mut damage_ticks = 0u32;
-        let mut heal_ticks = 0u32;
 
         match effect.kind {
             EffectKind::MaliceZone => {
@@ -893,9 +888,7 @@ fn process_zones(world: &mut GameWorld, dt: f32) {
             y: effect.y,
             radius: effect.radius,
             owner_id: effect.owner_id,
-            zone_hp: effect.zone_hp,
             damage_ticks,
-            heal_ticks,
         });
     }
 
@@ -928,19 +921,6 @@ fn process_zones(world: &mut GameWorld, dt: f32) {
                     }
                     if world.damage_allowed(zone.owner_id, victim_id) {
                         damage_events.push((zone.owner_id, victim_id));
-                    }
-                }
-            }
-        }
-
-        if zone.heal_ticks > 0 && zone.kind == EffectKind::FoodTray && zone.zone_hp > 0.0 {
-            for _ in 0..zone.heal_ticks {
-                for pid in players_in_zone(world, zone.x, zone.y, zone.radius, zone.owner_id, false)
-                {
-                    if let Some(player) = world.players.get_mut(&pid) {
-                        if player.alive {
-                            player.hp = (player.hp + 1).min(player.max_hp);
-                        }
                     }
                 }
             }
@@ -1370,6 +1350,7 @@ fn distance_sq(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::abilities::ABILITY_CHARGE_MAX;
     use crate::game::GameWorld;
     use crate::protocol::{AimAssistLevel, Gamemode, WinCondition};
 
