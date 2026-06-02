@@ -1,4 +1,4 @@
-import type { Gamemode, WinCondition } from '../shared/types';
+import type { AimAssistLevel, Gamemode, WinCondition } from '../shared/types';
 
 export const TEAM_ALPHA = 1;
 export const TEAM_BRAVO = 2;
@@ -47,6 +47,13 @@ export const WIN_CONDITION_OPTIONS: Array<{ id: WinCondition; label: string; hin
   { id: 'kills', label: 'Kills', hint: 'First to score limit wins' },
   { id: 'time', label: 'Time', hint: 'Highest score when timer ends' },
   { id: 'either', label: 'Either', hint: 'First kill cap or timer' },
+];
+
+export const AIM_ASSIST_OPTIONS: Array<{ id: AimAssistLevel; label: string }> = [
+  { id: 'off', label: 'Off' },
+  { id: 'soft', label: 'Soft' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'heavy', label: 'Heavy' },
 ];
 
 export function formatMatchTime(totalSecs: number): string {

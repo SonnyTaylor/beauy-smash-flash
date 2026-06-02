@@ -3,9 +3,10 @@ use std::f32::consts::FRAC_PI_2;
 
 use crate::abilities::{self, is_casting};
 use crate::protocol::{
-    BulletSnapshot, EffectKind, Gamemode, InputSnapshot, KillFeedEntry, LobbyConfig, MapSnapshot,
-    MatchEndReason, PlayerSnapshot, RectSnapshot, StateSnapshot, WaveState, WeaponPickupSnapshot,
-    WeaponSlotSnapshot, WinCondition, WorldConfig, PROTOCOL_VERSION,
+    AimAssistLevel, BulletSnapshot, EffectKind, Gamemode, InputSnapshot, KillFeedEntry,
+    LobbyConfig, MapSnapshot, MatchEndReason, PlayerSnapshot, RectSnapshot, StateSnapshot,
+    WaveState, WeaponPickupSnapshot, WeaponSlotSnapshot, WinCondition, WorldConfig,
+    PROTOCOL_VERSION,
 };
 use crate::weapons::{
     self, ActiveSlot, WeaponSlotState, DEFAULT_WEAPON_ID, DROP_FORWARD_OFFSET, PICKUP_RADIUS,
@@ -773,7 +774,7 @@ pub struct GameWorld {
     pub gamemode: Gamemode,
     pub friendly_fire: bool,
     pub fog_of_war: bool,
-    pub aim_assist: bool,
+    pub aim_assist: AimAssistLevel,
     pub match_ended: bool,
     pub winner_id: Option<u8>,
     pub winner_team: Option<u8>,
@@ -852,7 +853,7 @@ impl GameWorld {
             gamemode: Gamemode::Deathmatch,
             friendly_fire: true,
             fog_of_war: false,
-            aim_assist: false,
+            aim_assist: AimAssistLevel::Off,
             match_ended: false,
             winner_id: None,
             winner_team: None,
@@ -994,7 +995,7 @@ impl GameWorld {
         gamemode: Gamemode,
         friendly_fire: bool,
         fog_of_war: bool,
-        aim_assist: bool,
+        aim_assist: AimAssistLevel,
         wave_goal: u16,
     ) {
         self.remove_zombies();
@@ -1578,36 +1579,38 @@ impl GameWorld {
 
     fn process_movement(&mut self, dt: f32) {
         // Pre-compute aim-assisted angles if enabled
-        let aim_adjustments: HashMap<u8, (f32, Option<u8>)> = if self.aim_assist {
-            let mut map = HashMap::new();
-            for player in self.players.values() {
-                if !player.alive || is_casting(player) {
-                    continue;
-                }
-                let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
-                let input = apply_hack_inversion(player, &input);
-                if input.aim_x != 0.0 || input.aim_y != 0.0 {
-                    let (aim_x, aim_y, target_id) = apply_aim_assist(
-                        &self.players,
-                        &self.inputs,
-                        player.id,
-                        player.x,
-                        player.y,
-                        input.aim_x,
-                        input.aim_y,
-                        self.friendly_fire,
-                        self.gamemode,
-                        800.0, // default speed for facing prediction
-                    );
-                    if aim_x != 0.0 || aim_y != 0.0 {
-                        map.insert(player.id, (aim_y.atan2(aim_x), target_id));
+        let aim_adjustments: HashMap<u8, (f32, Option<u8>)> =
+            if self.aim_assist != AimAssistLevel::Off {
+                let mut map = HashMap::new();
+                for player in self.players.values() {
+                    if !player.alive || is_casting(player) {
+                        continue;
+                    }
+                    let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
+                    let input = apply_hack_inversion(player, &input);
+                    if input.aim_x != 0.0 || input.aim_y != 0.0 {
+                        let (aim_x, aim_y, target_id) = apply_aim_assist(
+                            &self.players,
+                            &self.inputs,
+                            player.id,
+                            player.x,
+                            player.y,
+                            input.aim_x,
+                            input.aim_y,
+                            self.friendly_fire,
+                            self.gamemode,
+                            800.0, // default speed for facing prediction
+                            self.aim_assist,
+                        );
+                        if aim_x != 0.0 || aim_y != 0.0 {
+                            map.insert(player.id, (aim_y.atan2(aim_x), target_id));
+                        }
                     }
                 }
-            }
-            map
-        } else {
-            HashMap::new()
-        };
+                map
+            } else {
+                HashMap::new()
+            };
 
         // First update positions without player-player collision
         for player in self.players.values_mut() {
@@ -1656,7 +1659,7 @@ impl GameWorld {
                 player.y = next_y;
             }
 
-            if self.aim_assist {
+            if self.aim_assist != AimAssistLevel::Off {
                 if let Some(&(angle, target_id)) = aim_adjustments.get(&player.id) {
                     player.angle = angle;
                     player.aim_assist_target = target_id;
@@ -1975,7 +1978,7 @@ impl GameWorld {
             let input = apply_hack_inversion(player, &input);
             if input.fire && player.fire_cooldown <= 0.0 {
                 let (raw_aim_x, raw_aim_y) = normalize(input.aim_x, input.aim_y);
-                let (aim_x, aim_y, target_id) = if self.aim_assist {
+                let (aim_x, aim_y, target_id) = if self.aim_assist != AimAssistLevel::Off {
                     let (ax, ay, tid) = apply_aim_assist(
                         &self.players,
                         &self.inputs,
@@ -1987,6 +1990,7 @@ impl GameWorld {
                         self.friendly_fire,
                         self.gamemode,
                         920.0, // POPCORN_SPEED
+                        self.aim_assist,
                     );
                     (ax, ay, tid)
                 } else {
@@ -2013,46 +2017,48 @@ impl GameWorld {
         }
 
         // Pre-compute aim-assisted directions for regular combat
-        let combat_aim_map: HashMap<u8, (f32, f32, Option<u8>)> = if self.aim_assist {
-            let mut map = HashMap::new();
-            for player in self.players.values() {
-                if !player.alive || is_casting(player) || abilities::in_boat_mode(player) {
-                    continue;
+        let combat_aim_map: HashMap<u8, (f32, f32, Option<u8>)> =
+            if self.aim_assist != AimAssistLevel::Off {
+                let mut map = HashMap::new();
+                for player in self.players.values() {
+                    if !player.alive || is_casting(player) || abilities::in_boat_mode(player) {
+                        continue;
+                    }
+                    if player.hangover_until > 0.0 || player.invulnerable_until > 0.0 {
+                        continue;
+                    }
+                    if !player.has_active_weapon() {
+                        continue;
+                    }
+                    let weapon = player.active_weapon();
+                    if weapon.can_reload() && player.reload_timer > 0.0 {
+                        continue;
+                    }
+                    let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
+                    let input = apply_hack_inversion(player, &input);
+                    let (raw_aim_x, raw_aim_y) =
+                        crate::roster_expansion::combat_aim(player, input.aim_x, input.aim_y);
+                    if raw_aim_x != 0.0 || raw_aim_y != 0.0 {
+                        let (ax, ay, target_id) = apply_aim_assist(
+                            &self.players,
+                            &self.inputs,
+                            player.id,
+                            player.x,
+                            player.y,
+                            raw_aim_x,
+                            raw_aim_y,
+                            self.friendly_fire,
+                            self.gamemode,
+                            weapon.bullet_speed,
+                            self.aim_assist,
+                        );
+                        map.insert(player.id, (ax, ay, target_id));
+                    }
                 }
-                if player.hangover_until > 0.0 || player.invulnerable_until > 0.0 {
-                    continue;
-                }
-                if !player.has_active_weapon() {
-                    continue;
-                }
-                let weapon = player.active_weapon();
-                if weapon.can_reload() && player.reload_timer > 0.0 {
-                    continue;
-                }
-                let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
-                let input = apply_hack_inversion(player, &input);
-                let (raw_aim_x, raw_aim_y) =
-                    crate::roster_expansion::combat_aim(player, input.aim_x, input.aim_y);
-                if raw_aim_x != 0.0 || raw_aim_y != 0.0 {
-                    let (ax, ay, target_id) = apply_aim_assist(
-                        &self.players,
-                        &self.inputs,
-                        player.id,
-                        player.x,
-                        player.y,
-                        raw_aim_x,
-                        raw_aim_y,
-                        self.friendly_fire,
-                        self.gamemode,
-                        weapon.bullet_speed,
-                    );
-                    map.insert(player.id, (ax, ay, target_id));
-                }
-            }
-            map
-        } else {
-            HashMap::new()
-        };
+                map
+            } else {
+                HashMap::new()
+            };
 
         for player in self.players.values_mut() {
             if !player.alive || is_casting(player) || abilities::in_boat_mode(player) {
@@ -2083,7 +2089,7 @@ impl GameWorld {
             let input = apply_hack_inversion(player, &input);
             let (raw_aim_x, raw_aim_y) =
                 crate::roster_expansion::combat_aim(player, input.aim_x, input.aim_y);
-            let (aim_x, aim_y, target_id) = if self.aim_assist {
+            let (aim_x, aim_y, target_id) = if self.aim_assist != AimAssistLevel::Off {
                 combat_aim_map
                     .get(&player.id)
                     .copied()
@@ -3195,14 +3201,19 @@ pub(crate) fn apply_aim_assist(
     friendly_fire: bool,
     gamemode: Gamemode,
     bullet_speed: f32,
+    level: AimAssistLevel,
 ) -> (f32, f32, Option<u8>) {
     if aim_x == 0.0 && aim_y == 0.0 {
         return (aim_x, aim_y, None);
     }
 
     let assist_range = 900.0;
-    let assist_strength = 0.55;
-    let fov_cos = 0.3; // ~72 degrees half-angle cone
+    let (assist_strength, fov_cos) = match level {
+        AimAssistLevel::Off => return (aim_x, aim_y, None),
+        AimAssistLevel::Soft => (0.35, 0.5), // 35% blend, ~60° cone
+        AimAssistLevel::Medium => (0.55, 0.3), // 55% blend, ~72° cone
+        AimAssistLevel::Heavy => (0.80, 0.15), // 80% blend, ~83° cone
+    };
 
     let (aim_dir_x, aim_dir_y) = normalize(aim_x, aim_y);
     let mut best_target: Option<(u8, f32, f32, f32)> = None; // (id, dx, dy, dist)

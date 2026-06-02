@@ -69,6 +69,16 @@ pub enum MatchEndReason {
     Time,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AimAssistLevel {
+    Off,
+    Soft,
+    #[default]
+    Medium,
+    Heavy,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LobbyConfig {
     pub server_name: String,
@@ -82,7 +92,7 @@ pub struct LobbyConfig {
     #[serde(default)]
     pub fog_of_war: bool,
     #[serde(default)]
-    pub aim_assist: bool,
+    pub aim_assist: AimAssistLevel,
     #[serde(default)]
     pub bot_count: u8,
     #[serde(default)]
@@ -101,7 +111,7 @@ impl Default for LobbyConfig {
             win_condition: WinCondition::Kills,
             friendly_fire: true,
             fog_of_war: false,
-            aim_assist: false,
+            aim_assist: AimAssistLevel::Off,
             bot_count: 0,
             wave_goal: 0,
         }

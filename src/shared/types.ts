@@ -63,6 +63,8 @@ export type WinCondition = 'kills' | 'time' | 'either';
 
 export type MatchEndReason = 'score' | 'time';
 
+export type AimAssistLevel = 'off' | 'soft' | 'medium' | 'heavy';
+
 export interface LobbyConfig {
   server_name: string;
   map_id: string;
@@ -73,7 +75,7 @@ export interface LobbyConfig {
   win_condition: WinCondition;
   friendly_fire: boolean;
   fog_of_war: boolean;
-  aim_assist: boolean;
+  aim_assist: AimAssistLevel;
   bot_count: number;
   wave_goal: number;
 }
@@ -88,7 +90,7 @@ export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
   win_condition: 'kills',
   friendly_fire: true,
   fog_of_war: false,
-  aim_assist: false,
+  aim_assist: 'off',
   bot_count: 0,
   wave_goal: 0,
 };

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { MAPS } from '../../content/maps';
-import type { Gamemode, LobbyConfig, WinCondition } from '../../shared/types';
+import type { AimAssistLevel, Gamemode, LobbyConfig, WinCondition } from '../../shared/types';
 import { Cycle, SettingRow } from '../components/CycleControl';
 import {
+  AIM_ASSIST_OPTIONS,
   BOT_COUNT_OPTIONS,
   GAMEMODE_OPTIONS,
   MAX_PLAYERS_OPTIONS,
@@ -262,22 +263,6 @@ export function LobbySettingsPanel({
             : 'Full arena visibility — everyone sees the whole map.'}
         </p>
 
-        <SettingRow label="Aim Assist">
-          <button
-            type="button"
-            className={`toggle-pill ${config.aim_assist ? 'on' : 'off'}`}
-            disabled={!isHost}
-            onClick={() => patch({ aim_assist: !config.aim_assist })}
-          >
-            {config.aim_assist ? 'On' : 'Off'}
-          </button>
-        </SettingRow>
-        <p className="setting-hint">
-          {config.aim_assist
-            ? 'Light aim correction — helps trackpad and casual players.'
-            : 'Raw input only — full manual aim control.'}
-        </p>
-
         {!isHorde && (
           <>
             <SettingRow label="Friendly Fire">
@@ -297,6 +282,30 @@ export function LobbySettingsPanel({
             </p>
           </>
         )}
+      </div>
+
+      <div className="lobby-modifiers">
+        <header className="panel-heading">
+          <h3>Modifiers</h3>
+          <span>Optional house rules — changes apply to everyone</span>
+        </header>
+
+        <div className="lobby-settings-scroll">
+          <SettingRow label="Aim Assist">
+            <Cycle
+              value={config.aim_assist}
+              values={AIM_ASSIST_OPTIONS}
+              disabled={!isHost}
+              onChange={(id) => patch({ aim_assist: id as AimAssistLevel })}
+              fallback={AIM_ASSIST_OPTIONS.find((o) => o.id === config.aim_assist)?.label ?? 'Off'}
+            />
+          </SettingRow>
+          <p className="setting-hint">
+            {config.aim_assist === 'off'
+              ? 'Raw input only — full manual aim control.'
+              : `${AIM_ASSIST_OPTIONS.find((o) => o.id === config.aim_assist)?.label} lock-on assist — helps trackpad and casual players.`}
+          </p>
+        </div>
       </div>
     </section>
   );
