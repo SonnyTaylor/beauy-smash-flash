@@ -133,6 +133,7 @@ interface PlayerView {
   reelShieldLoading: boolean;
   tajReelShield: TajReelShieldView | null;
   chiAura: Graphics;
+  lockOnRing: Graphics;
 }
 
 interface ReelPostRuntime {
@@ -524,6 +525,19 @@ export class ArenaRenderer {
 
       const inVision = player.id === this.myId || this.canSeePosition(player.x, player.y);
       view.container.visible = inVision;
+    }
+
+    // Update aim assist lock-on indicators
+    const aimAssistTargetId = me?.aim_assist_target;
+    for (const [id, view] of this.players) {
+      const isLocked = id === aimAssistTargetId;
+      view.lockOnRing.visible = isLocked && aliveIds.has(id);
+      if (isLocked) {
+        // Pulse the lock-on ring
+        const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 100);
+        view.lockOnRing.alpha = pulse;
+        view.lockOnRing.rotation += 0.02;
+      }
     }
 
     for (const [id, view] of this.players) {
@@ -1186,6 +1200,13 @@ export class ArenaRenderer {
     label.y = -PLAYER_RADIUS - 18;
     container.addChild(label);
 
+    // Lock-on indicator (shown when targeted by local player's aim assist)
+    const lockOnRing = new Graphics()
+      .circle(0, 0, PLAYER_RADIUS + 14)
+      .stroke({ color: 0xff3333, width: 2.5, alpha: 0.9 });
+    lockOnRing.visible = false;
+    container.addChild(lockOnRing);
+
     container.x = player.x;
     container.y = player.y;
 
@@ -1231,6 +1252,7 @@ export class ArenaRenderer {
       reelShieldWasActive: (player.reel_shield_remaining ?? 0) > 0,
       reelShieldLoading: false,
       tajReelShield: null,
+      lockOnRing,
     };
   }
 

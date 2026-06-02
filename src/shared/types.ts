@@ -73,6 +73,7 @@ export interface LobbyConfig {
   win_condition: WinCondition;
   friendly_fire: boolean;
   fog_of_war: boolean;
+  aim_assist: boolean;
   bot_count: number;
   wave_goal: number;
 }
@@ -87,6 +88,7 @@ export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
   win_condition: 'kills',
   friendly_fire: true,
   fog_of_war: false,
+  aim_assist: false,
   bot_count: 0,
   wave_goal: 0,
 };
@@ -261,6 +263,7 @@ export interface PlayerSnapshot {
   ragebait_remaining?: number;
   liquid_courage_remaining?: number;
   invulnerable_remaining?: number;
+  aim_assist_target?: number;
 }
 
 export interface StateSnapshot {

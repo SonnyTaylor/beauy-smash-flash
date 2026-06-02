@@ -27,7 +27,7 @@ function enforceMinSpeed(vx: number, vy: number): { vx: number; vy: number } {
 export function createFloatingHeadPositions(count: number): FloatingHeadPosition[] {
   if (count <= 0) return [];
 
-  const baseSize = clamp(118 - count * 5, 56, 118);
+  const baseSize = clamp(160 - count * 5, 80, 160);
   const positions: FloatingHeadPosition[] = [];
   for (let index = 0; index < count; index++) {
     const angle = (index / count) * Math.PI * 2 + randomBetween(-0.18, 0.18);

@@ -344,6 +344,7 @@ pub struct Player {
     pub is_zombie: bool,
     /// 0 = unassigned, 1 = Alpha, 2 = Bravo (team deathmatch).
     pub team: u8,
+    pub aim_assist_target: Option<u8>,
 }
 
 impl Player {
@@ -439,6 +440,7 @@ impl Player {
             is_bot: false,
             is_zombie: false,
             team: 0,
+            aim_assist_target: None,
         }
     }
 
@@ -587,6 +589,7 @@ impl Player {
             is_bot: self.is_bot,
             is_zombie: self.is_zombie,
             team: self.team,
+            aim_assist_target: self.aim_assist_target,
         }
     }
 
@@ -770,6 +773,7 @@ pub struct GameWorld {
     pub gamemode: Gamemode,
     pub friendly_fire: bool,
     pub fog_of_war: bool,
+    pub aim_assist: bool,
     pub match_ended: bool,
     pub winner_id: Option<u8>,
     pub winner_team: Option<u8>,
@@ -848,6 +852,7 @@ impl GameWorld {
             gamemode: Gamemode::Deathmatch,
             friendly_fire: true,
             fog_of_war: false,
+            aim_assist: false,
             match_ended: false,
             winner_id: None,
             winner_team: None,
@@ -989,6 +994,7 @@ impl GameWorld {
         gamemode: Gamemode,
         friendly_fire: bool,
         fog_of_war: bool,
+        aim_assist: bool,
         wave_goal: u16,
     ) {
         self.remove_zombies();
@@ -1010,6 +1016,7 @@ impl GameWorld {
             friendly_fire
         };
         self.fog_of_war = fog_of_war;
+        self.aim_assist = aim_assist;
         self.match_ended = false;
         self.winner_id = None;
         self.winner_team = None;
@@ -1570,6 +1577,38 @@ impl GameWorld {
     }
 
     fn process_movement(&mut self, dt: f32) {
+        // Pre-compute aim-assisted angles if enabled
+        let aim_adjustments: HashMap<u8, (f32, Option<u8>)> = if self.aim_assist {
+            let mut map = HashMap::new();
+            for player in self.players.values() {
+                if !player.alive || is_casting(player) {
+                    continue;
+                }
+                let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
+                let input = apply_hack_inversion(player, &input);
+                if input.aim_x != 0.0 || input.aim_y != 0.0 {
+                    let (aim_x, aim_y, target_id) = apply_aim_assist(
+                        &self.players,
+                        &self.inputs,
+                        player.id,
+                        player.x,
+                        player.y,
+                        input.aim_x,
+                        input.aim_y,
+                        self.friendly_fire,
+                        self.gamemode,
+                        800.0, // default speed for facing prediction
+                    );
+                    if aim_x != 0.0 || aim_y != 0.0 {
+                        map.insert(player.id, (aim_y.atan2(aim_x), target_id));
+                    }
+                }
+            }
+            map
+        } else {
+            HashMap::new()
+        };
+
         // First update positions without player-player collision
         for player in self.players.values_mut() {
             if !player.alive || is_casting(player) {
@@ -1617,8 +1656,16 @@ impl GameWorld {
                 player.y = next_y;
             }
 
-            if input.aim_x != 0.0 || input.aim_y != 0.0 {
+            if self.aim_assist {
+                if let Some(&(angle, target_id)) = aim_adjustments.get(&player.id) {
+                    player.angle = angle;
+                    player.aim_assist_target = target_id;
+                } else {
+                    player.aim_assist_target = None;
+                }
+            } else if input.aim_x != 0.0 || input.aim_y != 0.0 {
                 player.angle = input.aim_y.atan2(input.aim_x);
+                player.aim_assist_target = None;
             }
         }
 
@@ -1918,6 +1965,8 @@ impl GameWorld {
             }
         }
 
+        // Collect aim assist targets for popcorn shots
+        let mut popcorn_aim_targets: Vec<(u8, Option<u8>)> = Vec::new();
         for player in self.players.values() {
             if !player.alive || is_casting(player) || !abilities::in_directors_cut(player) {
                 continue;
@@ -1925,10 +1974,33 @@ impl GameWorld {
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
             let input = apply_hack_inversion(player, &input);
             if input.fire && player.fire_cooldown <= 0.0 {
-                let (aim_x, aim_y) = normalize(input.aim_x, input.aim_y);
+                let (raw_aim_x, raw_aim_y) = normalize(input.aim_x, input.aim_y);
+                let (aim_x, aim_y, target_id) = if self.aim_assist {
+                    let (ax, ay, tid) = apply_aim_assist(
+                        &self.players,
+                        &self.inputs,
+                        player.id,
+                        player.x,
+                        player.y,
+                        raw_aim_x,
+                        raw_aim_y,
+                        self.friendly_fire,
+                        self.gamemode,
+                        920.0, // POPCORN_SPEED
+                    );
+                    (ax, ay, tid)
+                } else {
+                    (raw_aim_x, raw_aim_y, None)
+                };
+                popcorn_aim_targets.push((player.id, target_id));
                 if aim_x != 0.0 || aim_y != 0.0 {
                     popcorn_shots.push((player.id, player.x, player.y, aim_x, aim_y));
                 }
+            }
+        }
+        for (pid, target_id) in popcorn_aim_targets {
+            if let Some(player) = self.players.get_mut(&pid) {
+                player.aim_assist_target = target_id;
             }
         }
 
@@ -1939,6 +2011,48 @@ impl GameWorld {
                 }
             }
         }
+
+        // Pre-compute aim-assisted directions for regular combat
+        let combat_aim_map: HashMap<u8, (f32, f32, Option<u8>)> = if self.aim_assist {
+            let mut map = HashMap::new();
+            for player in self.players.values() {
+                if !player.alive || is_casting(player) || abilities::in_boat_mode(player) {
+                    continue;
+                }
+                if player.hangover_until > 0.0 || player.invulnerable_until > 0.0 {
+                    continue;
+                }
+                if !player.has_active_weapon() {
+                    continue;
+                }
+                let weapon = player.active_weapon();
+                if weapon.can_reload() && player.reload_timer > 0.0 {
+                    continue;
+                }
+                let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
+                let input = apply_hack_inversion(player, &input);
+                let (raw_aim_x, raw_aim_y) =
+                    crate::roster_expansion::combat_aim(player, input.aim_x, input.aim_y);
+                if raw_aim_x != 0.0 || raw_aim_y != 0.0 {
+                    let (ax, ay, target_id) = apply_aim_assist(
+                        &self.players,
+                        &self.inputs,
+                        player.id,
+                        player.x,
+                        player.y,
+                        raw_aim_x,
+                        raw_aim_y,
+                        self.friendly_fire,
+                        self.gamemode,
+                        weapon.bullet_speed,
+                    );
+                    map.insert(player.id, (ax, ay, target_id));
+                }
+            }
+            map
+        } else {
+            HashMap::new()
+        };
 
         for player in self.players.values_mut() {
             if !player.alive || is_casting(player) || abilities::in_boat_mode(player) {
@@ -1967,8 +2081,17 @@ impl GameWorld {
 
             let input = self.inputs.get(&player.id).cloned().unwrap_or_default();
             let input = apply_hack_inversion(player, &input);
-            let (aim_x, aim_y) =
+            let (raw_aim_x, raw_aim_y) =
                 crate::roster_expansion::combat_aim(player, input.aim_x, input.aim_y);
+            let (aim_x, aim_y, target_id) = if self.aim_assist {
+                combat_aim_map
+                    .get(&player.id)
+                    .copied()
+                    .unwrap_or((raw_aim_x, raw_aim_y, None))
+            } else {
+                (raw_aim_x, raw_aim_y, None)
+            };
+            player.aim_assist_target = target_id;
 
             if weapon.can_reload() && input.reload && player.ammo < player.max_ammo {
                 let reload_time = weapons::reload_duration_for(weapon.id, player.ammo);
@@ -3057,6 +3180,100 @@ pub fn normalize(x: f32, y: f32) -> (f32, f32) {
     } else {
         (0.0, 0.0)
     }
+}
+
+/// Apply aim assist: snap toward the nearest alive enemy with movement prediction.
+/// Returns (aim_x, aim_y, target_id) with a strong blend toward where the target will be.
+pub(crate) fn apply_aim_assist(
+    players: &HashMap<u8, Player>,
+    inputs: &HashMap<u8, InputSnapshot>,
+    shooter_id: u8,
+    shooter_x: f32,
+    shooter_y: f32,
+    aim_x: f32,
+    aim_y: f32,
+    friendly_fire: bool,
+    gamemode: Gamemode,
+    bullet_speed: f32,
+) -> (f32, f32, Option<u8>) {
+    if aim_x == 0.0 && aim_y == 0.0 {
+        return (aim_x, aim_y, None);
+    }
+
+    let assist_range = 900.0;
+    let assist_strength = 0.55;
+    let fov_cos = 0.3; // ~72 degrees half-angle cone
+
+    let (aim_dir_x, aim_dir_y) = normalize(aim_x, aim_y);
+    let mut best_target: Option<(u8, f32, f32, f32)> = None; // (id, dx, dy, dist)
+
+    for player in players.values() {
+        if player.id == shooter_id || !player.alive {
+            continue;
+        }
+        // Skip teammates when friendly fire is off in team modes
+        if !friendly_fire && gamemode == Gamemode::TeamDeathmatch && player.team != 0 {
+            if let Some(shooter) = players.get(&shooter_id) {
+                if shooter.team != 0 && shooter.team == player.team {
+                    continue;
+                }
+            }
+        }
+
+        let dx = player.x - shooter_x;
+        let dy = player.y - shooter_y;
+        let dist = (dx * dx + dy * dy).sqrt();
+
+        if dist > assist_range || dist < 0.001 {
+            continue;
+        }
+
+        // Check if target is roughly in the aim cone
+        let (nx, ny) = (dx / dist, dy / dist);
+        let dot = aim_dir_x * nx + aim_dir_y * ny;
+        if dot < fov_cos {
+            continue;
+        }
+
+        match best_target {
+            Some((_, _, _, best_dist)) if dist >= best_dist => {}
+            _ => best_target = Some((player.id, dx, dy, dist)),
+        }
+    }
+
+    if let Some((target_id, dx, dy, dist)) = best_target {
+        // Estimate target velocity from their last input (assume ~300 units/sec move speed)
+        let move_speed = 300.0;
+        let target_input = inputs.get(&target_id).cloned().unwrap_or_default();
+        let (in_dx, in_dy) = normalize(target_input.dx, target_input.dy);
+        let vel_x = in_dx * move_speed;
+        let vel_y = in_dy * move_speed;
+
+        // Predict where the target will be based on bullet travel time
+        let time_to_hit = if bullet_speed > 0.0 {
+            dist / bullet_speed
+        } else {
+            0.0
+        };
+        let predicted_x = dx + vel_x * time_to_hit;
+        let predicted_y = dy + vel_y * time_to_hit;
+        let predicted_dist = (predicted_x * predicted_x + predicted_y * predicted_y).sqrt();
+
+        let (tx, ty) = if predicted_dist > 0.001 {
+            (predicted_x / predicted_dist, predicted_y / predicted_dist)
+        } else {
+            (dx / dist, dy / dist)
+        };
+
+        let blended_x = aim_dir_x * (1.0 - assist_strength) + tx * assist_strength;
+        let blended_y = aim_dir_y * (1.0 - assist_strength) + ty * assist_strength;
+        let len = (blended_x * blended_x + blended_y * blended_y).sqrt();
+        if len > 0.0001 {
+            return (blended_x / len, blended_y / len, Some(target_id));
+        }
+    }
+
+    (aim_dir_x, aim_dir_y, None)
 }
 
 pub fn circle_hits_walls(x: f32, y: f32, radius: f32, walls: &[Rect]) -> bool {

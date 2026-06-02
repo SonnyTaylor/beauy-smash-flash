@@ -262,6 +262,22 @@ export function LobbySettingsPanel({
             : 'Full arena visibility — everyone sees the whole map.'}
         </p>
 
+        <SettingRow label="Aim Assist">
+          <button
+            type="button"
+            className={`toggle-pill ${config.aim_assist ? 'on' : 'off'}`}
+            disabled={!isHost}
+            onClick={() => patch({ aim_assist: !config.aim_assist })}
+          >
+            {config.aim_assist ? 'On' : 'Off'}
+          </button>
+        </SettingRow>
+        <p className="setting-hint">
+          {config.aim_assist
+            ? 'Light aim correction — helps trackpad and casual players.'
+            : 'Raw input only — full manual aim control.'}
+        </p>
+
         {!isHorde && (
           <>
             <SettingRow label="Friendly Fire">

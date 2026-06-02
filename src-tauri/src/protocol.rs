@@ -82,6 +82,8 @@ pub struct LobbyConfig {
     #[serde(default)]
     pub fog_of_war: bool,
     #[serde(default)]
+    pub aim_assist: bool,
+    #[serde(default)]
     pub bot_count: u8,
     #[serde(default)]
     pub wave_goal: u16,
@@ -99,6 +101,7 @@ impl Default for LobbyConfig {
             win_condition: WinCondition::Kills,
             friendly_fire: true,
             fog_of_war: false,
+            aim_assist: false,
             bot_count: 0,
             wave_goal: 0,
         }
@@ -339,6 +342,8 @@ pub struct PlayerSnapshot {
     pub liquid_courage_remaining: f32,
     #[serde(default)]
     pub invulnerable_remaining: f32,
+    #[serde(default)]
+    pub aim_assist_target: Option<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -523,6 +523,7 @@ pub async fn start_match(
             config.gamemode,
             config.friendly_fire,
             config.fog_of_war,
+            config.aim_assist,
             config.wave_goal,
         );
         st.match_started = true;
@@ -759,6 +760,7 @@ pub async fn rematch(
             config.gamemode,
             config.friendly_fire,
             config.fog_of_war,
+            config.aim_assist,
             config.wave_goal,
         );
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
