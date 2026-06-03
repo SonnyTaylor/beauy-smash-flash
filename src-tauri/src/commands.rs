@@ -365,6 +365,7 @@ async fn join_game_inner(
                     fog_of_war: lobby_config.fog_of_war,
                     gamemode: lobby_config.gamemode,
                     weapon_pickups: Vec::new(),
+                    health_pickups: Vec::new(),
                     wave: 0,
                     zombies_remaining: 0,
                     wave_state: crate::protocol::WaveState::Intermission,
@@ -543,6 +544,7 @@ pub async fn start_match(
             config.ricochet_bullets,
             config.tiny_mode,
             config.double_fire_rate,
+            config.health_pickups,
         );
         st.match_started = true;
         st.match_paused = true;
@@ -789,6 +791,7 @@ pub async fn rematch(
             config.ricochet_bullets,
             config.tiny_mode,
             config.double_fire_rate,
+            config.health_pickups,
         );
         (st.socket.clone(), st.peers.clone(), st.world.snapshot())
     };

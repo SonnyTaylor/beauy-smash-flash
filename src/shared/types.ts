@@ -87,6 +87,7 @@ export interface LobbyConfig {
   ricochet_bullets: boolean;
   tiny_mode: boolean;
   double_fire_rate: boolean;
+  health_pickups: boolean;
 }
 
 export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
@@ -111,6 +112,7 @@ export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
   ricochet_bullets: false,
   tiny_mode: false,
   double_fire_rate: false,
+  health_pickups: true,
 };
 
 export interface GameSettings {
@@ -165,6 +167,14 @@ export interface WeaponPickupSnapshot {
   y: number;
   ammo: number;
   max_ammo: number;
+}
+
+export interface HealthPickupSnapshot {
+  id: number;
+  x: number;
+  y: number;
+  /** Seconds until this pickup respawns (0 = active/available). */
+  remaining_secs: number;
 }
 
 export interface BulletSnapshot {
@@ -309,6 +319,7 @@ export interface StateSnapshot {
   fog_of_war?: boolean;
   gamemode?: Gamemode;
   weapon_pickups?: WeaponPickupSnapshot[];
+  health_pickups?: HealthPickupSnapshot[];
   wave?: number;
   zombies_remaining?: number;
   wave_state?: WaveState;

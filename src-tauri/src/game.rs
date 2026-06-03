@@ -3,9 +3,9 @@ use std::f32::consts::FRAC_PI_2;
 
 use crate::abilities::{self, is_casting};
 use crate::protocol::{
-    AimAssistLevel, BulletSnapshot, EffectKind, Gamemode, InputSnapshot, KillFeedEntry,
-    LobbyConfig, MapSnapshot, MatchEndReason, PlayerSnapshot, RectSnapshot, StateSnapshot,
-    WaveState, WeaponPickupSnapshot, WeaponSlotSnapshot, WinCondition, WorldConfig,
+    AimAssistLevel, BulletSnapshot, EffectKind, Gamemode, HealthPickupSnapshot, InputSnapshot,
+    KillFeedEntry, LobbyConfig, MapSnapshot, MatchEndReason, PlayerSnapshot, RectSnapshot,
+    StateSnapshot, WaveState, WeaponPickupSnapshot, WeaponSlotSnapshot, WinCondition, WorldConfig,
     PROTOCOL_VERSION,
 };
 use crate::weapons::{
@@ -17,6 +17,10 @@ pub const DEFAULT_WORLD_WIDTH: f32 = 1920.0;
 pub const DEFAULT_WORLD_HEIGHT: f32 = 1080.0;
 pub const PLAYER_RADIUS: f32 = 24.0;
 pub const PLAYER_SPEED: f32 = 360.0;
+pub const HEALTH_PICKUP_HEAL: u16 = 30;
+pub const HEALTH_PICKUP_RADIUS: f32 = 40.0;
+pub const HEALTH_PICKUP_RESPAWN_SECS: f32 = 15.0;
+pub const HEALTH_PICKUP_INITIAL_DELAY: f32 = 30.0;
 
 pub const PLAYER_MAX_HP: u16 = 100;
 pub const _BULLET_RADIUS: f32 = 4.0;
@@ -175,6 +179,15 @@ pub struct WeaponPickup {
 }
 
 #[derive(Clone, Debug)]
+pub struct HealthPickup {
+    pub id: u32,
+    pub x: f32,
+    pub y: f32,
+    /// 0.0 = active and available; >0 = seconds until respawn.
+    pub respawn_timer: f32,
+}
+
+#[derive(Clone, Debug)]
 pub struct WorldEffect {
     pub id: u32,
     pub kind: EffectKind,
@@ -266,6 +279,17 @@ impl WeaponPickup {
             y: self.y,
             ammo: self.ammo,
             max_ammo: self.max_ammo,
+        }
+    }
+}
+
+impl HealthPickup {
+    fn snapshot(&self) -> HealthPickupSnapshot {
+        HealthPickupSnapshot {
+            id: self.id,
+            x: self.x,
+            y: self.y,
+            remaining_secs: self.respawn_timer,
         }
     }
 }
@@ -781,6 +805,7 @@ pub struct GameWorld {
     pub winner_team: Option<u8>,
     pub match_end_reason: Option<MatchEndReason>,
     pub weapon_pickups: Vec<WeaponPickup>,
+    pub health_pickups: Vec<HealthPickup>,
     pub next_pickup_id: u32,
     pub next_reel_index: u8,
     pub dev_mode: bool,
@@ -869,6 +894,7 @@ impl GameWorld {
             winner_team: None,
             match_end_reason: None,
             weapon_pickups: Vec::new(),
+            health_pickups: Vec::new(),
             next_pickup_id: 1,
             next_reel_index: 0,
             dev_mode: cfg!(debug_assertions),
@@ -1025,6 +1051,7 @@ impl GameWorld {
         ricochet_bullets: bool,
         tiny_mode: bool,
         double_fire_rate: bool,
+        health_pickups: bool,
     ) {
         self.remove_zombies();
         self.tick = 0;
@@ -1052,6 +1079,7 @@ impl GameWorld {
         self.match_end_reason = None;
         self.next_bullet_id = 1;
         self.weapon_pickups.clear();
+        self.health_pickups.clear();
         self.next_pickup_id = 1;
         self.input_prev.clear();
         self.wave = 0;
@@ -1101,6 +1129,10 @@ impl GameWorld {
         }
         self.follower_drones.clear();
 
+        if health_pickups {
+            self.spawn_health_pickups();
+        }
+
         if gamemode == Gamemode::ZombieHorde {
             self.wave_intermission_timer = HORDE_INITIAL_DELAY;
         } else {
@@ -1120,6 +1152,7 @@ impl GameWorld {
         self.match_end_reason = None;
         self.next_bullet_id = 1;
         self.weapon_pickups.clear();
+        self.health_pickups.clear();
         self.next_pickup_id = 1;
         self.input_prev.clear();
         self.wave = 0;
@@ -1286,6 +1319,76 @@ impl GameWorld {
             pickup.life = (pickup.life - dt).max(0.0);
         }
         self.weapon_pickups.retain(|pickup| pickup.life > 0.0);
+    }
+
+    fn spawn_health_pickups(&mut self) {
+        self.health_pickups.clear();
+        let mut next_id = self.next_pickup_id;
+        for &(x, y) in &self.map.spawns {
+            self.health_pickups.push(HealthPickup {
+                id: next_id,
+                x,
+                y,
+                respawn_timer: HEALTH_PICKUP_INITIAL_DELAY,
+            });
+            next_id += 1;
+        }
+        self.next_pickup_id = next_id;
+    }
+
+    fn tick_health_pickups(&mut self, dt: f32) {
+        for pickup in &mut self.health_pickups {
+            if pickup.respawn_timer > 0.0 {
+                pickup.respawn_timer = (pickup.respawn_timer - dt).max(0.0);
+            }
+        }
+    }
+
+    fn try_pickup_health(&mut self, id: u8) {
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        if !player.alive || is_casting(player) {
+            return;
+        }
+        if player.hp >= player.max_hp {
+            return;
+        }
+        let px = player.x;
+        let py = player.y;
+
+        let pickup_index = self
+            .health_pickups
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.respawn_timer <= 0.0)
+            .filter(|(_, p)| {
+                let dx = p.x - px;
+                let dy = p.y - py;
+                dx * dx + dy * dy <= HEALTH_PICKUP_RADIUS * HEALTH_PICKUP_RADIUS
+            })
+            .min_by(|(_, a), (_, b)| {
+                let da = (a.x - px).powi(2) + (a.y - py).powi(2);
+                let db = (b.x - px).powi(2) + (b.y - py).powi(2);
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(i, _)| i);
+
+        let Some(index) = pickup_index else {
+            return;
+        };
+
+        self.health_pickups[index].respawn_timer = HEALTH_PICKUP_RESPAWN_SECS;
+        if let Some(player) = self.players.get_mut(&id) {
+            player.hp = (player.hp + HEALTH_PICKUP_HEAL).min(player.max_hp);
+        }
+    }
+
+    fn process_health_pickups(&mut self) {
+        let ids: Vec<u8> = self.players.keys().copied().collect();
+        for id in ids {
+            self.try_pickup_health(id);
+        }
     }
 
     fn nearest_pickup_index(&self, x: f32, y: f32) -> Option<usize> {
@@ -1499,6 +1602,16 @@ impl GameWorld {
                 life: WEAPON_PICKUP_LIFETIME_SECS,
             })
             .collect();
+        self.health_pickups = snapshot
+            .health_pickups
+            .iter()
+            .map(|pickup| HealthPickup {
+                id: pickup.id,
+                x: pickup.x,
+                y: pickup.y,
+                respawn_timer: pickup.remaining_secs,
+            })
+            .collect();
         self.effects = snapshot
             .effects
             .iter()
@@ -1600,8 +1713,10 @@ impl GameWorld {
         self.process_horde(dt);
         self.process_respawns(dt);
         self.tick_weapon_pickups(dt);
+        self.tick_health_pickups(dt);
         self.process_movement(dt);
         self.process_weapon_interactions();
+        self.process_health_pickups();
         self.process_combat(dt);
         self.process_bullets(dt);
         self.check_match_end();
@@ -3222,6 +3337,11 @@ impl GameWorld {
                 .iter()
                 .map(WeaponPickup::snapshot)
                 .collect(),
+            health_pickups: self
+                .health_pickups
+                .iter()
+                .map(HealthPickup::snapshot)
+                .collect(),
             wave: self.wave,
             zombies_remaining: self.zombies_remaining,
             wave_state: self.wave_state,
@@ -3500,6 +3620,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
@@ -3550,6 +3671,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         for player in world.players.values_mut() {
             player.spawn_protection = 0.0;
@@ -4385,6 +4507,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.wave_intermission_timer = 0.0;
         world.process_horde(0.0);
@@ -4441,6 +4564,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().alive = false;
         world.players.get_mut(&0).unwrap().respawn_timer = 0.0;
@@ -4478,6 +4602,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.wave = 1;
         world.wave_state = WaveState::Active;
@@ -4615,5 +4740,171 @@ mod tests {
         assert_eq!(player.character_id, "luca");
         assert_eq!(player.max_hp, LUCA_MAX_HP);
         assert!(player.primary.is_none());
+    }
+
+    #[test]
+    fn health_pickup_heals_player_on_contact() {
+        let mut world = test_world_with_two_players();
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            AimAssistLevel::Off,
+            0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
+            true,
+        );
+        // Clear default spawn pickups so only ours is in play
+        world.health_pickups.clear();
+        let player_pos = {
+            let player = world.players.get(&0).unwrap();
+            (player.x, player.y)
+        };
+        // Spawn a health pickup right on top of player 0
+        world.health_pickups.push(HealthPickup {
+            id: 999,
+            x: player_pos.0,
+            y: player_pos.1,
+            respawn_timer: 0.0,
+        });
+        // Damage player first
+        world.players.get_mut(&0).unwrap().hp = 50;
+
+        world.process_health_pickups();
+
+        let player = world.players.get(&0).unwrap();
+        assert_eq!(player.hp, 80); // 50 + 30
+        assert_eq!(
+            world.health_pickups[0].respawn_timer,
+            HEALTH_PICKUP_RESPAWN_SECS
+        );
+    }
+
+    #[test]
+    fn health_pickup_respawns_after_cooldown() {
+        let mut world = test_world_with_two_players();
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            AimAssistLevel::Off,
+            0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
+            true,
+        );
+        world.health_pickups.clear();
+        world.health_pickups.push(HealthPickup {
+            id: 999,
+            x: 100.0,
+            y: 100.0,
+            respawn_timer: HEALTH_PICKUP_RESPAWN_SECS,
+        });
+
+        let idx = world
+            .health_pickups
+            .iter()
+            .position(|p| p.id == 999)
+            .unwrap();
+
+        // Still on cooldown
+        world.tick_health_pickups(1.0);
+        assert!(world.health_pickups[idx].respawn_timer > 0.0);
+
+        // After enough time, it respawns
+        world.tick_health_pickups(HEALTH_PICKUP_RESPAWN_SECS);
+        assert_eq!(world.health_pickups[idx].respawn_timer, 0.0);
+    }
+
+    #[test]
+    fn health_pickup_does_not_spawn_when_disabled() {
+        let mut world = test_world_with_two_players();
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            AimAssistLevel::Off,
+            0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
+        assert!(world.health_pickups.is_empty());
+    }
+
+    #[test]
+    fn health_pickups_start_with_initial_delay() {
+        let mut world = test_world_with_two_players();
+        world.reset_for_match(
+            20,
+            0,
+            WinCondition::Kills,
+            Gamemode::Deathmatch,
+            true,
+            false,
+            AimAssistLevel::Off,
+            0,
+            false,
+            false,
+            false,
+            1,
+            1.0,
+            false,
+            false,
+            false,
+            false,
+            true,
+        );
+        assert!(!world.health_pickups.is_empty());
+        for pickup in &world.health_pickups {
+            assert_eq!(pickup.respawn_timer, HEALTH_PICKUP_INITIAL_DELAY);
+        }
+    }
+
+    #[test]
+    fn health_pickup_does_not_heal_full_hp_player() {
+        let mut world = test_world_with_two_players();
+        world.health_pickups.clear();
+        world.health_pickups.push(HealthPickup {
+            id: 999,
+            x: world.players.get(&0).unwrap().x,
+            y: world.players.get(&0).unwrap().y,
+            respawn_timer: 0.0,
+        });
+        // Player is at full HP
+        world.process_health_pickups();
+        // Pickup should not have been consumed
+        assert_eq!(world.health_pickups[0].respawn_timer, 0.0);
     }
 }

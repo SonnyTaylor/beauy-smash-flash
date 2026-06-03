@@ -1474,6 +1474,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;
@@ -1520,6 +1521,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;
@@ -1625,6 +1627,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         if let Some(finn) = world.players.get_mut(&0) {
             finn.spawn_protection = 0.0;
@@ -1688,6 +1691,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         if let Some(player) = world.players.get_mut(&0) {
             player.spawn_protection = 0.0;

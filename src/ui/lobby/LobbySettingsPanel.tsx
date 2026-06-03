@@ -453,6 +453,22 @@ export function LobbySettingsPanel({
               ? 'All weapons fire twice as fast — bullet hell!'
               : 'Standard fire rate.'}
           </p>
+
+          <SettingRow label="Health Pickups">
+            <button
+              type="button"
+              className={`toggle-pill ${config.health_pickups ? 'on' : 'off'}`}
+              disabled={!isHost}
+              onClick={() => patch({ health_pickups: !config.health_pickups })}
+            >
+              {config.health_pickups ? 'On' : 'Off'}
+            </button>
+          </SettingRow>
+          <p className="setting-hint">
+            {config.health_pickups
+              ? 'Big Macs spawn at player start points — grab one to heal 30 HP.'
+              : 'No health pickups on the map.'}
+          </p>
         </div>
       </section>
     </div>

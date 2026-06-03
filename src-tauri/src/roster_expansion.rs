@@ -1377,6 +1377,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().ability_charge = ABILITY_CHARGE_MAX;
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
@@ -1414,6 +1415,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         let start_x = world.players.get(&0).unwrap().x;
         blink_player(&mut world, 0, 1.0, 0.0, ARCHIE_BLINK_RANGE);
@@ -1442,6 +1444,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         activate_arthur(&mut world, 0);
@@ -1471,6 +1474,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         let (x, y) = {
@@ -1518,6 +1522,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
         let (vx, vy) = {
@@ -1566,6 +1571,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         {
             let mango = world.players.get_mut(&0).unwrap();
@@ -1632,6 +1638,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1674,6 +1681,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1712,6 +1720,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1751,6 +1760,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1788,6 +1798,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1821,6 +1832,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;
@@ -1858,6 +1870,7 @@ mod tests {
             false,
             false,
             false,
+            true,
         );
         world.players.get_mut(&0).unwrap().spawn_protection = 0.0;
         world.players.get_mut(&1).unwrap().spawn_protection = 0.0;

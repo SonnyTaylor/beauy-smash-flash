@@ -9,6 +9,7 @@ import { getMap, getMapTheme } from '../content/maps';
 import { getWeapon, listWeapons, weaponOrbitPosition } from '../content/weapons';
 import type {
   BulletSnapshot,
+  HealthPickupSnapshot,
   MapSnapshot,
   PlayerSnapshot,
   RectSnapshot,
@@ -198,6 +199,20 @@ export class ArenaRenderer {
   private players = new Map<number, PlayerView>();
   private pickups = new Map<number, PickupView>();
   private pickupLayer = new Container();
+  private healthPickupLayer = new Container();
+  private healthPickupViews = new Map<
+    number,
+    {
+      container: Container;
+      sprite: Sprite;
+      glow: Graphics;
+      targetX: number;
+      targetY: number;
+      bobPhase: number;
+      active: boolean;
+    }
+  >();
+  private healthPickupTexture: Texture | null = null;
   private headTextures = new Map<string, Texture>();
   private weaponTextures = new Map<string, Texture>();
   private boatTexture: Texture | null = null;
@@ -279,6 +294,11 @@ export class ArenaRenderer {
       view.container.destroy({ children: true });
     }
     this.pickups.clear();
+    for (const view of this.healthPickupViews.values()) {
+      view.container.parent?.removeChild(view.container);
+      view.container.destroy({ children: true });
+    }
+    this.healthPickupViews.clear();
     for (const view of this.players.values()) {
       view.wasSpawnProtected = false;
     }
@@ -331,6 +351,7 @@ export class ArenaRenderer {
     this.wallContainer = new Container();
     this.bullets = new Graphics();
     this.pickupLayer = new Container();
+    this.healthPickupLayer = new Container();
 
     this.root.sortableChildren = true;
     this.floorLayer.zIndex = 0;
@@ -343,11 +364,12 @@ export class ArenaRenderer {
 
     this.entityLayer.sortableChildren = true;
     this.pickupLayer.zIndex = 0;
+    this.healthPickupLayer.zIndex = 0.5;
     this.bullets.zIndex = 1;
 
     this.floorLayer.addChild(this.floorFill, this.grid);
     this.wallLayer.addChild(this.wallContainer);
-    this.entityLayer.addChild(this.pickupLayer, this.bullets);
+    this.entityLayer.addChild(this.pickupLayer, this.healthPickupLayer, this.bullets);
     this.fogLayer.addChild(this.fogOverlay);
     this.root.addChild(
       this.floorLayer,
@@ -397,8 +419,13 @@ export class ArenaRenderer {
       view.container.destroy({ children: true });
     }
     this.pickups.clear();
+    for (const view of this.healthPickupViews.values()) {
+      view.container.destroy({ children: true });
+    }
+    this.healthPickupViews.clear();
     this.headTextures.clear();
     this.weaponTextures.clear();
+    this.healthPickupTexture = null;
     this.boatTexture = null;
     this.arthurKartTexture = null;
     this.isaakUltTexture = null;
@@ -467,6 +494,7 @@ export class ArenaRenderer {
     }
     this.syncBulletTargets(snapshot.bullets);
     this.syncWeaponPickups(snapshot.weapon_pickups ?? []);
+    this.syncHealthPickups(snapshot.health_pickups ?? []);
     this.syncWorldEffects(snapshot.effects ?? []);
     this.syncMaliceFogZones(snapshot.effects ?? []);
     this.syncMaliceFogOverlays();
@@ -1579,6 +1607,7 @@ export class ArenaRenderer {
     this.vfx.tick(dt);
     this.drawBullets(dt);
     this.animatePickups(now, dt);
+    this.animateHealthPickups(now, dt);
     this.animateTruthNukes(now, dt);
 
     const postBlend = 1 - Math.exp(-PLAYER_LERP_RATE * dt * 1.35);
@@ -1690,6 +1719,103 @@ export class ArenaRenderer {
       const bob = Math.sin(now / 420 + view.bobPhase) * 3;
       view.sprite.y = bob;
       view.glow.alpha = 0.55 + Math.sin(now / 260 + view.bobPhase) * 0.25;
+    }
+  }
+
+  private syncHealthPickups(pickups: HealthPickupSnapshot[]) {
+    const liveIds = new Set<number>();
+
+    for (const pickup of pickups) {
+      liveIds.add(pickup.id);
+      let view = this.healthPickupViews.get(pickup.id);
+      const isActive = pickup.remaining_secs <= 0;
+
+      if (!view) {
+        view = this.createHealthPickup(pickup);
+        this.healthPickupViews.set(pickup.id, view);
+        this.healthPickupLayer.addChild(view.container);
+      }
+
+      view.targetX = pickup.x;
+      view.targetY = pickup.y;
+      view.active = isActive;
+      view.container.visible = isActive && this.canSeePosition(pickup.x, pickup.y);
+
+      // Scale-in animation when respawning
+      if (isActive && view.container.scale.x < 0.9) {
+        view.container.scale.set(1);
+        view.container.alpha = 1;
+      }
+    }
+
+    for (const [id, view] of this.healthPickupViews) {
+      if (!liveIds.has(id)) {
+        view.container.parent?.removeChild(view.container);
+        view.container.destroy({ children: true });
+        this.healthPickupViews.delete(id);
+      }
+    }
+  }
+
+  private createHealthPickup(pickup: HealthPickupSnapshot) {
+    const container = new Container();
+    const glow = new Graphics()
+      .circle(0, 0, 24)
+      .fill({ color: 0x4ade80, alpha: 0.18 })
+      .circle(0, 0, 24)
+      .stroke({ color: 0x22c55e, width: 2, alpha: 0.45 });
+    container.addChild(glow);
+
+    const sprite = this.healthPickupTexture
+      ? new Sprite(this.healthPickupTexture)
+      : new Sprite(Texture.WHITE);
+    sprite.anchor.set(0.5);
+    sprite.scale.set(0.5);
+    sprite.alpha = 0.95;
+    container.addChild(sprite);
+
+    container.x = pickup.x;
+    container.y = pickup.y;
+
+    const isActive = pickup.remaining_secs <= 0;
+    if (!isActive) {
+      container.scale.set(0);
+      container.alpha = 0;
+    }
+
+    return {
+      container,
+      sprite,
+      glow,
+      targetX: pickup.x,
+      targetY: pickup.y,
+      bobPhase: Math.random() * Math.PI * 2,
+      active: isActive,
+    };
+  }
+
+  private animateHealthPickups(now: number, dt: number) {
+    const blend = 1 - Math.exp(-PLAYER_LERP_RATE * dt);
+    for (const view of this.healthPickupViews.values()) {
+      view.container.x += (view.targetX - view.container.x) * blend;
+      view.container.y += (view.targetY - view.container.y) * blend;
+
+      if (view.active) {
+        const bob = Math.sin(now / 380 + view.bobPhase) * 3;
+        view.sprite.y = bob;
+        view.glow.alpha = 0.55 + Math.sin(now / 240 + view.bobPhase) * 0.25;
+        view.container.alpha = 1;
+        view.container.visible = this.canSeePosition(view.targetX, view.targetY);
+      } else {
+        // Shrink and fade when on cooldown
+        const currentScale = view.container.scale.x;
+        const targetScale = Math.max(0, currentScale - dt * 4);
+        view.container.scale.set(targetScale);
+        view.container.alpha = targetScale;
+        if (targetScale <= 0.01) {
+          view.container.visible = false;
+        }
+      }
     }
   }
 
@@ -1916,6 +2042,10 @@ export class ArenaRenderer {
     for (const view of this.pickups.values()) {
       view.container.visible = this.canSeePosition(view.container.x, view.container.y);
     }
+
+    for (const view of this.healthPickupViews.values()) {
+      view.container.visible = view.active && this.canSeePosition(view.container.x, view.container.y);
+    }
   }
 
   private drawFogOverlay() {
@@ -2119,6 +2249,7 @@ export class ArenaRenderer {
     this.arthurKartTexture = await loadTextureFromUrl(arthurKartAssetUrl());
     this.isaakUltTexture = await loadTextureFromUrl(isaakUltAssetUrl());
     this.lachyTexture = await loadTextureFromUrl(lachyPetAssetUrl());
+    this.healthPickupTexture = await loadTextureFromUrl(assetUrl('big_mac.png'));
     await Promise.all(
       listWeapons().map(async (weapon) => {
         const texture = await loadTextureFromUrl(assetUrl(weapon.meta.sprite));

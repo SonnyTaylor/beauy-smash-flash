@@ -115,6 +115,12 @@ pub struct LobbyConfig {
     pub tiny_mode: bool,
     #[serde(default)]
     pub double_fire_rate: bool,
+    #[serde(default = "default_true")]
+    pub health_pickups: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_health_multiplier() -> u8 {
@@ -145,6 +151,7 @@ impl Default for LobbyConfig {
             ricochet_bullets: false,
             tiny_mode: false,
             double_fire_rate: false,
+            health_pickups: true,
         }
     }
 }
@@ -269,6 +276,15 @@ pub struct WeaponPickupSnapshot {
     pub y: f32,
     pub ammo: u8,
     pub max_ammo: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HealthPickupSnapshot {
+    pub id: u32,
+    pub x: f32,
+    pub y: f32,
+    /// Seconds until this pickup respawns (0 = active/available).
+    pub remaining_secs: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -456,6 +472,8 @@ pub struct StateSnapshot {
     pub gamemode: Gamemode,
     #[serde(default)]
     pub weapon_pickups: Vec<WeaponPickupSnapshot>,
+    #[serde(default)]
+    pub health_pickups: Vec<HealthPickupSnapshot>,
     #[serde(default)]
     pub wave: u16,
     #[serde(default)]
